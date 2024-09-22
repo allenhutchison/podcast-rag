@@ -1,0 +1,4 @@
+
+whisper @ git+https://github.com/openai/whisper.git
+pytest
+python-dotenv
