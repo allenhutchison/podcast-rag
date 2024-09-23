@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 class Config:
     def __init__(self, env_file=None):
         # Load environment variables from the specified .env file or default location
-        if env_file:
+        if (env_file):
             load_dotenv(env_file)
         else:
             load_dotenv()
@@ -36,6 +36,18 @@ class Config:
     def is_transcription_file(self, file_path):
         '''Check if the given file is a transcription file.'''
         return os.path.isfile(file_path) and file_path.endswith(self.TRANSCRIPTION_OUTPUT_SUFFIX)
+
+    def is_mp3_file(self, file_path):
+        '''Check if the given file is an MP3.'''
+        return os.path.isfile(file_path) and file_path.endswith(".mp3")
+
+    def is_transcription_in_progress(self, temp_file):
+        '''Check if a transcription is in progress.'''
+        return os.path.exists(temp_file)
+
+    def transcription_exists(self, transcription_file):
+        '''Check if the transcription already exists using helper function from config.'''
+        return os.path.exists(transcription_file) and os.path.getsize(transcription_file) > 0
 
 # Helper functions
 def does_transcription_exist(transcription_file):

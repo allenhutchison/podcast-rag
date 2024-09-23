@@ -13,7 +13,6 @@ from transcribe_podcasts import TranscriptionManager
 # Test for is_mp3_file using a real temporary file
 def test_is_mp3_file(tmpdir):
     config = Config()
-    manager = TranscriptionManager(config=config, dry_run=True)
     
     # Create a temporary MP3 file
     mp3_file = tmpdir.join("testfile.mp3")
@@ -23,13 +22,12 @@ def test_is_mp3_file(tmpdir):
     txt_file = tmpdir.join("testfile.txt")
     txt_file.write("Fake TXT content")
     
-    assert manager.is_mp3_file(str(mp3_file)) == True
-    assert manager.is_mp3_file(str(txt_file)) == False
+    assert config.is_mp3_file(str(mp3_file)) == True
+    assert config.is_mp3_file(str(txt_file)) == False
 
 # Test for transcription_exists (mocking)
 def test_transcription_exists(monkeypatch, tmpdir):
     config = Config()
-    manager = TranscriptionManager(config=config, dry_run=True)
     
     # Create a mock transcription file in tmpdir
     transcription_file = tmpdir.join("episode_transcription.txt")
@@ -46,10 +44,10 @@ def test_transcription_exists(monkeypatch, tmpdir):
     monkeypatch.setattr(os.path, "getsize", mock_getsize)
 
     # Existing transcription file (mocked as existing)
-    assert manager.transcription_exists(str(transcription_file)) == True
+    assert config.transcription_exists(str(transcription_file)) == True
 
     # Non-existent transcription file (mocked as not existing)
-    assert manager.transcription_exists("/path/to/episode_no_transcription.txt") == False
+    assert config.transcription_exists("/path/to/episode_no_transcription.txt") == False
 
 # Test for process_directory with a dry-run mode (mocked transcription process)
 def test_transcribe_podcasts_dry_run(monkeypatch, tmpdir):

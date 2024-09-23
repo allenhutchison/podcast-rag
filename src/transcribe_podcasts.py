@@ -2,7 +2,7 @@
 import os
 import subprocess
 import logging
-from config import Config, does_transcription_exist
+from config import Config
 
 class TranscriptionManager:
     def __init__(self, config: Config, dry_run=False):
@@ -19,24 +19,16 @@ class TranscriptionManager:
         '''Process all podcast files in a directory.'''
         for episode_file in os.listdir(podcast_dir):
             episode_path = os.path.join(podcast_dir, episode_file)
-            if self.is_mp3_file(episode_path):
+            if self.config.is_mp3_file(episode_path):
                 self.handle_transcription(episode_path)
-
-    def is_mp3_file(self, file_path):
-        '''Check if the given file is an MP3.'''
-        return os.path.isfile(file_path) and file_path.endswith(".mp3")
-
-    def transcription_exists(self, transcription_file):
-        '''Check if the transcription already exists using helper function from config.'''
-        return does_transcription_exist(transcription_file)
 
     def handle_transcription(self, episode_path):
         transcription_file = self.config.build_transcription_file(episode_path)
         temp_file = self.config.build_temp_file(transcription_file)
 
-        if self.is_transcription_in_progress(temp_file):
+        if self.config.is_transcription_in_progress(temp_file):
             self.handle_incomplete_transcription(episode_path, temp_file)
-        elif self.transcription_exists(transcription_file):
+        elif self.config.transcription_exists(transcription_file):
             logging.info(f"Skipping {episode_path}: transcription already exists.")
             self.stats["already_transcribed"] += 1
         else:
@@ -45,10 +37,6 @@ class TranscriptionManager:
                 self.stats["waiting_for_transcription"] += 1
             else:
                 self.start_transcription(episode_path, transcription_file, temp_file)
-
-    def is_transcription_in_progress(self, temp_file):
-        '''Check if a transcription is in progress.'''
-        return os.path.exists(temp_file)
 
     def handle_incomplete_transcription(self, episode_path, temp_file):
         '''Handle incomplete transcription by removing temp file.'''
