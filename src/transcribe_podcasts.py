@@ -47,7 +47,10 @@ class TranscriptionManager:
         '''Run the transcription process using Whisper.'''
         logging.info(f"Starting transcription for {episode_path}")
         try:
-            result = subprocess.run([self.config.WHISPER_PATH, episode_path, '-o', transcription_file], capture_output=True, text=True)
+            result = subprocess.run([self.config.WHISPER_PATH, episode_path, 
+                                     '--output_dir', os.path.dirname(transcription_file), 
+                                     '--output_format', 'txt',
+                                     '--language', 'en'], capture_output=True, text=True)
             result.check_returncode()  # Raises an error if returncode != 0
             logging.info(f"Transcription complete for {episode_path}")
             self.stats["transcribed_now"] += 1
@@ -58,6 +61,10 @@ class TranscriptionManager:
         finally:
             if os.path.exists(temp_file):
                 os.remove(temp_file)
+            # Move the output file to the final transcription file
+            output_file = os.path.splitext(episode_path)[0] + ".txt"
+            if os.path.exists(output_file):
+                os.rename(output_file, transcription_file)            
 
     def process_directory(self):
         '''Main function to start processing podcasts.'''
