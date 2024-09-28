@@ -21,11 +21,11 @@ class TranscriptionManager:
         if self.config.is_transcription_in_progress(temp_file):
             self.handle_incomplete_transcription(episode_path, temp_file)
         elif self.config.transcription_exists(transcription_file):
-            logging.info(f"Skipping {episode_path}: transcription already exists.")
+            logging.debug(f"Skipping {episode_path}: transcription already exists.")
             self.stats["already_transcribed"] += 1
         else:
             if self.dry_run:
-                logging.info(f"Dry run: would transcribe {episode_path}")
+                logging.debug(f"Dry run: would transcribe {episode_path}")
                 self.stats["waiting_for_transcription"] += 1
             else:
                 self.start_transcription(episode_path, transcription_file, temp_file)
@@ -44,7 +44,7 @@ class TranscriptionManager:
                                      '--output_format', 'txt',
                                      '--language', 'en'], capture_output=True, text=True)
             result.check_returncode()  # Raises an error if returncode != 0
-            logging.info(f"Transcription complete for {episode_path}")
+            logging.debug(f"Transcription complete for {episode_path}")
             self.stats["transcribed_now"] += 1
         except subprocess.CalledProcessError as e:
             logging.error(f"Transcription failed for {episode_path}: {e}")
