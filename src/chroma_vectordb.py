@@ -112,7 +112,7 @@ class VectorDbManager:
                     metadatas=[metadata] # Metadata for later querying
                 )
                 index_file_handle.write(f"{chunk_id}\n")
-                index_file_handle.wirte(f"{chunk}\n")
+                index_file_handle.write(f"{chunk}\n")
             index_file_handle.close()
             os.remove(temp_file)  # Remove the temp file to indicate indexing is complete
             self.stats["indexed_now"] += len(chunks)

@@ -48,6 +48,7 @@ class FileManager:
         '''Log transcription statistics.'''
         logging.info(f"Total MP3 files processed: {self.stats['total_mp3_files']}")
         self.transcription_manager.log_stats()
+        self.vector_db_manager.log_stats()
 
 if __name__ == "__main__":
     import argparse
@@ -59,11 +60,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Configure logging based on command-line argument
-    logging.basicConfig(
-        level=getattr(logging, args.log_level.upper(), "INFO"),  # Default to INFO if invalid log level
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        handlers=[logging.StreamHandler()]
-    )
+    logger = logging.getLogger(__name__)
+    log_level = getattr(logging, args.log_level.upper(), "INFO")
+    logger.setLevel(log_level)
+    # Console handler for logging to the console
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(log_level)
+    console_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    console_handler.setFormatter(console_formatter)
+
 
     # Load configuration, passing the env file if provided
     config = Config(env_file=args.env_file)
