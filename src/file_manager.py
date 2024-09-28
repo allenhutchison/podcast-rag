@@ -4,12 +4,15 @@ import subprocess
 import logging
 from config import Config
 from transcribe_podcasts import TranscriptionManager
+from chroma_vectordb import VectorDbManager
 
 class FileManager:
-    def __init__(self, config: Config, dry_run=False, transcription_manager=None):
+    def __init__(self, config: Config, dry_run=False):
         self.config = config
         self.dry_run = dry_run
-        self.transcription_manager = transcription_manager
+        # Instantiate the TranscriptionManager with the loaded configuration
+        self.transcription_manager = TranscriptionManager(config=config, dry_run=args.dry_run)
+        self.vector_db_manager = VectorDbManager(config=config, dry_run=args.dry_run)
         self.stats = {
             "total_mp3_files": 0,
         }
@@ -22,8 +25,10 @@ class FileManager:
                 self.stats["total_mp3_files"] += 1
                 # Handle transcription for MP3 files, then summary and embedding
                 self.transcription_manager.handle_transcription(episode_path)
+                # Handle indexing for transcripts with embedding
+                self.vector_db_manager.handle_indexing(episode_path)
                 #self.handle_summary(episode_path)
-                #self.handle_embedding(episode_path)
+
 
     def process_directory(self):
         '''Main function to start processing podcasts.'''
@@ -63,10 +68,7 @@ if __name__ == "__main__":
     # Load configuration, passing the env file if provided
     config = Config(env_file=args.env_file)
 
-    # Instantiate the TranscriptionManager with the loaded configuration
-    transcription_manager = TranscriptionManager(config=config, dry_run=args.dry_run)
-
     # Instantiate the FileManager with the loaded configuration
-    file_manager = FileManager(config=config, dry_run=args.dry_run, transcription_manager=transcription_manager)
+    file_manager = FileManager(config=config, dry_run=args.dry_run)
 
     file_manager.process_directory()

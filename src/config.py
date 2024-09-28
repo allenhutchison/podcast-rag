@@ -18,6 +18,14 @@ class Config:
         self.TRANSCRIPTION_OUTPUT_SUFFIX = "_transcription.txt"
         self.TRANSCRIPTION_TEMP_FILE_SUFFIX = ".transcription_in_progress"
 
+        # ChromaDB-related constants
+        self.CHROMA_DB_HOST = os.getenv("CHROMA_DB_HOST", "localhost")
+        self.CHROMA_DB_PORT = os.getenv("CHROMA_DB_PORT", 50051)
+        self.CHROMA_DB_COLLECTION = os.getenv("CHROMA_DB_COLLECTION", "podcasts_collection")
+        self.INDEX_OUTPUT_SUFFIX = "_index.txt"
+        self.INDEX_TEMP_FILE_SUFFIX = ".index_in_progress"
+
+
     def load_config(self):
         '''Logs or prints the configuration for debugging purposes.'''
         print(f"Base Directory: {self.BASE_DIRECTORY}")
