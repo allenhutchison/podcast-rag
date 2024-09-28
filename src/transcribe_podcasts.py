@@ -9,18 +9,10 @@ class TranscriptionManager:
         self.config = config
         self.dry_run = dry_run
         self.stats = {
-            "total_mp3_files": 0,
             "already_transcribed": 0,
             "waiting_for_transcription": 0,
             "transcribed_now": 0,
         }
-
-    def process_podcast(self, podcast_dir):
-        '''Process all podcast files in a directory.'''
-        for episode_file in os.listdir(podcast_dir):
-            episode_path = os.path.join(podcast_dir, episode_file)
-            if self.config.is_mp3_file(episode_path):
-                self.handle_transcription(episode_path)
 
     def handle_transcription(self, episode_path):
         transcription_file = self.config.build_transcription_file(episode_path)
@@ -66,24 +58,9 @@ class TranscriptionManager:
             if os.path.exists(output_file):
                 os.rename(output_file, transcription_file)            
 
-    def process_directory(self):
-        '''Main function to start processing podcasts.'''
-        if not os.path.isdir(self.config.BASE_DIRECTORY):
-            logging.error(f"Directory {self.config.BASE_DIRECTORY} does not exist.")
-            return
-
-        for podcast_name in os.listdir(self.config.BASE_DIRECTORY):
-            podcast_dir = os.path.join(self.config.BASE_DIRECTORY, podcast_name)
-
-            if os.path.isdir(podcast_dir):
-                self.process_podcast(podcast_dir)
-
-        self.log_stats()
 
     def log_stats(self):
         '''Log transcription statistics.'''
-        logging.info("\n--- Transcription Statistics ---")
-        logging.info(f"Total MP3 files processed: {self.stats['total_mp3_files']}")
         logging.info(f"Already transcribed: {self.stats['already_transcribed']}")
         if self.dry_run:
             logging.info(f"Waiting for transcription: {self.stats['waiting_for_transcription']}")
@@ -97,6 +74,7 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--dry-run", action="store_true", help="Perform a dry run without actual transcription")
     parser.add_argument("-e", "--env-file", help="Path to a custom .env file", default=None)
     parser.add_argument("-l", "--log-level", help="Set log level (DEBUG, INFO, WARNING, ERROR)", default="INFO")
+    parser.add_argument("-p", "--episode-path", help="Path to an MP3 file", default=None)
     args = parser.parse_args()
 
     # Configure logging based on command-line argument
@@ -111,4 +89,5 @@ if __name__ == "__main__":
 
     # Instantiate the TranscriptionManager with the loaded configuration
     manager = TranscriptionManager(config=config, dry_run=args.dry_run)
-    manager.process_directory()
+    manager.handle_transcription(args.episode_path)
+    manager.log_stats()
