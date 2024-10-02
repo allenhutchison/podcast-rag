@@ -60,9 +60,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Configure logging based on command-line argument
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger()
     log_level = getattr(logging, args.log_level.upper(), "INFO")
     logger.setLevel(log_level)
+    logging.getLogger('httpx').setLevel("WARNING")
+    logging.getLogger('httpcore').setLevel("WARNING")
     # Console handler for logging to the console
     console_handler = logging.StreamHandler()
     console_handler.setLevel(log_level)

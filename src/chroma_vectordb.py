@@ -115,7 +115,7 @@ class VectorDbManager:
                 index_file_handle.write(f"{chunk}\n")
             index_file_handle.close()
             os.remove(temp_file)  # Remove the temp file to indicate indexing is complete
-            self.stats["indexed_now"] += len(chunks)
+            self.stats["indexed_now"] += 1
             logging.debug(f"Successfully indexed {len(chunks)} chunks for {podcast_name} - {file_name}")
 
     def index_exists(self, index_file):
