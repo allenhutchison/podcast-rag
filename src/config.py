@@ -25,6 +25,11 @@ class Config:
         self.INDEX_OUTPUT_SUFFIX = "_index.txt"
         self.INDEX_TEMP_FILE_SUFFIX = ".index_in_progress"
 
+        # Model configuration
+        self.OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+        self.OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma2:27b")
+        self.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "your_api_key_here")
+        self.GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 
     def load_config(self):
         '''Logs or prints the configuration for debugging purposes.'''

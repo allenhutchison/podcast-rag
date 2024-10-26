@@ -24,19 +24,20 @@ class VectorDbSearchManager:
         logging.debug(json.dumps(results, indent=4, sort_keys=True))
 
     # Function to search Chroma for relevant podcast transcriptions
-    def search_transcriptions(self, query):
+    def search_transcriptions(self, query, print_results=True):
         # Query the collection using the query embeddings
         results = self.collection.query(
             query_texts=[query],  
             n_results=10  # Number of relevant chunks to return
         )
         self.pretty_print_chromadb_results(results)
-        for document_list, metadata_list in zip(results['documents'], results['metadatas']):
-            for document, metadata in zip(document_list, metadata_list):
-                podcast = metadata.get('podcast', 'Unknown Podcast')
-                episode = metadata.get('episode', 'Unknown Episode')
-                transcription = document.strip()
-                print(f"Relevant Episode: {podcast} Episode: {episode}\nTranscription Snippet: {transcription[:200]}...\n")
+        if print_results:
+            for document_list, metadata_list in zip(results['documents'], results['metadatas']):
+                for document, metadata in zip(document_list, metadata_list):
+                    podcast = metadata.get('podcast', 'Unknown Podcast')
+                    episode = metadata.get('episode', 'Unknown Episode')
+                    transcription = document.strip()
+                    print(f"Relevant Episode: {podcast} Episode: {episode}\nTranscription Snippet: {transcription[:200]}...\n")
         return results
 
 
@@ -57,7 +58,7 @@ def main():
 
     config = Config(env_file=args.env_file)
     manager = VectorDbSearchManager(config)
-    manager.search_transcriptions(args.query)
+    manager.search_transcriptions(args.query, print_results=True)
     
 
 if __name__ == "__main__":
