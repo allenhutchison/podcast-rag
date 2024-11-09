@@ -40,6 +40,7 @@ class TranscriptionManager:
         logging.info(f"Starting transcription for {episode_path}")
         try:
             result = subprocess.run([self.config.WHISPER_PATH, episode_path, 
+                                     '--model', 'large-v3',
                                      '--output_dir', os.path.dirname(transcription_file), 
                                      '--output_format', 'txt',
                                      '--language', 'en'], capture_output=True, text=True)
