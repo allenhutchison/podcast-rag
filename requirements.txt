@@ -1,6 +1,8 @@
-
 openai-whisper @ git+https://github.com/openai/whisper.git
 pytest
 python-dotenv
 chromadb >= 0.5.18
 nltk
+Flask
+gunicorn
+markdown
