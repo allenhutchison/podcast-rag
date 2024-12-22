@@ -8,8 +8,12 @@ description: Retrieve podcast transcriptions data using Chromadb.
 requirements: chromadb-client >= 0.5.18, sentence-transformers
 """
 
+import asyncio
+import logging
 from typing import List, Union, Generator, Iterator
-from schemas import OpenAIChatMessage
+import chromadb
+from chromadb.utils import embedding_functions
+from tenacity import retry, stop_after_attempt, wait_exponential
 import os
 from pydantic import BaseModel
 
@@ -31,45 +35,58 @@ class Pipeline:
             }
         )
 
-    async def on_startup(self):
-        pass
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+    async def initialize_chroma(self):
+        try:
+            self.client = chromadb.HttpClient(
+                host=self.valves.CHROMA_DB_HOST, 
+                port=self.valves.CHROMA_DB_PORT,
+                ssl=True,
+                timeout=30  # Add timeout
+            )
+            sentence_transformer_ef = embedding_functions.SentenceTransformerEmbeddingFunction(
+                model_name="all-MiniLM-L6-v2"
+            )
+            self.collection = self.client.get_collection(
+                name=self.valves.CHROMA_DB_COLLECTION,
+                embedding_function=sentence_transformer_ef
+            )
+            logging.info("ChromaDB connection established")
+        except Exception as e:
+            logging.error(f"Failed to initialize ChromaDB: {str(e)}")
+            raise
 
-    async def on_shutdown(self):
-        pass
+    def search_transcriptions(self, query: str):
+        if not self.collection:
+            raise RuntimeError("ChromaDB collection not initialized")
+            
+        try:
+            results = self.collection.query(
+                query_texts=[query],
+                n_results=10
+            )
+            return results
+        except Exception as e:
+            logging.error(f"Search failed: {str(e)}")
+            raise
 
-    def search_transcriptions(self, query):
-        results = self.collection.query(
-            query_texts=[query],
-            n_results=10
-        )
-        return results
-
-    def pipe(self, user_message: str, model_id: str, messages: List[dict], body: dict) -> Union[str, Generator, Iterator]:
-        import chromadb
-        from chromadb.utils import embedding_functions
-        if self.collection is None:
-            self.client = chromadb.HttpClient(host=self.valves.CHROMA_DB_HOST, port=self.valves.CHROMA_DB_PORT, ssl=True)
-            sentence_transformer_ef = embedding_functions.SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
-            self.collection = self.client.get_collection(name=self.valves.CHROMA_DB_COLLECTION, embedding_function=sentence_transformer_ef)
+    async def pipe(self, user_message: str, model_id: str, messages: List[dict], body: dict):
+        try:
+            if self.collection is None:
+                await self.initialize_chroma()
             return self.search_transcriptions(user_message)
-        else:
-            return self.search_transcriptions(user_message)
-
-
+        except Exception as e:
+            logging.error(f"Pipeline failed: {str(e)}")
+            raise
 
 async def main():
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        handlers=[logging.StreamHandler()]
-    )
+    logging.basicConfig(level=logging.INFO)
     pipeline = Pipeline()
-    await pipeline.on_startup()
-    query = "machine learning"
-    results = pipeline.search_transcriptions(query)
-    print(results)
+    try:
+        results = await pipeline.pipe("your query", "model", [], {})
+        print(results)
+    except Exception as e:
+        logging.error(f"Pipeline failed: {str(e)}")
 
 if __name__ == "__main__":
-    import asyncio
-    import logging
     asyncio.run(main())
