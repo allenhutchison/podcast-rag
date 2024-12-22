@@ -18,6 +18,8 @@ class RagManager:
         self.print_results = print_results
         self.ai_system = ai_system
         self.vector_db_manager = VectorDbSearchManager(config=config, dry_run=dry_run)
+        self.last_query = None
+        self.last_context = None
         if self.ai_system == "ollama":
             logging.info("Using Ollama for AI system.")
             self.ollama_client = Client(host=config.OLLAMA_HOST)
@@ -38,9 +40,12 @@ class RagManager:
 
 
     def query(self, query):
+        self.last_query = query
         refined_query = self.refine_query(query)
         document_results, metadata_results = self.prepare_model_context(refined_query)
         prompt = self.format_prompt(refined_query, document_results, metadata_results)
+        self.last_context = "Some transcript text..."
+        logging.info(f"Query called with: {query}")
         if self.ai_system == "ollama":
             return self.query_with_ollama(prompt)
         elif self.ai_system == "gemini":
@@ -102,6 +107,21 @@ class RagManager:
             logging.info("Prompt Prepared: %s", prompt)
             logging.info("Prompt Size: %s", sys.getsizeof(prompt))
         return prompt
+
+    def search_snippets(self, query: str):
+        logging.info(f"Searching snippets for: {query}")
+        if query != self.last_query:
+            logging.info("Note: Query differs from last query stored.")
+        return [
+            {
+                'text': f'Matched snippet for: {query}',
+                'source': 'http://example.com'
+            },
+            {
+                'text': f'Another snippet from context: {self.last_context}',
+                'source': 'http://example2.com'
+            }
+        ]
 
 
 if __name__ == "__main__":

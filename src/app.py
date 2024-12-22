@@ -1,53 +1,39 @@
 from flask import Flask, render_template, request, jsonify
-from json import JSONEncoder  # Changed import
-from google.generativeai.types import GenerateContentResponse
+from markupsafe import Markup
+import markdown
 import logging
 from rag import RagManager
 from config import Config
 import argparse
-from markupsafe import Markup
-import markdown
+from google.generativeai.types import GenerateContentResponse
 
-# Parse command line arguments
 parser = argparse.ArgumentParser()
 parser.add_argument('--env-file', type=str, help='Path to environment file')
 args = parser.parse_args()
 
-class CustomJSONEncoder(JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, GenerateContentResponse):
-            return {
-                'text': obj.text,
-                'prompt': obj.prompt,
-                'candidates': [
-                    {'content': c.content, 'finish_reason': c.finish_reason}
-                    for c in obj.candidates
-                ]
-            }
-        return super().default(obj)
+app = Flask(__name__)
+config = Config(env_file=args.env_file)
 
 class GenerateContentResponseConverter:
     @staticmethod
     def to_dict(response):
-        # If it's not a GenerateContentResponse, just return it as-is
         if not isinstance(response, GenerateContentResponse):
             return response
-        
-        # Extract candidates
+
         candidates_list = []
         if hasattr(response, "candidates"):
             for candidate in response.candidates:
                 text = ""
-                if hasattr(candidate, "content") and hasattr(candidate.content, "parts"):
-                    if candidate.content.parts:
-                        text = candidate.content.parts[0].text
+                if (hasattr(candidate, "content") and 
+                    hasattr(candidate.content, "parts") and 
+                    candidate.content.parts):
+                    text = candidate.content.parts[0].text
                 candidates_list.append({
                     'content': text,
                     'finish_reason': candidate.finish_reason,
                     'avg_logprobs': candidate.avg_logprobs
                 })
 
-        # Extract usage metadata (if present)
         usage_meta = {}
         if hasattr(response, "usage_metadata"):
             usage_meta = {
@@ -62,19 +48,16 @@ class GenerateContentResponseConverter:
             'usage_metadata': usage_meta,
         }
 
-app = Flask(__name__)
-app.json_encoder = CustomJSONEncoder
-config = Config(env_file=args.env_file)
-
 @app.route('/', methods=['GET', 'POST'])
 def index():
     results = None
+    styled_text = None
+    db_results = []
     if request.method == 'POST':
-        query = request.form['query']
+        query = request.form.get('query', '')
         log_level = request.form.get('log_level', 'INFO')
         ai_system = request.form.get('ai_system', 'gemini')
 
-        # Configure logging
         logging.basicConfig(
             level=getattr(logging, log_level.upper(), "INFO"),
             format="%(asctime)s - %(levelname)s - %(message)s",
@@ -82,9 +65,33 @@ def index():
         )
 
         rag_manager = RagManager(config=config, print_results=True, ai_system=ai_system)
-        results = rag_manager.query(query)
 
-    return render_template('index.html', results=results)
+        # 1) Get LLM result
+        raw_result = rag_manager.query(query)
+        results = GenerateContentResponseConverter.to_dict(raw_result)
+
+        # 2) Convert first candidate’s content to HTML
+        if results and 'candidates' in results and results['candidates']:
+            text_md = results['candidates'][0].get('content', '')
+            html_content = markdown.markdown(text_md)
+            styled_text = Markup(html_content)
+
+        # 3) Get vector DB snippets (example method call)
+        db_snippets = rag_manager.search_snippets(query)
+        # db_snippets should be a list of dicts like:
+        # [{'text': 'Snippet text...', 'source': 'http://example.com'}, ...]
+
+        # 4) Build a footnote-like structure
+        for i, snippet in enumerate(db_snippets, start=1):
+            footnote_link = f"[{i}]"
+            # We'll keep the snippet text in plain Markdown and link to snippet['source']
+            db_results.append({
+                'footnote': footnote_link,
+                'text': snippet['text'],
+                'source': snippet.get('source', '#')
+            })
+
+    return render_template('index.html', results=results, styled_text=styled_text, db_results=db_results)
 
 @app.route('/search', methods=['POST'])
 def search():
