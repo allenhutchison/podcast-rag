@@ -1,6 +1,5 @@
 
 import os
-import subprocess
 import logging
 from config import Config
 from transcribe_podcasts import TranscriptionManager
