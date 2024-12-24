@@ -4,6 +4,7 @@ import logging
 from config import Config
 from transcribe_podcasts import TranscriptionManager
 from chroma_vectordb import VectorDbManager
+from argparse_shared import get_base_parser, add_dry_run_argument, add_log_level_argument
 
 class FileManager:
     def __init__(self, config: Config, dry_run=False):
@@ -50,12 +51,10 @@ class FileManager:
         self.vector_db_manager.log_stats()
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Transcribe podcasts using Whisper")
-    parser.add_argument("-d", "--dry-run", action="store_true", help="Perform a dry run without actual transcription")
-    parser.add_argument("-e", "--env-file", help="Path to a custom .env file", default=None)
-    parser.add_argument("-l", "--log-level", help="Set log level (DEBUG, INFO, WARNING, ERROR)", default="INFO")
+    parser = get_base_parser()
+    add_dry_run_argument(parser)
+    add_log_level_argument(parser)
+    parser.description = "Transcribe podcasts using Whisper"
     args = parser.parse_args()
 
     # Configure logging based on command-line argument
