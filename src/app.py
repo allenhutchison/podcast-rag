@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, jsonify
+from flask_cors import CORS  # Add this import
 from markupsafe import Markup
 import markdown
 import logging
@@ -12,6 +13,7 @@ parser.add_argument('--env-file', type=str, help='Path to environment file')
 args = parser.parse_args()
 
 app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
 config = Config(env_file=args.env_file)
 
 class GenerateContentResponseConverter:
@@ -130,4 +132,4 @@ def search():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5001, debug=True)
