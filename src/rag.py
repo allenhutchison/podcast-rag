@@ -8,9 +8,7 @@ import textwrap
 import sys
 import google.generativeai as genai
 from argparse_shared import get_base_parser, add_dry_run_argument, add_log_level_argument, add_ai_system_argument, add_query_argument
-
-
-
+from prompt_manager import PromptManager
 
 class RagManager:
     def __init__(self, config: Config, dry_run=False, print_results=True, ai_system="ollama"):
@@ -18,6 +16,7 @@ class RagManager:
         self.dry_run = dry_run
         self.print_results = print_results
         self.ai_system = ai_system
+        self.prompt_manager = PromptManager(config=config, print_results=print_results)
         self.vector_db_manager = VectorDbSearchManager(config=config, dry_run=dry_run)
         self.last_query = None
         self.last_context = None
@@ -74,36 +73,24 @@ class RagManager:
 
     def format_prompt(self, query, document_results, metadata_results):
         context_documents = ''
-        transcript_template = Template(textwrap.dedent("""
-                ----------------------------------------
-                Podcast Name: $podcast
-                Episode Name: $episode
-                Content: $transcript
-                ----------------------------------------
-                """))
+        iteration = 1
         for document_list, metadata_list in zip(document_results, metadata_results):
             for document, metadata in zip(document_list, metadata_list):
-                podcast = metadata.get('podcast', 'Unknown Podcast')
-                episode = metadata.get('episode', 'Unknown Episode')
-                transcription = document.strip()
-                context_documents += transcript_template.substitute(podcast=podcast,
-                                                                    episode=episode,
-                                                                    transcript=transcription)
-        template = Template(textwrap.dedent("""
-            Instructions:
-            You are a helpful research assistant. Use the context provided to answer the question.
-                                            
-            Context:
-            $context
-
-                                                                    
-            Question: 
-            What does my archive contain about $query
-            
-                                            
-            Answer:
-            """))
-        prompt = template.substitute(context=context_documents, query=query)
+                snippet = self.prompt_manager.build_prompt(
+                    prompt_name = "podcast_snippet",
+                    iteration = iteration,
+                    podcast = metadata.get('podcast', 'Unknown Podcast'),
+                    episode = metadata.get('episode', 'Unknown Episode'),
+                    transcript = document.strip()
+                )
+                context_documents += snippet
+                iteration += 1
+    
+        prompt = self.prompt_manager.build_prompt(
+            prompt_name = "archive_question",
+            context = context_documents,
+            query = query
+        )
         if self.print_results:
             logging.info("Prompt Prepared: %s", prompt)
             logging.info("Prompt Size: %s", sys.getsizeof(prompt))

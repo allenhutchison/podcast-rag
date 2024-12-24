@@ -1,0 +1,4 @@
+$iteration) 
+**Podcast**: $podcast
+**Episode**: $episode
+**Snippet**: $transcript

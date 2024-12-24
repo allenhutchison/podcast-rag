@@ -31,6 +31,11 @@ class Config:
         self.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "your_api_key_here")
         self.GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 
+        # Prompts configuration
+        base_dir = os.path.dirname(__file__)
+        default_prompts_dir = os.path.join(base_dir, "../prompts")
+        self.PROMPTS_DIR = os.getenv("PROMPTS_DIR", default_prompts_dir)
+
     def load_config(self):
         '''Logs or prints the configuration for debugging purposes.'''
         print(f"Base Directory: {self.BASE_DIRECTORY}")
