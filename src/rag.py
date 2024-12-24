@@ -7,6 +7,7 @@ from string import Template
 import textwrap
 import sys
 import google.generativeai as genai
+from argparse_shared import get_base_parser, add_dry_run_argument, add_log_level_argument, add_ai_system_argument, add_query_argument
 
 
 
@@ -126,11 +127,14 @@ class RagManager:
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="Search podcast transcriptions using Ollama")
-    parser.add_argument("-e", "--env-file", help="Path to a custom .env file", default=None)
-    parser.add_argument("-l", "--log-level", help="Set log level (DEBUG, INFO, WARNING, ERROR)", default="INFO")
-    parser.add_argument("-ai", "--ai-system", help="AI system to use (ollama or gemini)", default="ollama")
-    parser.add_argument("-q", "--query", help="Query to search", required=True)
+    parser = get_base_parser()
+    parser.description = "Search podcast transcriptions using Ollama or Gemini"
+
+    add_dry_run_argument(parser)
+    add_log_level_argument(parser)
+    add_ai_system_argument(parser)
+    add_query_argument(parser)
+    
     args = parser.parse_args()
 
     # Configure logging based on command-line argument

@@ -10,3 +10,12 @@ def add_dry_run_argument(parser: argparse.ArgumentParser) -> None:
 
 def add_log_level_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-l", "--log-level", help="Set log level (DEBUG, INFO, WARNING, ERROR)", default="INFO")
+
+def add_episode_path_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("-p", "--episode-path", help="Path to an MP3 file", default=None)
+
+def add_ai_system_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("-ai", "--ai-system", help="AI system to use (ollama or gemini)", default="ollama")
+
+def add_query_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("-q", "--query", help="Query to search", required=True)

@@ -3,6 +3,7 @@ import os
 import subprocess
 import logging
 from config import Config
+from argparse_shared import get_base_parser, add_dry_run_argument, add_log_level_argument, add_episode_path_argument
 
 class TranscriptionManager:
     def __init__(self, config: Config, dry_run=False):
@@ -69,13 +70,12 @@ class TranscriptionManager:
             logging.info(f"Transcribed during this run: {self.stats['transcribed_now']}")
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Transcribe podcasts using Whisper")
-    parser.add_argument("-d", "--dry-run", action="store_true", help="Perform a dry run without actual transcription")
-    parser.add_argument("-e", "--env-file", help="Path to a custom .env file", default=None)
-    parser.add_argument("-l", "--log-level", help="Set log level (DEBUG, INFO, WARNING, ERROR)", default="INFO")
-    parser.add_argument("-p", "--episode-path", help="Path to an MP3 file", default=None)
+    parser = get_base_parser()
+    parser.description = "Transcribe podcasts using Whisper"
+    add_dry_run_argument(parser)
+    add_log_level_argument(parser)
+    add_episode_path_argument(parser)
+    
     args = parser.parse_args()
 
     # Configure logging based on command-line argument
