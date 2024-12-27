@@ -1,16 +1,17 @@
-
-import os
 import logging
+import os
+
+from argparse_shared import (add_dry_run_argument, add_log_level_argument,
+                             get_base_parser)
+from chroma_vectordb import VectorDbManager
 from config import Config
 from transcribe_podcasts import TranscriptionManager
-from chroma_vectordb import VectorDbManager
-from argparse_shared import get_base_parser, add_dry_run_argument, add_log_level_argument
+
 
 class FileManager:
     def __init__(self, config: Config, dry_run=False):
         self.config = config
         self.dry_run = dry_run
-        # Instantiate the TranscriptionManager with the loaded configuration
         self.transcription_manager = TranscriptionManager(config=config, dry_run=dry_run)
         self.vector_db_manager = VectorDbManager(config=config, dry_run=dry_run)
         self.stats = {
