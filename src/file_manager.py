@@ -11,8 +11,8 @@ class FileManager:
         self.config = config
         self.dry_run = dry_run
         # Instantiate the TranscriptionManager with the loaded configuration
-        self.transcription_manager = TranscriptionManager(config=config, dry_run=args.dry_run)
-        self.vector_db_manager = VectorDbManager(config=config, dry_run=args.dry_run)
+        self.transcription_manager = TranscriptionManager(config=config, dry_run=dry_run)
+        self.vector_db_manager = VectorDbManager(config=config, dry_run=dry_run)
         self.stats = {
             "total_mp3_files": 0,
         }

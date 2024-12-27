@@ -13,11 +13,14 @@ if __name__ == "__main__":
         file_manager = FileManager(config=config, dry_run=False)
         file_manager.process_directory()
 
+    print(f"Environment file: {args.env_file}") 
+    run_file_manager(env_file=args.env_file)
+
     scheduler = BlockingScheduler()
     scheduler.add_job(
         run_file_manager,
-        'cron',
-        hour=2,
+        'interval',
+        hours=1,
         kwargs={'env_file': args.env_file}
     )
 
