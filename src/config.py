@@ -1,6 +1,8 @@
 
 import os
+
 from dotenv import load_dotenv
+
 
 class Config:
     def __init__(self, env_file=None):

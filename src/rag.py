@@ -1,14 +1,16 @@
-import os
 import logging
-from config import Config
-from chroma_search import VectorDbSearchManager
-from ollama import Client
-from string import Template
-import textwrap
 import sys
+
 import google.generativeai as genai
-from argparse_shared import get_base_parser, add_dry_run_argument, add_log_level_argument, add_ai_system_argument, add_query_argument
+from ollama import Client
+
+from argparse_shared import (add_ai_system_argument, add_dry_run_argument,
+                             add_log_level_argument, add_query_argument,
+                             get_base_parser)
+from chroma_search import VectorDbSearchManager
+from config import Config
 from prompt_manager import PromptManager
+
 
 class RagManager:
     def __init__(self, config: Config, dry_run=False, print_results=True, ai_system="ollama"):

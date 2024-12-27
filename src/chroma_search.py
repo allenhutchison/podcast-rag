@@ -1,10 +1,12 @@
 
-import os
+import json
 import logging
-from config import Config
+
 import chromadb
 from nltk.tokenize import sent_tokenize
-import json
+
+from config import Config
+
 
 class VectorDbSearchManager:
     def __init__(self, config: Config, dry_run=False):

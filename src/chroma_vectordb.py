@@ -1,9 +1,12 @@
 
-import os
 import logging
-from config import Config
+import os
+
 import chromadb
 from nltk.tokenize import sent_tokenize
+
+from config import Config
+
 
 class VectorDbManager:
     def __init__(self, config: Config, dry_run=False):

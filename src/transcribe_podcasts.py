@@ -1,9 +1,12 @@
 
+import logging
 import os
 import subprocess
-import logging
+
+from argparse_shared import (add_dry_run_argument, add_episode_path_argument,
+                             add_log_level_argument, get_base_parser)
 from config import Config
-from argparse_shared import get_base_parser, add_dry_run_argument, add_log_level_argument, add_episode_path_argument
+
 
 class TranscriptionManager:
     def __init__(self, config: Config, dry_run=False):

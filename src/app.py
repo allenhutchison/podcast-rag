@@ -1,12 +1,14 @@
-from flask import Flask, render_template, request, jsonify
-from flask_cors import CORS  # Add this import
-from markupsafe import Markup
-import markdown
-import logging
-from rag import RagManager
-from config import Config
 import argparse
+import logging
+
+import markdown
+from flask import Flask, jsonify, render_template, request
+from flask_cors import CORS  # Add this import
 from google.generativeai.types import GenerateContentResponse
+from markupsafe import Markup
+
+from config import Config
+from rag import RagManager
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--env-file', type=str, help='Path to environment file')

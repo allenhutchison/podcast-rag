@@ -1,8 +1,10 @@
+import logging
 import os
 import textwrap
 from string import Template
-import logging
+
 from config import Config
+
 
 class PromptManager:
     def __init__(self, config: Config, print_results=True):
