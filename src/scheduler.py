@@ -31,10 +31,14 @@ if __name__ == "__main__":
         level=args.log_level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=[
-            logging.StreamHandler(),  # Send logs to the console
-            logging.FileHandler("scheduler.log"),  # Save logs to a file
+            logging.FileHandler("scheduler.log"), 
         ],
     )
+    # Set the log level for the httpx and httpcore libraries
+    # because they are super chatty on INFO.
+    if args.log_level == "INFO":
+        logging.getLogger('httpx').setLevel("WARNING")
+        logging.getLogger('httpcore').setLevel("WARNING")
 
     # Run the file manager once before starting the scheduler
     run_file_manager(env_file=args.env_file)
