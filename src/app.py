@@ -1,5 +1,6 @@
 import argparse
 import logging
+import json
 
 import markdown
 from flask import Flask, jsonify, render_template, request
@@ -80,19 +81,21 @@ def index():
             html_content = markdown.markdown(text_md)
             styled_text = Markup(html_content)
 
-        # 3) Get vector DB snippets (example method call)
-        db_snippets = rag_manager.search_snippets(query)
-        # db_snippets should be a list of dicts like:
-        # [{'text': 'Snippet text...', 'source': 'http://example.com'}, ...]
+        # 3) Get vector DB snippets and parse JSON
+        db_snippets = json.loads(rag_manager.search_snippets(query))
+        db_results = []
 
-        # 4) Build a footnote-like structure
+        # 4) Build footnotes with episode info
         for i, snippet in enumerate(db_snippets, start=1):
             footnote_link = f"[{i}]"
-            # We'll keep the snippet text in plain Markdown and link to snippet['source']
+            source_text = f"{snippet['episode']}" if snippet.get('episode') else ''
+            source_link = snippet.get('source', '#')
+            
             db_results.append({
                 'footnote': footnote_link,
                 'text': snippet['text'],
-                'source': snippet.get('source', '#')
+                'source': source_link,
+                'source_text': source_text
             })
 
     return render_template('index.html', results=results, styled_text=styled_text, db_results=db_results)

@@ -43,6 +43,66 @@
         .results {
             margin-top: 30px;
         }
+        .footnote-content {
+            display: none;
+            padding: 10px;
+            margin: 5px 0;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+        }
+
+        .footnote-number {
+            cursor: pointer;
+            color: #0066cc;
+            text-decoration: none;
+        }
+
+        .footnote-number:hover {
+            text-decoration: underline;
+        }
+
+        .footnotes {
+            margin-top: 20px;
+        }
+
+        .footnote-references {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 10px 0;
+        }
+
+        .footnote-number {
+            cursor: pointer;
+            color: #0066cc;
+            text-decoration: none;
+            padding: 2px 5px;
+        }
+
+        .footnote-content {
+            display: none;
+            padding: 10px;
+            margin: 5px 0;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+        }
+
+        .footnote-ref {
+            font-size: 0.8em;
+            vertical-align: super;
+            color: #0066cc;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .footnote-content.highlight {
+            animation: highlight 2s ease-in-out;
+        }
+
+        @keyframes highlight {
+            0% { background-color: #fff7d6; }
+            100% { background-color: #f5f5f5; }
+        }
     </style>
 </head>
 <body>
@@ -56,20 +116,68 @@
         {% if styled_text %}
           <div class="results">
             <h2>LLM Result</h2>
-            <div>{{ styled_text|safe }}</div>
-            {% if db_results %}
-              <h3>Vector DB Snippets:</h3>
-              <ol>
-                {% for snippet in db_results %}
-                  <li>
-                    {{ snippet.text }} 
-                    <a href="{{ snippet.source }}" target="_blank">{{ snippet.footnote }}</a>
-                  </li>
-                {% endfor %}
-              </ol>
-            {% endif %}
+            <div>
+                {{ styled_text|safe }}
+            </div>
           </div>
         {% endif %}
+
+        {% if db_results %}
+        <div class="footnotes">
+            <hr>
+            <div class="footnote-references">
+                {% for result in db_results %}
+                    <span class="footnote-number" onclick="toggleFootnote('{{ loop.index }}', event)">
+                        {{ result.footnote }}
+                    </span>
+                {% endfor %}
+            </div>
+            {% for result in db_results %}
+                <div id="footnote-content-{{ loop.index }}" class="footnote-content">
+                    {{ result.text }}
+                    {% if result.source %}
+                    <br>
+                    <small>Source: <a href="{{ result.source }}">{{ result.source_text }}</a></small>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        </div>
+        {% endif %}
     </div>
+    <script>
+        function toggleFootnote(index, event) {
+            if (event) {
+                event.preventDefault();
+            }
+            const content = document.getElementById(`footnote-content-${index}`);
+            const allFootnotes = document.getElementsByClassName('footnote-content');
+            
+            Array.from(allFootnotes).forEach(note => {
+                if (note.id !== `footnote-content-${index}`) {
+                    note.style.display = 'none';
+                }
+            });
+            
+            content.style.display = content.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function processFootnotes() {
+            const content = document.querySelector('.results div');
+            if (!content) return;
+            
+            // Replace both single [n] and grouped [n,m,p] footnotes
+            content.innerHTML = content.innerHTML.replace(
+                /\[(\d+(?:\s*,\s*\d+)*)\]/g,
+                function(match, numbers) {
+                    const nums = numbers.split(',').map(n => n.trim());
+                    return nums.map(num => 
+                        `<a class="footnote-ref" onclick="toggleFootnote(${num}, event)">[${num}]</a>`
+                    ).join('');
+                }
+            );
+        }
+
+        document.addEventListener('DOMContentLoaded', processFootnotes);
+    </script>
 </body>
 </html>

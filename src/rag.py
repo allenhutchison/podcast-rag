@@ -1,5 +1,6 @@
 import logging
 import sys
+import json
 
 import google.generativeai as genai
 from ollama import Client
@@ -21,7 +22,7 @@ class RagManager:
         self.prompt_manager = PromptManager(config=config, print_results=print_results)
         self.vector_db_manager = VectorDbSearchManager(config=config, dry_run=dry_run)
         self.last_query = None
-        self.last_context = None
+        self.last_vector_db_results = None
         if self.ai_system == "ollama":
             logging.info("Using Ollama for AI system.")
             self.ollama_client = Client(host=config.OLLAMA_HOST)
@@ -36,6 +37,7 @@ class RagManager:
     
     def prepare_model_context(self, query):
         vector_db_results = self.search_vector_db(query)
+        self.last_vector_db_results = vector_db_results
         document_results = vector_db_results['documents']
         metadata_results = vector_db_results['metadatas']
         return document_results, metadata_results
@@ -102,16 +104,23 @@ class RagManager:
         logging.info(f"Searching snippets for: {query}")
         if query != self.last_query:
             logging.info("Note: Query differs from last query stored.")
-        return [
-            {
-                'text': f'Matched snippet for: {query}',
-                'source': 'http://example.com'
-            },
-            {
-                'text': f'Another snippet from context: {self.last_context}',
-                'source': 'http://example2.com'
-            }
-        ]
+
+        if not self.last_vector_db_results:
+            return json.dumps([])
+
+        document_results = self.last_vector_db_results['documents']
+        metadata_results = self.last_vector_db_results['metadatas']
+        final_snippets = []
+        for document_list, metadata_list in zip(document_results, metadata_results):
+            for document, metadata in zip(document_list, metadata_list):
+                snippet = {
+                    "text": document.strip(),
+                    "source": metadata.get("source", ""),
+                    "episode": metadata.get("episode", "")
+                }
+                final_snippets.append(snippet)
+                
+        return json.dumps(final_snippets, indent=2)
 
 
 if __name__ == "__main__":
