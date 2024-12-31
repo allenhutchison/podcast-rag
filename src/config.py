@@ -31,7 +31,7 @@ class Config:
         self.OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
         self.OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma2:27b")
         self.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "your_api_key_here")
-        self.GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+        self.GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-exp")
 
         # Prompts configuration
         base_dir = os.path.dirname(__file__)
