@@ -1,7 +1,6 @@
-
 import logging
 import os
-import subprocess
+import whisper
 
 from argparse_shared import (add_dry_run_argument, add_episode_path_argument,
                              add_log_level_argument, get_base_parser)
@@ -17,6 +16,15 @@ class TranscriptionManager:
             "waiting_for_transcription": 0,
             "transcribed_now": 0,
         }
+        # Load the whisper model once during initialization
+        self.model = None
+
+    def get_model(self):
+        """Lazy load the whisper model when needed"""
+        if self.model is None:
+            logging.info("Loading Whisper model (large-v3)...")
+            self.model = whisper.load_model("large-v3")
+        return self.model
 
     def handle_transcription(self, episode_path):
         transcription_file = self.config.build_transcription_file(episode_path)
@@ -43,26 +51,25 @@ class TranscriptionManager:
         '''Run the transcription process using Whisper.'''
         logging.info(f"Starting transcription for {episode_path}")
         try:
-            result = subprocess.run([self.config.WHISPER_PATH, episode_path, 
-                                     '--model', 'large-v3',
-                                     '--output_dir', os.path.dirname(transcription_file), 
-                                     '--output_format', 'txt',
-                                     '--language', 'en'], capture_output=True, text=True)
-            result.check_returncode()  # Raises an error if returncode != 0
+            # Get the model and transcribe the audio
+            model = self.get_model()
+            result = model.transcribe(
+                audio=episode_path,
+                language="en",
+                verbose=False
+            )
+            
+            # Write the transcription to the file
+            with open(transcription_file, 'w', encoding='utf-8') as f:
+                f.write(result["text"])
+                
             logging.debug(f"Transcription complete for {episode_path}")
             self.stats["transcribed_now"] += 1
-        except subprocess.CalledProcessError as e:
-            logging.error(f"Transcription failed for {episode_path}: {e}")
         except Exception as e:
             logging.error(f"Unexpected error during transcription for {episode_path}: {e}")
         finally:
             if os.path.exists(temp_file):
                 os.remove(temp_file)
-            # Move the output file to the final transcription file
-            output_file = os.path.splitext(episode_path)[0] + ".txt"
-            if os.path.exists(output_file):
-                os.rename(output_file, transcription_file)            
-
 
     def log_stats(self):
         '''Log transcription statistics.'''

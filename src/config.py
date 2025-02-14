@@ -1,4 +1,3 @@
-
 import os
 
 from dotenv import load_dotenv
@@ -14,7 +13,6 @@ class Config:
 
         # Environment-based configuration
         self.BASE_DIRECTORY = os.getenv("MEDIA_EMBED_BASE_DIRECTORY", "/opt/podcasts")
-        self.WHISPER_PATH = os.getenv("MEDIA_EMBED_WHISPER_PATH", "/path/to/whisper")
         
         # Transcription-related constants
         self.TRANSCRIPTION_OUTPUT_SUFFIX = "_transcription.txt"
@@ -41,7 +39,6 @@ class Config:
     def load_config(self):
         '''Logs or prints the configuration for debugging purposes.'''
         print(f"Base Directory: {self.BASE_DIRECTORY}")
-        print(f"Whisper Path: {self.WHISPER_PATH}")
         print(f"Transcription Suffix: {self.TRANSCRIPTION_OUTPUT_SUFFIX}")
 
     # Utility functions related to file paths and suffixes
