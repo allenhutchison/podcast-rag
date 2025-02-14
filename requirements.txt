@@ -7,3 +7,6 @@ Flask
 gunicorn
 markdown
 APScheduler
+flask-cors
+google-generativeai
+ollama

@@ -1,4 +1,15 @@
-$iteration) 
-**Podcast**: $podcast
-**Episode**: $episode
-**Snippet**: $transcript
+Snippet #${iteration}
+
+Podcast Title: ${podcast}
+Episode Title: ${episode}
+Release Date: ${release_date}
+Host(s): ${hosts}
+Guest(s): ${guests}
+
+Transcript Segment:
+"""
+${transcript}
+"""
+
+Keywords/Topics: ${keywords}
+Timestamp: ${timestamp}
