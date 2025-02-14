@@ -75,7 +75,7 @@ def index():
         raw_result = rag_manager.query(query)
         results = GenerateContentResponseConverter.to_dict(raw_result)
 
-        # 2) Convert first candidate’s content to HTML
+        # 2) Convert first candidate's content to HTML
         if results and 'candidates' in results and results['candidates']:
             text_md = results['candidates'][0].get('content', '')
             html_content = markdown.markdown(text_md)
@@ -91,11 +91,27 @@ def index():
             source_text = f"{snippet['episode']}" if snippet.get('episode') else ''
             source_link = snippet.get('source', '#')
             
+            # Build metadata text with all available fields
+            metadata_text = []
+            if snippet.get('release_date'):
+                metadata_text.append(f"Release Date: {snippet['release_date']}")
+            if snippet.get('hosts'):
+                metadata_text.append(f"Host(s): {snippet['hosts']}")
+            if snippet.get('guests'):
+                metadata_text.append(f"Guest(s): {snippet['guests']}")
+            if snippet.get('keywords'):
+                metadata_text.append(f"Keywords: {snippet['keywords']}")
+            if snippet.get('timestamp'):
+                metadata_text.append(f"Timestamp: {snippet['timestamp']}")
+            
+            metadata_html = '<br>'.join(metadata_text) if metadata_text else ''
+            
             db_results.append({
                 'footnote': footnote_link,
                 'text': snippet['text'],
                 'source': source_link,
-                'source_text': source_text
+                'source_text': source_text,
+                'metadata': metadata_html
             })
 
     return render_template('index.html', results=results, styled_text=styled_text, db_results=db_results)

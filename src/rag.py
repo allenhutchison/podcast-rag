@@ -85,7 +85,12 @@ class RagManager:
                     iteration = iteration,
                     podcast = metadata.get('podcast', 'Unknown Podcast'),
                     episode = metadata.get('episode', 'Unknown Episode'),
-                    transcript = document.strip()
+                    release_date = metadata.get('release_date', 'Unknown Date'),
+                    hosts = metadata.get('hosts', 'Unknown Host(s)'),
+                    guests = metadata.get('guests', 'Unknown Guest(s)'),
+                    transcript = document.strip(),
+                    keywords = metadata.get('keywords', ''),
+                    timestamp = metadata.get('timestamp', '')
                 )
                 context_documents += snippet
                 iteration += 1

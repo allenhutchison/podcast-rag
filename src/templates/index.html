@@ -139,6 +139,10 @@
                     <br>
                     <small>Source: <a href="{{ result.source }}">{{ result.source_text }}</a></small>
                     {% endif %}
+                    {% if result.metadata %}
+                    <br>
+                    <small>{{ result.metadata|safe }}</small>
+                    {% endif %}
                 </div>
             {% endfor %}
         </div>

@@ -1,4 +1,3 @@
-
 import logging
 import os
 
@@ -107,7 +106,12 @@ class VectorDbManager:
                 metadata = {
                     "podcast": podcast_name,
                     "episode": file_name,
-                    "chunk": i
+                    "chunk": i,
+                    "release_date": "",  # Will be populated from metadata if available
+                    "hosts": "",         # Will be populated from metadata if available
+                    "guests": "",        # Will be populated from metadata if available
+                    "keywords": "",      # Will be populated from metadata if available
+                    "timestamp": ""      # Will be populated from metadata if available
                 }
                 self.collection.upsert(
                     documents=[chunk],  # Add the chunk text
