@@ -14,7 +14,7 @@ from schemas import EpisodeMetadata, MP3Metadata, PodcastMetadata
 
 
 class MetadataExtractor:
-    def __init__(self, config: Config, dry_run=False, ai_system="ollama"):
+    def __init__(self, config: Config, dry_run=False, ai_system="gemini"):
         self.config = config
         self.dry_run = dry_run
         self.ai_system = ai_system
@@ -25,19 +25,21 @@ class MetadataExtractor:
             "failed": 0,
         }
         
-        # Initialize AI client based on configuration
-        if self.ai_system == "ollama":
-            logging.info("Using Ollama for metadata extraction.")
-            self.ai_client = Client(host=config.OLLAMA_HOST)
-        elif self.ai_system == "gemini":
-            logging.info("Using Gemini for metadata extraction.")
-            genai.configure(api_key=self.config.GEMINI_API_KEY)
-            self.ai_client = genai.GenerativeModel(
-                model_name=self.config.GEMINI_MODEL,
-                generation_config={
-                    'response_mime_type': 'application/json',
-                }
-            )
+        # Initialize AI client
+        if self.ai_system != "gemini":
+            logging.error("Metadata extraction requires Gemini. Please set ai_system to 'gemini'.")
+            self.ai_client = None
+            return
+            
+        logging.info("Using Gemini for metadata extraction.")
+        genai.configure(api_key=self.config.GEMINI_API_KEY)
+        self.ai_client = genai.GenerativeModel(
+            model_name=self.config.GEMINI_MODEL,
+            generation_config={
+                'response_mime_type': 'application/json',
+                'response_schema': PodcastMetadata,
+            }
+        )
 
     def build_metadata_file(self, episode_path: str) -> str:
         """Build the path for the metadata file."""
@@ -80,43 +82,28 @@ class MetadataExtractor:
 
     def extract_metadata_from_transcript(self, transcript: str) -> Optional[PodcastMetadata]:
         """Extract metadata from transcript using AI."""
+        if self.ai_system != "gemini":
+            logging.error("Metadata extraction requires Gemini. Please set ai_system to 'gemini'.")
+            return None
+            
         prompt = self.prompt_manager.build_prompt(
             prompt_name="metadata_extraction",
-            transcript=transcript[:8000]  # Use first 8000 chars to stay within context window
+            transcript=transcript # Gemini has a long context window of 2M tokens.
         )
         
         try:
-            if self.ai_system == "ollama":
-                response = self.ai_client.chat(
-                    model=self.config.OLLAMA_MODEL,
-                    messages=[{"role": "user", "content": prompt}]
-                )
-                result = response['message']['content']
-            else:  # gemini
-                response = self.ai_client.generate_content(
-                    prompt,
-                    generation_config={
-                        'response_mime_type': 'application/json',
-                        'response_schema': PodcastMetadata,
-                    }
-                )
-                return response.parsed
-            
-            # For Ollama, we need to parse the JSON manually
-            start_idx = result.find('{')
-            end_idx = result.rfind('}') + 1
-            if start_idx >= 0 and end_idx > start_idx:
-                json_str = result[start_idx:end_idx]
-                # Use TypeAdapter to validate the JSON against our schema
-                ta = TypeAdapter(PodcastMetadata)
-                return ta.validate_json(json_str)
-            else:
-                logging.error("Could not find JSON in AI response")
-                logging.debug(f"Model output: {result}")
-                return None
+            response = self.ai_client.generate_content(
+                prompt,
+                generation_config={
+                    'response_mime_type': 'application/json',
+                    'response_schema': PodcastMetadata,
+                }
+            )
+            return response.parsed
                 
         except Exception as e:
             logging.error(f"Error extracting metadata from transcript: {e}")
+            logging.error(f"Full error: {str(e)}")
             return None
 
     def handle_metadata_extraction(self, episode_path: str) -> Optional[EpisodeMetadata]:
