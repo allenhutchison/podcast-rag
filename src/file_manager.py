@@ -2,7 +2,7 @@ import logging
 import os
 
 from argparse_shared import (add_dry_run_argument, add_log_level_argument,
-                             get_base_parser)
+                             add_ai_system_argument, get_base_parser)
 from chroma_vectordb import VectorDbManager
 from config import Config
 from metadata_extractor import MetadataExtractor
@@ -10,7 +10,7 @@ from transcribe_podcasts import TranscriptionManager
 
 
 class FileManager:
-    def __init__(self, config: Config, dry_run=False, ai_system="ollama"):
+    def __init__(self, config: Config, dry_run=False, ai_system="gemini"):
         self.config = config
         self.dry_run = dry_run
         self.transcription_manager = TranscriptionManager(config=config, dry_run=dry_run)
@@ -58,6 +58,7 @@ if __name__ == "__main__":
     parser = get_base_parser()
     add_dry_run_argument(parser)
     add_log_level_argument(parser)
+    add_ai_system_argument(parser)
     parser.description = "Process podcast files with transcription, metadata extraction, and indexing"
     args = parser.parse_args()
 
