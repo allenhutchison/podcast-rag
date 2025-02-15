@@ -85,8 +85,8 @@ class MetadataExtractor:
         )
         
         try:
-            model = self.ai_client.get_model(self.config.GEMINI_MODEL)
-            response = model.generate_content(
+            response = self.ai_client.models.generate_content(
+                model=self.config.GEMINI_MODEL,
                 contents=prompt,
                 generation_config={
                     'response_mime_type': 'application/json',
