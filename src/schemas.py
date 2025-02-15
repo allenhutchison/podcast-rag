@@ -12,11 +12,9 @@ class PodcastMetadata(BaseModel):
         description="Title of this specific episode"
     )
     episode_number: Optional[str] = Field(
-        default=None,
         description="Episode number if mentioned (e.g., '42', 'S2E15')"
     )
     date: Optional[str] = Field(
-        default=None,
         description="Recording or release date if mentioned (YYYY-MM-DD or YYYY-MM format)",
         pattern="^\\d{4}(-\\d{2}(-\\d{2})?)?$"
     )
@@ -25,11 +23,9 @@ class PodcastMetadata(BaseModel):
         min_items=1
     )
     co_hosts: List[str] = Field(
-        default=[],
         description="List of co-host names"
     )
     guests: List[str] = Field(
-        default=[],
         description="List of guest names"
     )
     summary: str = Field(
