@@ -33,13 +33,7 @@ class MetadataExtractor:
             
         logging.info("Using Gemini for metadata extraction.")
         genai.configure(api_key=self.config.GEMINI_API_KEY)
-        self.ai_client = genai.GenerativeModel(
-            model_name=self.config.GEMINI_MODEL,
-            generation_config={
-                'response_mime_type': 'application/json',
-                'response_schema': PodcastMetadata,
-            }
-        )
+        self.ai_client = genai.Client()
 
     def build_metadata_file(self, episode_path: str) -> str:
         """Build the path for the metadata file."""
@@ -88,13 +82,14 @@ class MetadataExtractor:
             
         prompt = self.prompt_manager.build_prompt(
             prompt_name="metadata_extraction",
-            transcript=transcript # Gemini has a long context window of 2M tokens.
+            transcript=transcript
         )
         
         try:
-            response = self.ai_client.generate_content(
-                prompt,
-                generation_config={
+            response = self.ai_client.models.generate_content(
+                model=self.config.GEMINI_MODEL,
+                contents=prompt,
+                config={
                     'response_mime_type': 'application/json',
                     'response_schema': PodcastMetadata,
                 }

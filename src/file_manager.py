@@ -78,6 +78,6 @@ if __name__ == "__main__":
     config = Config(env_file=args.env_file)
 
     # Instantiate the FileManager with the loaded configuration
-    file_manager = FileManager(config=config, dry_run=args.dry_run)
+    file_manager = FileManager(config=config, dry_run=args.dry_run, ai_system=args.ai_system)
 
     file_manager.process_directory()
