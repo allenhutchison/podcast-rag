@@ -4,6 +4,7 @@ import os
 import time
 from functools import wraps
 from typing import Optional
+from threading import Lock
 
 import eyed3
 import google.genai as genai
@@ -13,6 +14,38 @@ from pydantic import TypeAdapter
 from config import Config
 from prompt_manager import PromptManager
 from schemas import EpisodeMetadata, MP3Metadata, PodcastMetadata
+
+
+class RateLimiter:
+    """Token bucket rate limiter for API requests."""
+    def __init__(self, max_requests: int, time_window: int):
+        self.max_requests = max_requests  # Maximum requests allowed in the time window
+        self.time_window = time_window    # Time window in seconds
+        self.tokens = max_requests        # Current token count
+        self.last_update = time.time()    # Last token update timestamp
+        self.lock = Lock()                # Thread safety lock
+
+    def _update_tokens(self):
+        """Update token count based on elapsed time."""
+        now = time.time()
+        time_passed = now - self.last_update
+        self.tokens = min(
+            self.max_requests,
+            self.tokens + (time_passed * self.max_requests / self.time_window)
+        )
+        self.last_update = now
+
+    def acquire(self):
+        """Acquire a token, waiting if necessary."""
+        with self.lock:
+            self._update_tokens()
+            while self.tokens < 1:
+                # Calculate sleep time needed for at least one token
+                sleep_time = (1 - self.tokens) * (self.time_window / self.max_requests)
+                time.sleep(sleep_time)
+                self._update_tokens()
+            self.tokens -= 1
+            return True
 
 
 def retry_with_exponential_backoff(max_retries=5, base_delay=1, max_delay=32):
@@ -40,6 +73,7 @@ def retry_with_exponential_backoff(max_retries=5, base_delay=1, max_delay=32):
         return wrapper
     return decorator
 
+
 class MetadataExtractor:
     def __init__(self, config: Config, dry_run=False, ai_system="gemini"):
         self.config = config
@@ -60,6 +94,8 @@ class MetadataExtractor:
             
         logging.info("Using Gemini for metadata extraction.")
         self.ai_client = genai.Client(api_key=self.config.GEMINI_API_KEY)
+        # Initialize rate limiter for 10 requests per minute
+        self.rate_limiter = RateLimiter(max_requests=10, time_window=60)
 
     def build_metadata_file(self, episode_path: str) -> str:
         """Build the path for the metadata file."""
@@ -114,6 +150,10 @@ class MetadataExtractor:
         )
         
         try:
+            # Acquire rate limit token before making the request
+            self.rate_limiter.acquire()
+            logging.debug("Rate limit token acquired, making API request")
+            
             response = self.ai_client.models.generate_content(
                 model=self.config.GEMINI_MODEL,
                 contents=prompt,
