@@ -63,7 +63,7 @@ class VectorDbManager:
 
         return chunks
 
-    def handle_indexing(self, episode_path):
+    def handle_indexing(self, episode_path, metadata=None):
         '''Handle indexing for a given episode file.'''
         index_file = self.build_index_file(episode_path)
         temp_file = self.build_temp_file(index_file)
@@ -78,19 +78,20 @@ class VectorDbManager:
                 logging.debug(f"Dry run: Would index {episode_path}")
                 self.stats["waiting_for_indexing"] += 1
             else:
-                self.start_indexing(episode_path, index_file, temp_file)
+                self.start_indexing(episode_path, index_file, temp_file, metadata)
 
-    def start_indexing(self, episode_path, index_file, temp_file):
+    def start_indexing(self, episode_path, index_file, temp_file, metadata=None):
         '''Run the indexing process using ChromaDB.'''
         logging.info(f"Starting indexing for {episode_path}")
 
         podcast_name = os.path.basename(os.path.dirname(episode_path))
         file_name = os.path.basename(episode_path)
 
-        transcrption_files = self.config.build_transcription_file(episode_path)
-        with open(transcrption_files, 'r') as f:
+        transcription_file = self.config.build_transcription_file(episode_path)
+        with open(transcription_file, 'r') as f:
             transcript = f.read()
-         # Split the transcript into chunks
+        
+        # Split the transcript into chunks
         chunks = self.split_transcript_into_chunks(transcript)
         logging.debug(f"Split transcript into {len(chunks)} chunks.")
 
@@ -100,26 +101,35 @@ class VectorDbManager:
         else:
             # For each chunk, add it to the Chroma collection
             open(temp_file, 'w').close()  # Create the temp file to indicate indexing in progress
-            index_file_handle = open(index_file, 'w') # Create the index file to indicate indexing in progress
+            index_file_handle = open(index_file, 'w')  # Create the index file to indicate indexing in progress
+            
+            # Prepare base metadata
+            base_metadata = {
+                "podcast": metadata.get("podcast_title", podcast_name) if metadata else podcast_name,
+                "episode": metadata.get("episode_title", file_name) if metadata else file_name,
+                "release_date": metadata.get("date") if metadata else "",
+                "hosts": ", ".join(metadata.get("hosts", [])) if metadata else "",
+                "co_hosts": ", ".join(metadata.get("co_hosts", [])) if metadata else "",
+                "guests": ", ".join(metadata.get("guests", [])) if metadata else "",
+                "keywords": ", ".join(metadata.get("keywords", [])) if metadata else "",
+                "episode_number": metadata.get("episode_number") if metadata else "",
+                "summary": metadata.get("summary", "") if metadata else ""
+            }
+            
             for i, chunk in enumerate(chunks):
                 chunk_id = f"{podcast_name}-{file_name}-chunk-{i}"
-                metadata = {
-                    "podcast": podcast_name,
-                    "episode": file_name,
+                chunk_metadata = {
+                    **base_metadata,
                     "chunk": i,
-                    "release_date": "",  # Will be populated from metadata if available
-                    "hosts": "",         # Will be populated from metadata if available
-                    "guests": "",        # Will be populated from metadata if available
-                    "keywords": "",      # Will be populated from metadata if available
-                    "timestamp": ""      # Will be populated from metadata if available
                 }
                 self.collection.upsert(
                     documents=[chunk],  # Add the chunk text
-                    ids=[chunk_id],      # Unique ID for the chunk
-                    metadatas=[metadata] # Metadata for later querying
+                    ids=[chunk_id],     # Unique ID for the chunk
+                    metadatas=[chunk_metadata]  # Metadata for later querying
                 )
                 index_file_handle.write(f"{chunk_id}\n")
                 index_file_handle.write(f"{chunk}\n")
+            
             index_file_handle.close()
             os.remove(temp_file)  # Remove the temp file to indicate indexing is complete
             self.stats["indexed_now"] += 1
@@ -129,25 +139,23 @@ class VectorDbManager:
         '''Check if the index file already exists.'''
         return os.path.exists(index_file) and os.path.getsize(index_file) > 0
 
-    def handle_incomplete_indexing(self, episode_path, temp_file):
-        '''Handle incomplete indexing by removing temp file.'''
-        logging.error(f"Detected unfinished indexing for {episode_path}.")
-        indexing_file = self.build_index_file(episode_path)
-        os.remove(indexing_file)
-        os.remove(temp_file)
-
     def is_indexing_in_progress(self, temp_file):
-        '''Check if an indexing is in progress.'''
+        '''Check if indexing is in progress.'''
         return os.path.exists(temp_file)
 
-    def build_temp_file(self, index_file):
-        '''Generate the temp file path for in-progress indexing.'''
-        return index_file + self.config.INDEX_TEMP_FILE_SUFFIX
+    def handle_incomplete_indexing(self, episode_path, temp_file):
+        '''Handle incomplete indexing by removing temp file.'''
+        logging.info(f"Detected unfinished indexing for {episode_path}.")
+        os.remove(temp_file)
 
     def build_index_file(self, episode_path):
-        '''Generate the index file path based on episode file path.'''
+        '''Build the path for the index file.'''
         return os.path.splitext(episode_path)[0] + self.config.INDEX_OUTPUT_SUFFIX
-    
+
+    def build_temp_file(self, index_file):
+        '''Build the path for the temp file.'''
+        return index_file + self.config.INDEX_TEMP_FILE_SUFFIX
+
     def log_stats(self):
         '''Log indexing statistics.'''
         logging.info(f"Already indexed: {self.stats['already_indexed']}")
@@ -155,7 +163,6 @@ class VectorDbManager:
             logging.info(f"Waiting for indexing: {self.stats['waiting_for_indexing']}")
         else:
             logging.info(f"Indexed during this run: {self.stats['indexed_now']}")
-
 
 
 def main():

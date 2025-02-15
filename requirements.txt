@@ -1,7 +1,7 @@
-openai-whisper @ git+https://github.com/openai/whisper.git
+openai-whisper
 pytest
 python-dotenv
-chromadb >= 0.5.18
+chromadb
 nltk
 Flask
 gunicorn
@@ -10,3 +10,4 @@ APScheduler
 flask-cors
 google-generativeai
 ollama
+eyed3

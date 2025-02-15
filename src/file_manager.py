@@ -5,14 +5,16 @@ from argparse_shared import (add_dry_run_argument, add_log_level_argument,
                              get_base_parser)
 from chroma_vectordb import VectorDbManager
 from config import Config
+from metadata_extractor import MetadataExtractor
 from transcribe_podcasts import TranscriptionManager
 
 
 class FileManager:
-    def __init__(self, config: Config, dry_run=False):
+    def __init__(self, config: Config, dry_run=False, ai_system="ollama"):
         self.config = config
         self.dry_run = dry_run
         self.transcription_manager = TranscriptionManager(config=config, dry_run=dry_run)
+        self.metadata_extractor = MetadataExtractor(config=config, dry_run=dry_run, ai_system=ai_system)
         self.vector_db_manager = VectorDbManager(config=config, dry_run=dry_run)
         self.stats = {
             "total_mp3_files": 0,
@@ -24,12 +26,12 @@ class FileManager:
             episode_path = os.path.join(podcast_dir, episode_file)
             if self.config.is_mp3_file(episode_path):
                 self.stats["total_mp3_files"] += 1
-                # Handle transcription for MP3 files, then summary and embedding
+                # Handle transcription for MP3 files
                 self.transcription_manager.handle_transcription(episode_path)
-                # Handle indexing for transcripts with embedding
-                self.vector_db_manager.handle_indexing(episode_path)
-                #self.handle_summary(episode_path)
-
+                # Extract metadata from transcript and MP3
+                metadata = self.metadata_extractor.handle_metadata_extraction(episode_path)
+                # Handle indexing for transcripts with embedding and metadata
+                self.vector_db_manager.handle_indexing(episode_path, metadata=metadata)
 
     def process_directory(self):
         '''Main function to start processing podcasts.'''
@@ -49,13 +51,14 @@ class FileManager:
         '''Log transcription statistics.'''
         logging.info(f"Total MP3 files processed: {self.stats['total_mp3_files']}")
         self.transcription_manager.log_stats()
+        self.metadata_extractor.log_stats()
         self.vector_db_manager.log_stats()
 
 if __name__ == "__main__":
     parser = get_base_parser()
     add_dry_run_argument(parser)
     add_log_level_argument(parser)
-    parser.description = "Transcribe podcasts using Whisper"
+    parser.description = "Process podcast files with transcription, metadata extraction, and indexing"
     args = parser.parse_args()
 
     # Configure logging based on command-line argument
@@ -69,7 +72,6 @@ if __name__ == "__main__":
     console_handler.setLevel(log_level)
     console_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     console_handler.setFormatter(console_formatter)
-
 
     # Load configuration, passing the env file if provided
     config = Config(env_file=args.env_file)
