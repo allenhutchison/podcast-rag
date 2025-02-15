@@ -107,6 +107,7 @@ class MetadataExtractor:
                 return json.loads(json_str)
             else:
                 logging.error("Could not find JSON in AI response")
+                logging.debug(f"Model output: {result}")
                 return {}
                 
         except Exception as e:
