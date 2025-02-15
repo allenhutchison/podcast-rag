@@ -73,7 +73,7 @@ class MetadataExtractor:
             logging.error(f"Error extracting MP3 metadata from {episode_path}: {e}")
             return MP3Metadata()
 
-    def extract_metadata_from_transcript(self, transcript: str) -> Optional[PodcastMetadata]:
+    def extract_metadata_from_transcript(self, transcript: str, filename: str) -> Optional[PodcastMetadata]:
         """Extract metadata from transcript using AI."""
         if self.ai_system != "gemini":
             logging.error("Metadata extraction requires Gemini. Please set ai_system to 'gemini'.")
@@ -81,7 +81,8 @@ class MetadataExtractor:
             
         prompt = self.prompt_manager.build_prompt(
             prompt_name="metadata_extraction",
-            transcript=transcript
+            transcript=transcript,
+            filename=filename
         )
         
         try:
@@ -141,7 +142,8 @@ class MetadataExtractor:
             with open(transcript_file, 'r') as f:
                 transcript = f.read()
             
-            transcript_metadata = self.extract_metadata_from_transcript(transcript)
+            filename = os.path.basename(episode_path)
+            transcript_metadata = self.extract_metadata_from_transcript(transcript, filename)
             if transcript_metadata is None:
                 return None
             
