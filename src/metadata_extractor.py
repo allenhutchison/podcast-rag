@@ -1,14 +1,16 @@
 import json
 import logging
 import os
-from typing import Dict, Optional
+from typing import Optional
 
 import eyed3
 import google.generativeai as genai
 from ollama import Client
+from pydantic import TypeAdapter
 
 from config import Config
 from prompt_manager import PromptManager
+from schemas import EpisodeMetadata, MP3Metadata, PodcastMetadata
 
 
 class MetadataExtractor:
@@ -30,7 +32,12 @@ class MetadataExtractor:
         elif self.ai_system == "gemini":
             logging.info("Using Gemini for metadata extraction.")
             genai.configure(api_key=self.config.GEMINI_API_KEY)
-            self.ai_client = genai.GenerativeModel(model_name=self.config.GEMINI_MODEL)
+            self.ai_client = genai.GenerativeModel(
+                model_name=self.config.GEMINI_MODEL,
+                generation_config={
+                    'response_mime_type': 'application/json',
+                }
+            )
 
     def build_metadata_file(self, episode_path: str) -> str:
         """Build the path for the metadata file."""
@@ -53,29 +60,29 @@ class MetadataExtractor:
         logging.info(f"Detected unfinished metadata extraction for {episode_path}")
         os.remove(temp_file)
 
-    def extract_mp3_metadata(self, episode_path: str) -> Dict:
+    def extract_mp3_metadata(self, episode_path: str) -> MP3Metadata:
         """Extract metadata from MP3 file using eyed3."""
         try:
             audiofile = eyed3.load(episode_path)
             if audiofile and audiofile.tag:
-                return {
-                    "title": audiofile.tag.title or "",
-                    "artist": audiofile.tag.artist or "",
-                    "album": audiofile.tag.album or "",
-                    "album_artist": audiofile.tag.album_artist or "",
-                    "release_date": str(audiofile.tag.recording_date) if audiofile.tag.recording_date else "",
-                    "comments": [c.text for c in audiofile.tag.comments] if audiofile.tag.comments else [],
-                }
-            return {}
+                return MP3Metadata(
+                    title=audiofile.tag.title or "",
+                    artist=audiofile.tag.artist or "",
+                    album=audiofile.tag.album or "",
+                    album_artist=audiofile.tag.album_artist or "",
+                    release_date=str(audiofile.tag.recording_date) if audiofile.tag.recording_date else "",
+                    comments=[c.text for c in audiofile.tag.comments] if audiofile.tag.comments else [],
+                )
+            return MP3Metadata()
         except Exception as e:
             logging.error(f"Error extracting MP3 metadata from {episode_path}: {e}")
-            return {}
+            return MP3Metadata()
 
-    def extract_metadata_from_transcript(self, transcript: str) -> Dict:
+    def extract_metadata_from_transcript(self, transcript: str) -> Optional[PodcastMetadata]:
         """Extract metadata from transcript using AI."""
         prompt = self.prompt_manager.build_prompt(
             prompt_name="metadata_extraction",
-            transcript=transcript
+            transcript=transcript[:8000]  # Use first 8000 chars to stay within context window
         )
         
         try:
@@ -86,25 +93,33 @@ class MetadataExtractor:
                 )
                 result = response['message']['content']
             else:  # gemini
-                response = self.ai_client.generate_content(prompt)
-                result = response.text
+                response = self.ai_client.generate_content(
+                    prompt,
+                    generation_config={
+                        'response_mime_type': 'application/json',
+                        'response_schema': PodcastMetadata,
+                    }
+                )
+                return response.parsed
             
-            # Extract JSON from response
+            # For Ollama, we need to parse the JSON manually
             start_idx = result.find('{')
             end_idx = result.rfind('}') + 1
             if start_idx >= 0 and end_idx > start_idx:
                 json_str = result[start_idx:end_idx]
-                return json.loads(json_str)
+                # Use TypeAdapter to validate the JSON against our schema
+                ta = TypeAdapter(PodcastMetadata)
+                return ta.validate_json(json_str)
             else:
                 logging.error("Could not find JSON in AI response")
-                logging.info(f"Model output: {result}")
-                return {}
+                logging.debug(f"Model output: {result}")
+                return None
                 
         except Exception as e:
             logging.error(f"Error extracting metadata from transcript: {e}")
-            return {}
+            return None
 
-    def handle_metadata_extraction(self, episode_path: str) -> Optional[Dict]:
+    def handle_metadata_extraction(self, episode_path: str) -> Optional[EpisodeMetadata]:
         """Main method to handle metadata extraction for an episode."""
         logging.info(f"Extracting metadata for {episode_path}")
         
@@ -119,7 +134,8 @@ class MetadataExtractor:
             # Load and return existing metadata
             try:
                 with open(metadata_file, 'r') as f:
-                    return json.load(f)
+                    json_data = json.load(f)
+                    return EpisodeMetadata.model_validate(json_data)
             except Exception as e:
                 logging.error(f"Error loading existing metadata for {episode_path}: {e}")
                 return None
@@ -145,16 +161,18 @@ class MetadataExtractor:
                 transcript = f.read()
             
             transcript_metadata = self.extract_metadata_from_transcript(transcript)
+            if transcript_metadata is None:
+                return None
             
-            # Merge metadata, preferring MP3 metadata for overlapping fields
-            metadata = {
-                **transcript_metadata,
-                "mp3_metadata": mp3_metadata
-            }
+            # Create combined metadata
+            metadata = EpisodeMetadata(
+                transcript_metadata=transcript_metadata,
+                mp3_metadata=mp3_metadata
+            )
             
             # Save metadata to file
             with open(metadata_file, 'w') as f:
-                json.dump(metadata, f, indent=2)
+                json.dump(metadata.model_dump(), f, indent=2)
             
             # Remove temp file after successful completion
             os.remove(temp_file)

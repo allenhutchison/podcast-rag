@@ -9,59 +9,22 @@ Guidelines:
 5. Distinguish between hosts and guests based on context
 6. Format dates consistently (YYYY-MM-DD if full date is available, or YYYY-MM if only month/year)
 
-Expected JSON Schema:
-{
-    "type": "object",
-    "required": ["podcast_title", "episode_title", "hosts", "summary", "keywords"],
-    "properties": {
-        "podcast_title": {
-            "type": "string",
-            "description": "Name of the podcast series"
-        },
-        "episode_title": {
-            "type": "string",
-            "description": "Title of this specific episode"
-        },
-        "episode_number": {
-            "type": ["string", "null"],
-            "description": "Episode number if mentioned (e.g., '42', 'S2E15')"
-        },
-        "date": {
-            "type": ["string", "null"],
-            "description": "Recording or release date if mentioned (YYYY-MM-DD or YYYY-MM format)"
-        },
-        "hosts": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "List of host names"
-        },
-        "co_hosts": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "List of co-host names"
-        },
-        "guests": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "List of guest names"
-        },
-        "summary": {
-            "type": "string",
-            "description": "A concise but informative 2-3 paragraph summary of the episode"
-        },
-        "keywords": {
-            "type": "array",
-            "items": {"type": "string"},
-            "minItems": 5,
-            "maxItems": 10,
-            "description": "List of 5-10 relevant keywords or topics discussed"
-        }
-    }
-}
+Required Fields:
+- podcast_title: Name of the podcast series
+- episode_title: Title of this specific episode
+- hosts: At least one host name must be identified
+- summary: 2-3 paragraphs (100-2000 characters)
+- keywords: 5-10 relevant topics
+
+Optional Fields:
+- episode_number: In format like "42" or "S2E15" (null if not mentioned)
+- date: In YYYY-MM-DD or YYYY-MM format (null if not mentioned)
+- co_hosts: List of co-host names (empty list if none)
+- guests: List of guest names (empty list if none)
 
 Transcript:
 """
 ${transcript}
 """
 
-Please analyze the transcript and return ONLY a valid JSON object matching the schema above. 
+Please analyze the transcript and return ONLY a valid JSON object containing the required and optional fields. 
