@@ -88,7 +88,7 @@ class MetadataExtractor:
             response = self.ai_client.models.generate_content(
                 model=self.config.GEMINI_MODEL,
                 contents=prompt,
-                generation_config={
+                config={
                     'response_mime_type': 'application/json',
                     'response_schema': PodcastMetadata,
                 }
