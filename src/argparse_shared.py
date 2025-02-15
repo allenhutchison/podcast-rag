@@ -18,7 +18,7 @@ def add_ai_system_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-a", "--ai-system", 
                        help="AI system to use (ollama or gemini)", 
                        choices=["ollama", "gemini"],
-                       default="ollama")
+                       default="gemini")
 
 def add_query_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-q", "--query", help="Query to search", required=True)

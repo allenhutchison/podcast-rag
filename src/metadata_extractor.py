@@ -86,7 +86,7 @@ class MetadataExtractor:
 
         Transcript:
         """
-        prompt += transcript[:8000]  # Use first 8000 chars to stay within context window
+        prompt += transcript
         
         try:
             if self.ai_system == "ollama":
