@@ -1,6 +1,8 @@
 import json
 import logging
 import os
+import time
+from functools import wraps
 from typing import Optional
 
 import eyed3
@@ -12,6 +14,31 @@ from config import Config
 from prompt_manager import PromptManager
 from schemas import EpisodeMetadata, MP3Metadata, PodcastMetadata
 
+
+def retry_with_exponential_backoff(max_retries=5, base_delay=1, max_delay=32):
+    """Decorator that implements exponential backoff for handling 429 errors."""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            retries = 0
+            while retries < max_retries:
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    error_str = str(e).lower()
+                    if "429" in error_str or "too many requests" in error_str:
+                        if retries == max_retries - 1:
+                            logging.error(f"Max retries ({max_retries}) reached. Last error: {e}")
+                            raise
+                        delay = min(base_delay * (2 ** retries), max_delay)
+                        logging.warning(f"Rate limit hit. Retrying in {delay} seconds...")
+                        time.sleep(delay)
+                        retries += 1
+                    else:
+                        raise
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
 
 class MetadataExtractor:
     def __init__(self, config: Config, dry_run=False, ai_system="gemini"):
@@ -73,6 +100,7 @@ class MetadataExtractor:
             logging.error(f"Error extracting MP3 metadata from {episode_path}: {e}")
             return MP3Metadata()
 
+    @retry_with_exponential_backoff()
     def extract_metadata_from_transcript(self, transcript: str, filename: str) -> Optional[PodcastMetadata]:
         """Extract metadata from transcript using AI."""
         if self.ai_system != "gemini":
