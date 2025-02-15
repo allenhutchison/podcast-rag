@@ -1,0 +1,67 @@
+You are an AI assistant tasked with extracting structured metadata from podcast transcripts.
+Your goal is to analyze the transcript and return a valid JSON object containing key information about the episode.
+
+Guidelines:
+1. Extract information explicitly mentioned in the transcript
+2. Use null for fields where information is not available
+3. Keep the summary concise but informative (2-3 paragraphs)
+4. Include only the most relevant keywords (5-10)
+5. Distinguish between hosts and guests based on context
+6. Format dates consistently (YYYY-MM-DD if full date is available, or YYYY-MM if only month/year)
+
+Expected JSON Schema:
+{
+    "type": "object",
+    "required": ["podcast_title", "episode_title", "hosts", "summary", "keywords"],
+    "properties": {
+        "podcast_title": {
+            "type": "string",
+            "description": "Name of the podcast series"
+        },
+        "episode_title": {
+            "type": "string",
+            "description": "Title of this specific episode"
+        },
+        "episode_number": {
+            "type": ["string", "null"],
+            "description": "Episode number if mentioned (e.g., '42', 'S2E15')"
+        },
+        "date": {
+            "type": ["string", "null"],
+            "description": "Recording or release date if mentioned (YYYY-MM-DD or YYYY-MM format)"
+        },
+        "hosts": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "List of host names"
+        },
+        "co_hosts": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "List of co-host names"
+        },
+        "guests": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "List of guest names"
+        },
+        "summary": {
+            "type": "string",
+            "description": "A concise but informative 2-3 paragraph summary of the episode"
+        },
+        "keywords": {
+            "type": "array",
+            "items": {"type": "string"},
+            "minItems": 5,
+            "maxItems": 10,
+            "description": "List of 5-10 relevant keywords or topics discussed"
+        }
+    }
+}
+
+Transcript:
+"""
+${transcript}
+"""
+
+Please analyze the transcript and return ONLY a valid JSON object matching the schema above. 

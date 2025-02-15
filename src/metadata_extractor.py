@@ -8,6 +8,7 @@ import google.generativeai as genai
 from ollama import Client
 
 from config import Config
+from prompt_manager import PromptManager
 
 
 class MetadataExtractor:
@@ -15,6 +16,7 @@ class MetadataExtractor:
         self.config = config
         self.dry_run = dry_run
         self.ai_system = ai_system
+        self.prompt_manager = PromptManager(config=config, print_results=False)
         self.stats = {
             "already_processed": 0,
             "processed": 0,
@@ -71,22 +73,10 @@ class MetadataExtractor:
 
     def extract_metadata_from_transcript(self, transcript: str) -> Dict:
         """Extract metadata from transcript using AI."""
-        prompt = """Based on the podcast transcript below, extract the following information in JSON format:
-        {
-            "podcast_title": "Name of the podcast series",
-            "episode_title": "Title of this specific episode",
-            "episode_number": "Episode number if mentioned (or null)",
-            "date": "Recording or release date if mentioned (or null)",
-            "hosts": ["List of host names"],
-            "co_hosts": ["List of co-host names"],
-            "guests": ["List of guest names"],
-            "summary": "A concise but informative 2-3 paragraph summary of the episode",
-            "keywords": ["List of 5-10 relevant keywords or topics discussed"]
-        }
-
-        Transcript:
-        """
-        prompt += transcript
+        prompt = self.prompt_manager.build_prompt(
+            prompt_name="metadata_extraction",
+            transcript=transcript
+        )
         
         try:
             if self.ai_system == "ollama":
@@ -107,7 +97,7 @@ class MetadataExtractor:
                 return json.loads(json_str)
             else:
                 logging.error("Could not find JSON in AI response")
-                logging.debug(f"Model output: {result}")
+                logging.info(f"Model output: {result}")
                 return {}
                 
         except Exception as e:
