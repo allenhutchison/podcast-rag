@@ -91,29 +91,33 @@ class VectorDbManager:
         with open(transcription_file, 'r') as f:
             transcript = f.read()
         
-        # Split the transcript into chunks
         chunks = self.split_transcript_into_chunks(transcript)
         logging.debug(f"Split transcript into {len(chunks)} chunks.")
 
         if self.dry_run:
-            # In dry-run mode, print what would have been added
             logging.debug(f"Dry run: Would add embeddings for {len(chunks)} chunks of {podcast_name} - {file_name}")
         else:
-            # For each chunk, add it to the Chroma collection
-            open(temp_file, 'w').close()  # Create the temp file to indicate indexing in progress
-            index_file_handle = open(index_file, 'w')  # Create the index file to indicate indexing in progress
+            open(temp_file, 'w').close()
+            index_file_handle = open(index_file, 'w')
             
-            # Prepare base metadata
+            # Prepare base metadata with preference for MP3 metadata
+            episode_title = file_name
+            if metadata:
+                if metadata.mp3_metadata and metadata.mp3_metadata.title:
+                    episode_title = metadata.mp3_metadata.title
+                elif metadata.transcript_metadata and metadata.transcript_metadata.episode_title:
+                    episode_title = metadata.transcript_metadata.episode_title
+
             base_metadata = {
-                "podcast": metadata.get("podcast_title", podcast_name) if metadata else podcast_name,
-                "episode": metadata.get("episode_title", file_name) if metadata else file_name,
-                "release_date": metadata.get("date") if metadata else "",
-                "hosts": ", ".join(metadata.get("hosts", [])) if metadata else "",
-                "co_hosts": ", ".join(metadata.get("co_hosts", [])) if metadata else "",
-                "guests": ", ".join(metadata.get("guests", [])) if metadata else "",
-                "keywords": ", ".join(metadata.get("keywords", [])) if metadata else "",
-                "episode_number": metadata.get("episode_number") if metadata else "",
-                "summary": metadata.get("summary", "") if metadata else ""
+                "podcast": metadata.transcript_metadata.podcast_title if metadata else podcast_name,
+                "episode": episode_title,
+                "release_date": metadata.mp3_metadata.release_date if metadata and metadata.mp3_metadata else "",
+                "hosts": ", ".join(metadata.transcript_metadata.hosts) if metadata else "",
+                "co_hosts": ", ".join(metadata.transcript_metadata.co_hosts) if metadata else "",
+                "guests": ", ".join(metadata.transcript_metadata.guests) if metadata else "",
+                "keywords": ", ".join(metadata.transcript_metadata.keywords) if metadata else "",
+                "episode_number": metadata.transcript_metadata.episode_number if metadata else "",
+                "summary": metadata.transcript_metadata.summary if metadata else ""
             }
             
             for i, chunk in enumerate(chunks):
