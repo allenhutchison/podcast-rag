@@ -4,7 +4,7 @@ import os
 from typing import Optional
 
 import eyed3
-import google.generativeai as genai
+import google.genai as genai
 from ollama import Client
 from pydantic import TypeAdapter
 
@@ -32,8 +32,7 @@ class MetadataExtractor:
             return
             
         logging.info("Using Gemini for metadata extraction.")
-        genai.configure(api_key=self.config.GEMINI_API_KEY)
-        self.ai_client = genai.Client()
+        self.ai_client = genai.Client(api_key=self.config.GEMINI_API_KEY)
 
     def build_metadata_file(self, episode_path: str) -> str:
         """Build the path for the metadata file."""
@@ -86,10 +85,10 @@ class MetadataExtractor:
         )
         
         try:
-            response = self.ai_client.models.generate_content(
-                model=self.config.GEMINI_MODEL,
+            model = self.ai_client.get_model(self.config.GEMINI_MODEL)
+            response = model.generate_content(
                 contents=prompt,
-                config={
+                generation_config={
                     'response_mime_type': 'application/json',
                     'response_schema': PodcastMetadata,
                 }
