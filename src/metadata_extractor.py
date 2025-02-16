@@ -106,8 +106,17 @@ class MetadataExtractor:
         return metadata_file + ".metadata_in_progress"
 
     def metadata_exists(self, metadata_file: str) -> bool:
-        """Check if metadata file exists and is not empty."""
-        return os.path.exists(metadata_file) and os.path.getsize(metadata_file) > 0
+        """Check if metadata file exists and contains valid mp3 and transcript metadata."""
+        if not os.path.exists(metadata_file) or os.path.getsize(metadata_file) == 0:
+            return False
+        try:
+            with open(metadata_file, 'r') as f:
+                metadata = json.loads(f.read())
+                return (isinstance(metadata, dict) and 
+                       'mp3_metadata' in metadata and
+                       'transcript_metadata' in metadata)
+        except (json.JSONDecodeError, IOError):
+            return False
 
     def is_metadata_in_progress(self, temp_file: str) -> bool:
         """Check if metadata extraction is in progress."""
@@ -171,8 +180,6 @@ class MetadataExtractor:
 
     def handle_metadata_extraction(self, episode_path: str) -> Optional[EpisodeMetadata]:
         """Main method to handle metadata extraction for an episode."""
-        logging.info(f"Extracting metadata for {episode_path}")
-        
         metadata_file = self.build_metadata_file(episode_path)
         temp_file = self.build_temp_file(metadata_file)
 
@@ -193,6 +200,9 @@ class MetadataExtractor:
         if self.dry_run:
             logging.info(f"Dry run: would extract metadata for {episode_path}")
             return None
+            
+        # Only log when we're actually going to extract metadata
+        logging.info(f"Extracting metadata for {episode_path}")
             
         try:
             # Create temp file to indicate processing
