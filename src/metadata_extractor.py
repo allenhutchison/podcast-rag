@@ -95,7 +95,7 @@ class MetadataExtractor:
         logging.info("Using Gemini for metadata extraction.")
         self.ai_client = genai.Client(api_key=self.config.GEMINI_API_KEY)
         # Initialize rate limiter for 10 requests per minute
-        self.rate_limiter = RateLimiter(max_requests=10, time_window=60)
+        self.rate_limiter = RateLimiter(max_requests=9, time_window=60)
 
     def build_metadata_file(self, episode_path: str) -> str:
         """Build the path for the metadata file."""
