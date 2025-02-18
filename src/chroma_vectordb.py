@@ -116,7 +116,7 @@ class VectorDbManager:
                 "co_hosts": ", ".join(metadata.transcript_metadata.co_hosts) if metadata else "",
                 "guests": ", ".join(metadata.transcript_metadata.guests) if metadata else "",
                 "keywords": ", ".join(metadata.transcript_metadata.keywords) if metadata else "",
-                "episode_number": metadata.transcript_metadata.episode_number if metadata else "",
+                "episode_number": str(metadata.transcript_metadata.episode_number) if metadata and metadata.transcript_metadata.episode_number else "",
                 "summary": metadata.transcript_metadata.summary if metadata else ""
             }
             
