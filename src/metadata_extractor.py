@@ -171,11 +171,27 @@ class MetadataExtractor:
                     'response_schema': PodcastMetadata,
                 }
             )
-            return response.parsed
+            
+            # Add logging for the raw response
+            logging.debug(f"Raw AI response: {response}")
+            
+            if not response:
+                logging.error("Empty response from AI")
+                return None
+                
+            try:
+                parsed = response.parsed
+                logging.debug(f"Parsed AI response: {parsed}")
+                return parsed
+            except Exception as parse_error:
+                logging.error(f"Failed to parse AI response: {parse_error}")
+                logging.error(f"Response content: {response.text if hasattr(response, 'text') else 'No text available'}")
+                return None
                 
         except Exception as e:
             logging.error(f"Error extracting metadata from transcript: {e}")
             logging.error(f"Full error: {str(e)}")
+            logging.exception("Full traceback:")  # This will log the full stack trace
             return None
 
     def handle_metadata_extraction(self, episode_path: str) -> Optional[EpisodeMetadata]:
