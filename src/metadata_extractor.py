@@ -206,24 +206,39 @@ class MetadataExtractor:
             
         try:
             # Create temp file to indicate processing
+            logging.debug(f"Creating temp file: {temp_file}")
             open(temp_file, 'w').close()
             
             # Get MP3 metadata
+            logging.debug(f"Extracting MP3 metadata from {episode_path}")
             mp3_metadata = self.extract_mp3_metadata(episode_path)
+            logging.debug(f"MP3 metadata extracted: {mp3_metadata}")
             
             # Get transcript metadata
             transcript_file = self.config.build_transcription_file(episode_path)
+            logging.debug(f"Looking for transcript file: {transcript_file}")
             if not os.path.exists(transcript_file):
                 logging.error(f"Transcript file not found: {transcript_file}")
+                self.stats["failed"] += 1  # Add failure stat here
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
                 return None
                 
+            logging.debug(f"Reading transcript from {transcript_file}")
             with open(transcript_file, 'r') as f:
                 transcript = f.read()
             
             filename = os.path.basename(episode_path)
+            logging.debug(f"Extracting metadata from transcript using AI for {filename}")
             transcript_metadata = self.extract_metadata_from_transcript(transcript, filename)
             if transcript_metadata is None:
+                logging.error("Failed to extract metadata from transcript")
+                self.stats["failed"] += 1  # Add failure stat here
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
                 return None
+            
+            logging.debug(f"Transcript metadata extracted: {transcript_metadata}")
             
             # Create combined metadata
             metadata = EpisodeMetadata(
@@ -232,10 +247,12 @@ class MetadataExtractor:
             )
             
             # Save metadata to file
+            logging.debug(f"Saving metadata to {metadata_file}")
             with open(metadata_file, 'w') as f:
                 json.dump(metadata.model_dump(), f, indent=2)
             
             # Remove temp file after successful completion
+            logging.debug(f"Removing temp file: {temp_file}")
             os.remove(temp_file)
             
             self.stats["processed"] += 1
@@ -243,6 +260,7 @@ class MetadataExtractor:
             
         except Exception as e:
             logging.error(f"Error processing metadata for {episode_path}: {e}")
+            logging.exception("Full traceback:")  # This will log the full stack trace
             self.stats["failed"] += 1
             if os.path.exists(temp_file):
                 os.remove(temp_file)
