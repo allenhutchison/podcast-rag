@@ -175,23 +175,30 @@ class MetadataExtractor:
             # Add logging for the raw response
             logging.debug(f"Raw AI response: {response}")
             
-            if not response:
-                logging.error("Empty response from AI")
+            if not response or not response.candidates or not response.candidates[0].content.parts:
+                logging.error("Empty or invalid response from AI")
                 return None
                 
             try:
-                parsed = response.parsed
-                logging.debug(f"Parsed AI response: {parsed}")
+                # Extract the JSON text from the response
+                json_text = response.candidates[0].content.parts[0].text
+                logging.debug(f"Extracted JSON text: {json_text}")
+                
+                # Parse the JSON text into a PodcastMetadata object
+                type_adapter = TypeAdapter(PodcastMetadata)
+                parsed = type_adapter.validate_json(json_text)
+                logging.debug(f"Parsed metadata: {parsed}")
                 return parsed
+                
             except Exception as parse_error:
                 logging.error(f"Failed to parse AI response: {parse_error}")
-                logging.error(f"Response content: {response.text if hasattr(response, 'text') else 'No text available'}")
+                logging.error(f"JSON text attempted to parse: {json_text if 'json_text' in locals() else 'No JSON text available'}")
                 return None
                 
         except Exception as e:
             logging.error(f"Error extracting metadata from transcript: {e}")
             logging.error(f"Full error: {str(e)}")
-            logging.exception("Full traceback:")  # This will log the full stack trace
+            logging.exception("Full traceback:")
             return None
 
     def handle_metadata_extraction(self, episode_path: str) -> Optional[EpisodeMetadata]:
