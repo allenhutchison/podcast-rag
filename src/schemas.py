@@ -15,8 +15,7 @@ class PodcastMetadata(BaseModel):
         description="Episode number if mentioned (e.g., '42', 'S2E15')"
     )
     date: Optional[str] = Field(
-        description="Recording or release date if mentioned. Can be a specific date (YYYY-MM-DD), year-month (YYYY-MM), year (YYYY), or date range (YYYY-YYYY)",
-        pattern="^\\d{4}(-\\d{2}(-\\d{2})?)?(-\\d{4})?$"
+        description="Recording or release date if mentioned. Will be None for historical dates or invalid formats. Valid formats: YYYY-MM-DD, YYYY-MM, YYYY, or YYYY-YYYY for date ranges. Must be year 2000 or later."
     )
     hosts: List[str] = Field(
         description="List of host names",

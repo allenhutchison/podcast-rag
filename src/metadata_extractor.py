@@ -145,6 +145,39 @@ class MetadataExtractor:
             logging.error(f"Error extracting MP3 metadata from {episode_path}: {e}")
             return MP3Metadata()
 
+    def sanitize_date(self, date_str: Optional[str]) -> Optional[str]:
+        """Sanitize and validate a date string.
+        
+        Rules:
+        1. If date contains 'BC' or 'BCE', return None (historical date)
+        2. If date is None, return None
+        3. If date doesn't match YYYY pattern at start, return None
+        4. If year is before 2000, return None (too old for podcast)
+        5. Otherwise return the date if it matches our pattern
+        """
+        if not date_str:
+            return None
+            
+        if 'BC' in date_str.upper() or 'BCE' in date_str.upper():
+            return None
+            
+        # Extract first year from date string
+        import re
+        year_match = re.match(r'^(\d{4})', date_str)
+        if not year_match:
+            return None
+            
+        year = int(year_match.group(1))
+        if year < 2000:
+            return None
+            
+        # Validate against our pattern
+        pattern = r'^\d{4}(-\d{2}(-\d{2})?)?(-\d{4})?$'
+        if not re.match(pattern, date_str):
+            return None
+            
+        return date_str
+
     @retry_with_exponential_backoff()
     def extract_metadata_from_transcript(self, transcript: str, filename: str) -> Optional[PodcastMetadata]:
         """Extract metadata from transcript using AI."""
@@ -172,33 +205,17 @@ class MetadataExtractor:
                 }
             )
             
-            # Add logging for the raw response
-            logging.debug(f"Raw AI response: {response}")
+            # Parse the response
+            metadata_dict = response.parsed.model_dump()
             
-            if not response or not response.candidates or not response.candidates[0].content.parts:
-                logging.error("Empty or invalid response from AI")
-                return None
-                
-            try:
-                # Extract the JSON text from the response
-                json_text = response.candidates[0].content.parts[0].text
-                logging.debug(f"Extracted JSON text: {json_text}")
-                
-                # Parse the JSON text into a PodcastMetadata object
-                type_adapter = TypeAdapter(PodcastMetadata)
-                parsed = type_adapter.validate_json(json_text)
-                logging.debug(f"Parsed metadata: {parsed}")
-                return parsed
-                
-            except Exception as parse_error:
-                logging.error(f"Failed to parse AI response: {parse_error}")
-                logging.error(f"JSON text attempted to parse: {json_text if 'json_text' in locals() else 'No JSON text available'}")
-                return None
+            # Sanitize the date before creating final metadata
+            metadata_dict['date'] = self.sanitize_date(metadata_dict.get('date'))
+            
+            return PodcastMetadata(**metadata_dict)
                 
         except Exception as e:
             logging.error(f"Error extracting metadata from transcript: {e}")
             logging.error(f"Full error: {str(e)}")
-            logging.exception("Full traceback:")
             return None
 
     def handle_metadata_extraction(self, episode_path: str) -> Optional[EpisodeMetadata]:
