@@ -1,0 +1,12 @@
+# Podcast RSS Feeds List
+# Add one feed URL per line
+# Lines starting with # are comments
+
+# Technology
+https://feeds.megaphone.fm/darknetdiaries
+https://feeds.megaphone.fm/search-engine
+
+# Economics
+https://feeds.npr.org/510289/podcast.xml
+
+# Replace the above with your favorite podcast feeds 

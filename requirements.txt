@@ -12,3 +12,5 @@ google-genai
 ollama
 eyed3
 pydantic
+feedparser
+requests

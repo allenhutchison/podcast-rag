@@ -10,12 +10,22 @@ from transcribe_podcasts import TranscriptionManager
 
 
 class FileManager:
-    def __init__(self, config: Config, dry_run=False, ai_system="gemini"):
+    def __init__(self, config: Config, dry_run=False, ai_system="gemini", skip_vectordb=False):
         self.config = config
         self.dry_run = dry_run
+        self.skip_vectordb = skip_vectordb
         self.transcription_manager = TranscriptionManager(config=config, dry_run=dry_run)
         self.metadata_extractor = MetadataExtractor(config=config, dry_run=dry_run, ai_system=ai_system)
-        self.vector_db_manager = VectorDbManager(config=config, dry_run=dry_run)
+        
+        # Initialize vector_db_manager only if not skipping vectordb operations
+        if not skip_vectordb:
+            try:
+                self.vector_db_manager = VectorDbManager(config=config, dry_run=dry_run)
+            except Exception as e:
+                logging.warning(f"Could not initialize VectorDbManager: {e}")
+                logging.warning("Vector database operations will be skipped. Use --skip-vectordb to suppress this warning.")
+                self.skip_vectordb = True
+        
         self.stats = {
             "total_mp3_files": 0,
         }
@@ -31,7 +41,8 @@ class FileManager:
                 # Extract metadata from transcript and MP3
                 metadata = self.metadata_extractor.handle_metadata_extraction(episode_path)
                 # Handle indexing for transcripts with embedding and metadata
-                self.vector_db_manager.handle_indexing(episode_path, metadata=metadata)
+                if not self.skip_vectordb:
+                    self.vector_db_manager.handle_indexing(episode_path, metadata=metadata)
 
     def process_directory(self):
         '''Main function to start processing podcasts.'''
@@ -52,7 +63,8 @@ class FileManager:
         logging.info(f"Total MP3 files processed: {self.stats['total_mp3_files']}")
         self.transcription_manager.log_stats()
         self.metadata_extractor.log_stats()
-        self.vector_db_manager.log_stats()
+        if not self.skip_vectordb:
+            self.vector_db_manager.log_stats()
 
 if __name__ == "__main__":
     parser = get_base_parser()
