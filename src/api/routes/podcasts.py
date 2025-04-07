@@ -4,9 +4,10 @@ from sqlalchemy.orm import Session
 from typing import List
 import logging
 
-from src.db.database import get_db
-from src.core.podcast import podcast_manager
-from src.db.models import Podcast, Episode
+from db.database import get_db
+from core.podcast import podcast_manager
+from db.models import Podcast as DBPodcast, Episode as DBEpisode
+from schemas import Podcast, Episode, PodcastCreate, PodcastUpdate
 
 # Set up logging
 logger = logging.getLogger(__name__)

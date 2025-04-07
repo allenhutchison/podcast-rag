@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
@@ -52,3 +52,48 @@ class EpisodeMetadata(BaseModel):
     """Combined metadata from transcript analysis and MP3 file."""
     transcript_metadata: PodcastMetadata
     mp3_metadata: MP3Metadata 
+
+
+class EpisodeBase(BaseModel):
+    title: str
+    description: Optional[str] = None
+    audio_url: str
+    duration: Optional[int] = None
+    published_date: Optional[datetime] = None
+    is_downloaded: bool = False
+    is_transcribed: bool = False
+
+
+class Episode(EpisodeBase):
+    id: int
+    podcast_id: int
+    local_audio_path: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PodcastBase(BaseModel):
+    title: str
+    description: Optional[str] = None
+    feed_url: str
+    image_url: Optional[str] = None
+    author: Optional[str] = None
+    language: Optional[str] = None
+
+
+class Podcast(PodcastBase):
+    id: int
+    last_updated: datetime
+    episodes: List[Episode] = []
+
+    class Config:
+        from_attributes = True
+
+
+class PodcastCreate(PodcastBase):
+    pass
+
+
+class PodcastUpdate(PodcastBase):
+    pass 

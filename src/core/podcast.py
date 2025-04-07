@@ -9,9 +9,9 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 import logging
 
-from src.db.models import Podcast, Episode
-from src.db.database import get_db
-from src.core.config import settings
+from db.models import Podcast, Episode
+from db.database import get_db
+from core.config import settings
 
 # Set up logging
 logger = logging.getLogger(__name__)

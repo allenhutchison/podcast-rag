@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -32,11 +32,7 @@ const PodcastDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    fetchPodcastAndEpisodes();
-  }, [id]);
-
-  const fetchPodcastAndEpisodes = async () => {
+  const fetchPodcastAndEpisodes = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -51,7 +47,11 @@ const PodcastDetailPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
+
+  useEffect(() => {
+    fetchPodcastAndEpisodes();
+  }, [fetchPodcastAndEpisodes]);
 
   const handleDownloadEpisode = async (episodeId) => {
     try {

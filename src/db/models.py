@@ -2,6 +2,7 @@ from datetime import datetime
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Float, Boolean
 from sqlalchemy.orm import relationship, declarative_base
 
+# Create and export the Base class
 Base = declarative_base()
 
 class Podcast(Base):

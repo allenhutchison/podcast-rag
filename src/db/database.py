@@ -3,8 +3,11 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 import os
 
+from core.config import settings
+from db.models import Base  # Import Base from models instead of creating a new one
+
 # Get database URL from environment variable or use default SQLite
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./podcast_rag.db")
+DATABASE_URL = os.getenv("DATABASE_URL", settings.DATABASE_URL)
 
 # Create engine
 engine = create_engine(
@@ -13,9 +16,6 @@ engine = create_engine(
 
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Base class for models
-Base = declarative_base()
 
 def get_db():
     """Dependency for getting database session"""

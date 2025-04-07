@@ -28,7 +28,7 @@ const EpisodeDetailPage = () => {
 
   useEffect(() => {
     fetchEpisode();
-  }, [id]);
+  }, [fetchEpisode]);
 
   const fetchEpisode = async () => {
     try {

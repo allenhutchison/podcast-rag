@@ -1,9 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api.routes import podcasts
-from src.core.config import settings
-from src.db.database import init_db
+from api.routes import podcasts
+from core.config import settings
+from db.database import init_db
 
 # Create FastAPI app
 app = FastAPI(
