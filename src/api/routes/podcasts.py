@@ -1,10 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 from typing import List
+import logging
 
 from src.db.database import get_db
 from src.core.podcast import podcast_manager
 from src.db.models import Podcast, Episode
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/podcasts", tags=["podcasts"])
 
@@ -15,6 +20,38 @@ def create_podcast(feed_url: str, db: Session = Depends(get_db)):
         return podcast_manager.create_podcast(db, feed_url)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/import-opml", response_model=List[Podcast])
+async def import_opml(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """Import podcasts from an OPML file."""
+    try:
+        content = await file.read()
+        opml_content = content.decode("utf-8")
+        
+        imported_podcasts = podcast_manager.import_from_opml(db, opml_content)
+        
+        if not imported_podcasts:
+            return {"message": "No new podcasts were imported"}
+        
+        return imported_podcasts
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error importing OPML: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error importing OPML: {str(e)}")
+
+@router.get("/export-opml", response_class=PlainTextResponse)
+def export_opml(db: Session = Depends(get_db)):
+    """Export all podcasts to OPML format."""
+    try:
+        opml_content = podcast_manager.export_to_opml(db)
+        return opml_content
+    except Exception as e:
+        logger.error(f"Error exporting to OPML: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error exporting to OPML: {str(e)}")
 
 @router.get("/", response_model=List[Podcast])
 def list_podcasts(db: Session = Depends(get_db)):

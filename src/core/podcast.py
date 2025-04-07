@@ -2,14 +2,19 @@ import os
 import feedparser
 import requests
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 import eyed3
 from pathlib import Path
+import xml.etree.ElementTree as ET
+import logging
 
 from src.db.models import Podcast, Episode
 from src.db.database import get_db
 from src.core.config import settings
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 class PodcastManager:
     def __init__(self):
@@ -47,6 +52,70 @@ class PodcastManager:
         podcast_dir.mkdir(exist_ok=True)
         
         return podcast
+
+    def import_from_opml(self, db: Session, opml_content: str) -> List[Podcast]:
+        """Import podcasts from OPML content."""
+        try:
+            root = ET.fromstring(opml_content)
+            
+            # Find all outline elements that have a type="rss" attribute
+            # This is the standard way podcasts are represented in OPML
+            outlines = root.findall(".//outline[@type='rss']")
+            
+            imported_podcasts = []
+            for outline in outlines:
+                feed_url = outline.get("xmlUrl")
+                if not feed_url:
+                    continue
+                
+                # Check if podcast already exists
+                existing_podcast = db.query(Podcast).filter(Podcast.feed_url == feed_url).first()
+                if existing_podcast:
+                    logger.info(f"Podcast with feed URL {feed_url} already exists, skipping")
+                    imported_podcasts.append(existing_podcast)
+                    continue
+                
+                try:
+                    podcast = self.create_podcast(db, feed_url)
+                    imported_podcasts.append(podcast)
+                    logger.info(f"Imported podcast: {podcast.title}")
+                except Exception as e:
+                    logger.error(f"Failed to import podcast from {feed_url}: {str(e)}")
+            
+            return imported_podcasts
+        except ET.ParseError as e:
+            logger.error(f"Failed to parse OPML content: {str(e)}")
+            raise ValueError(f"Invalid OPML format: {str(e)}")
+        except Exception as e:
+            logger.error(f"Error importing from OPML: {str(e)}")
+            raise
+
+    def export_to_opml(self, db: Session) -> str:
+        """Export all podcasts to OPML format."""
+        podcasts = self.list_podcasts(db)
+        
+        # Create OPML structure
+        opml = ET.Element("opml", version="2.0")
+        head = ET.SubElement(opml, "head")
+        ET.SubElement(head, "title").text = "Podcast RAG Export"
+        ET.SubElement(head, "dateCreated").text = datetime.now().strftime("%a, %d %b %Y %H:%M:%S %z")
+        
+        body = ET.SubElement(opml, "body")
+        
+        # Add each podcast as an outline
+        for podcast in podcasts:
+            outline = ET.SubElement(body, "outline", 
+                                   type="rss",
+                                   text=podcast.title,
+                                   title=podcast.title,
+                                   xmlUrl=podcast.feed_url)
+            
+            # Add description if available
+            if podcast.description:
+                ET.SubElement(outline, "description").text = podcast.description
+        
+        # Convert to string
+        return ET.tostring(opml, encoding="unicode", method="xml")
 
     def update_podcast(self, db: Session, podcast_id: int) -> Podcast:
         """Update podcast and its episodes from the feed."""
