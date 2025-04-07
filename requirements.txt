@@ -1,16 +1,33 @@
-openai-whisper
-pytest
-python-dotenv
-chromadb
-nltk
-Flask
-gunicorn
-markdown
-APScheduler
-flask-cors
-google-genai
-ollama
-eyed3
-pydantic
-feedparser
-requests
+# Core dependencies
+fastapi==0.109.2
+uvicorn==0.27.1
+sqlalchemy==2.0.27
+pydantic==2.6.1
+python-dotenv==1.0.1
+python-multipart==0.0.9
+
+# Database
+alembic==1.13.1
+
+# Audio processing
+openai-whisper==20231117
+ffmpeg-python==0.2.0
+
+# Embeddings and vector store
+chromadb==0.4.22
+sentence-transformers==2.5.1
+
+# Podcast handling
+feedparser==6.0.11
+requests==2.31.0
+eyed3==0.9.7
+
+# Utilities
+nltk==3.8.1
+markdown==3.5.2
+APScheduler==3.10.4
+
+# Testing
+pytest==8.0.2
+pytest-asyncio==0.23.5
+httpx==0.26.0
