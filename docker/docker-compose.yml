@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  app:
+  backend:
     build:
       context: ..
       dockerfile: docker/Dockerfile
@@ -11,6 +11,25 @@ services:
       - ../data:/app/data
     environment:
       - DATABASE_URL=sqlite:///./data/podcast_rag.db
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
       - CHROMA_PERSIST_DIRECTORY=/app/data/chroma
-    restart: unless-stopped 
+    restart: unless-stopped
+    networks:
+      - podcast-network
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://backend:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - podcast-network
+
+networks:
+  podcast-network:
+    driver: bridge 

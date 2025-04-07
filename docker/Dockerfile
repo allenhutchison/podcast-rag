@@ -1,5 +1,6 @@
 # Use Python 3.11 as base image
-FROM python:3.11-slim
+# If you have authentication issues, try logging in with: docker login
+FROM python:3.11.8-slim
 
 # Set working directory
 WORKDIR /app
@@ -15,11 +16,12 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application
-COPY . .
+# Copy only the necessary backend code
+COPY src/ ./src/
+COPY prompts/ ./prompts/
 
 # Create necessary directories
-RUN mkdir -p /app/data/podcasts /app/data/transcripts
+RUN mkdir -p /app/data/podcasts /app/data/transcripts /app/data/chroma
 
 # Set environment variables
 ENV PYTHONPATH=/app

@@ -1,0 +1,27 @@
+# Use Node.js as base image
+# If you have authentication issues, try logging in with: docker login
+FROM node:18.19.1-alpine
+
+# Set working directory
+WORKDIR /app
+
+# Copy package.json and package-lock.json
+COPY frontend/package*.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy the rest of the frontend code
+COPY frontend/ ./
+
+# Build the application
+RUN npm run build
+
+# Install serve to run the production build
+RUN npm install -g serve
+
+# Expose port
+EXPOSE 3000
+
+# Command to serve the production build
+CMD ["serve", "-s", "build", "-l", "3000"] 
