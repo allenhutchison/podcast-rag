@@ -1,140 +1,126 @@
-# Podcast Transcription using Whisper
+# Podcast Manager
 
-This project provides a Python-based tool to automate the transcription of podcasts using the Whisper model. The tool processes directories of podcast MP3 files, transcribes them, and outputs the results in a text format.
+A full-featured podcast management application with a modern web interface. This application allows you to manage your podcast subscriptions, import/export podcast lists, and download episodes for offline listening.
 
 ## Features
-- Download podcasts directly from RSS feeds
-- Batch transcription of MP3 files
-- Dry-run mode to preview files without performing transcription or downloads
-- Logging for detailed process tracking
-- Support for environment configuration using `.env`
 
-## Installation
-To use this tool, you'll need to set up a Python environment with the required dependencies and install Whisper for transcription.
+- **Podcast Management**
+  - Add podcasts by RSS feed URL
+  - View podcast details and episodes
+  - Update podcast information
+  - Delete podcasts
+  - Download episodes for offline listening
 
-### Prerequisites
-1. Python 3.8+
-2. [Whisper](https://github.com/openai/whisper)
-3. Install `ffmpeg`:
-   - **Linux:**
-     ```bash
-     sudo apt-get install ffmpeg
-     ```
-   - **macOS (using Homebrew):**
-     ```bash
-     brew install ffmpeg
-     ```
-   - **Windows:**
-     - Download and install `ffmpeg` from [https://ffmpeg.org/download.html](https://ffmpeg.org/download.html).
+- **OPML Support**
+  - Import podcasts from OPML files
+  - Export podcasts to OPML format
+  - Compatible with other podcast apps
 
-4. Install dependencies:
+- **Modern Web Interface**
+  - Responsive design
+  - Material UI components
+  - Intuitive navigation
+  - Real-time updates
 
+## Tech Stack
+
+### Backend
+- Python
+- FastAPI
+- SQLite
+- SQLAlchemy
+- Pydantic
+
+### Frontend
+- React
+- Material-UI
+- React Router
+- Axios
+
+## Setup
+
+### Backend Setup
+
+1. Create a virtual environment:
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+2. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-### Setup
-1. Clone the repository:
+3. Run the backend server:
 ```bash
-git clone https://github.com/yourusername/podcast-transcription
-cd podcast-transcription
+uvicorn src.main:app --reload
 ```
 
-2. Set up the environment variables by creating a `.env` file, or export them directly:
+### Frontend Setup
 
+1. Navigate to the frontend directory:
 ```bash
-export MEDIA_EMBED_BASE_DIRECTORY="/path/to/your/podcasts"
-export MEDIA_EMBED_WHISPER_PATH="/path/to/whisper"
+cd frontend
 ```
 
-3. Run the transcription tool in dry-run mode:
+2. Install dependencies:
 ```bash
-python transcribe_podcasts.py --dry-run
+npm install
 ```
 
-## Configuration
-The configuration is managed via environment variables:
-
-- `MEDIA_EMBED_BASE_DIRECTORY`: Base directory containing podcast subdirectories.
-- `MEDIA_EMBED_WHISPER_PATH`: Path to the Whisper binary.
-
-The default values can be found in the `config.py` file.
-
-## Usage
-
-### To download and transcribe podcasts:
+3. Start the development server:
 ```bash
-python src/download_and_transcribe.py --feed https://feeds.megaphone.fm/darknetdiaries
+npm start
 ```
 
-### To download podcasts from a list of RSS feeds:
-```bash
-python src/download_and_transcribe.py --feed-file podcast_feeds.txt
+The application will be available at:
+- Backend API: http://localhost:8000
+- Frontend: http://localhost:3000
+
+## API Documentation
+
+Once the backend server is running, you can access the API documentation at:
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
+
+## Development
+
+### Project Structure
+
+```
+podcast-rag/
+├── src/
+│   ├── api/
+│   │   ├── routes/
+│   │   └── dependencies.py
+│   ├── core/
+│   │   ├── config.py
+│   │   └── podcast.py
+│   ├── db/
+│   │   ├── models.py
+│   │   └── database.py
+│   └── main.py
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   ├── pages/
+│   │   ├── services/
+│   │   ├── hooks/
+│   │   └── App.js
+│   └── package.json
+└── README.md
 ```
 
-### To perform a dry run:
-```bash
-python src/download_and_transcribe.py --feed-file podcast_feeds.txt --dry-run
-```
+### Contributing
 
-### To only download podcasts without transcribing:
-```bash
-python src/download_and_transcribe.py --feed-file podcast_feeds.txt --skip-transcription
-```
-
-### To only transcribe existing podcasts without downloading:
-```bash
-python src/download_and_transcribe.py --skip-download
-```
-
-### To download only the latest 3 episodes from each feed:
-```bash
-python src/download_and_transcribe.py --feed-file podcast_feeds.txt --limit 3
-```
-
-### To skip ChromaDB vector database operations:
-```bash
-python src/download_and_transcribe.py --feed-file podcast_feeds.txt --skip-vectordb
-```
-
-### To run only the transcription tool:
-```bash
-python src/transcribe_podcasts.py
-```
-
-## Podcast Downloading
-
-The podcast downloader can be used independently of the transcription system:
-
-```bash
-python src/podcast_downloader.py --feed https://example.com/podcast.xml
-```
-
-Features of the podcast downloader:
-- Downloads episodes directly from RSS feeds
-- Automatically organizes podcasts into directories by podcast name
-- Preserves episode metadata (ID3 tags)
-- Can limit downloads to the most recent episodes
-- Can filter episodes by publication date
-
-## Logging
-The tool uses Python's built-in logging for tracking progress and errors. By default, logs are displayed in the console, but this can be easily modified to output to a file.
-
-## Testing
-Unit tests can be run using `pytest`. To install `pytest`:
-
-```bash
-pip install pytest
-```
-
-To run the tests:
-```bash
-pytest
-```
-
-## Contributing
-Contributions are welcome! Please submit a pull request with any improvements or bug fixes. Ensure all tests pass before submitting your PR.
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
 ## License
-This project is licensed under the Apache 2.0 License. See the `LICENSE` file for details.
+
+This project is licensed under the MIT License - see the LICENSE file for details.
 
