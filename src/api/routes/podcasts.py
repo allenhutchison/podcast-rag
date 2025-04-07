@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, FileResponse
 from sqlalchemy.orm import Session
 from typing import List
 import logging
+import os
 
 from db.database import get_db
 from core.podcast import podcast_manager
@@ -109,4 +110,23 @@ def download_episode(episode_id: int, db: Session = Depends(get_db)):
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e)) 
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/episodes/{episode_id}/audio")
+def get_episode_audio(episode_id: int, db: Session = Depends(get_db)):
+    """Get the audio file for an episode."""
+    episode = podcast_manager.get_episode(db, episode_id)
+    if not episode:
+        raise HTTPException(status_code=404, detail="Episode not found")
+    
+    if not episode.is_downloaded or not episode.local_audio_path:
+        raise HTTPException(status_code=404, detail="Episode audio not downloaded")
+    
+    if not os.path.exists(episode.local_audio_path):
+        raise HTTPException(status_code=404, detail="Episode audio file not found")
+    
+    return FileResponse(
+        episode.local_audio_path,
+        media_type="audio/mpeg",
+        filename=os.path.basename(episode.local_audio_path)
+    ) 

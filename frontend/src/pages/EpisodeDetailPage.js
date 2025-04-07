@@ -15,6 +15,8 @@ import {
 import {
   ArrowBack as ArrowBackIcon,
   Download as DownloadIcon,
+  PlayArrow as PlayIcon,
+  Pause as PauseIcon,
 } from '@mui/icons-material';
 import { podcastApi } from '../services/api';
 
@@ -25,10 +27,23 @@ const EpisodeDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [downloading, setDownloading] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [audio] = useState(new Audio());
 
   useEffect(() => {
     fetchEpisode();
-  }, [fetchEpisode]);
+    return () => {
+      audio.pause();
+      audio.src = '';
+    };
+  }, [id]);
+
+  useEffect(() => {
+    audio.addEventListener('ended', () => setIsPlaying(false));
+    return () => {
+      audio.removeEventListener('ended', () => setIsPlaying(false));
+    };
+  }, [audio]);
 
   const fetchEpisode = async () => {
     try {
@@ -55,6 +70,20 @@ const EpisodeDetailPage = () => {
     } finally {
       setDownloading(false);
     }
+  };
+
+  const handlePlayPause = () => {
+    if (!episode.is_downloaded) {
+      return;
+    }
+
+    if (isPlaying) {
+      audio.pause();
+    } else {
+      audio.src = podcastApi.getEpisodeAudioUrl(id);
+      audio.play();
+    }
+    setIsPlaying(!isPlaying);
   };
 
   if (loading) {
@@ -107,7 +136,7 @@ const EpisodeDetailPage = () => {
               {episode.title}
             </Typography>
             <Typography variant="subtitle1" color="textSecondary" gutterBottom>
-              {new Date(episode.published_at).toLocaleDateString()}
+              {new Date(episode.published_date).toLocaleDateString()}
             </Typography>
             <Typography variant="body1" paragraph>
               {episode.description}
@@ -117,14 +146,25 @@ const EpisodeDetailPage = () => {
                 <Chip key={category} label={category} size="small" />
               ))}
             </Box>
-            <Button
-              variant="contained"
-              startIcon={<DownloadIcon />}
-              onClick={handleDownload}
-              disabled={episode.downloaded || downloading}
-            >
-              {episode.downloaded ? 'Downloaded' : 'Download Episode'}
-            </Button>
+            <Box display="flex" gap={2}>
+              <Button
+                variant="contained"
+                startIcon={<DownloadIcon />}
+                onClick={handleDownload}
+                disabled={episode.is_downloaded || downloading}
+              >
+                {episode.is_downloaded ? 'Downloaded' : 'Download Episode'}
+              </Button>
+              {episode.is_downloaded && (
+                <Button
+                  variant="outlined"
+                  startIcon={isPlaying ? <PauseIcon /> : <PlayIcon />}
+                  onClick={handlePlayPause}
+                >
+                  {isPlaying ? 'Pause' : 'Play'}
+                </Button>
+              )}
+            </Box>
           </CardContent>
         </Box>
       </Card>

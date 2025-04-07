@@ -8,7 +8,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ../data:/app/data
+      - podcast-data:/app/data
     environment:
       - DATABASE_URL=sqlite:///./data/podcast_rag.db
       - CHROMA_PERSIST_DIRECTORY=/app/data/chroma
@@ -32,4 +32,8 @@ services:
 
 networks:
   podcast-network:
-    driver: bridge 
+    driver: bridge
+
+volumes:
+  podcast-data:
+    name: podcast-rag-data 

@@ -59,6 +59,11 @@ export const podcastApi = {
     return response.data;
   },
 
+  // Get episode audio URL
+  getEpisodeAudioUrl: (episodeId) => {
+    return `${API_URL}/podcasts/episodes/${episodeId}/audio`;
+  },
+
   // Import podcasts from OPML
   importOpml: async (file) => {
     const formData = new FormData();

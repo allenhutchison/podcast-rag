@@ -24,15 +24,15 @@ fi
 
 # Build and start the containers
 echo "Building and starting containers..."
-docker compose -p podcast-rag -f docker-compose.yml up --build -d
+docker compose -p podcast-rag -f docker/docker-compose.yml up --build -d
 
 # Show container status
 echo "Container status:"
-docker compose -p podcast-rag ps
+docker compose -p podcast-rag -f docker/docker-compose.yml ps
 
 echo ""
 echo "Frontend is available at: http://localhost:3000"
 echo "Backend API is available at: http://localhost:8000"
 echo ""
-echo "To view logs: docker compose -p podcast-rag logs -f"
-echo "To stop containers: docker compose -p podcast-rag down" 
+echo "To view logs: docker compose -p podcast-rag -f docker/docker-compose.yml logs -f"
+echo "To stop containers: docker compose -p podcast-rag -f docker/docker-compose.yml down" 

@@ -8,6 +8,7 @@ import eyed3
 from pathlib import Path
 import xml.etree.ElementTree as ET
 import logging
+import urllib.parse
 
 from db.models import Podcast, Episode
 from db.database import get_db
@@ -156,37 +157,55 @@ class PodcastManager:
 
     def download_episode(self, db: Session, episode_id: int) -> Episode:
         """Download an episode's audio file."""
-        episode = db.query(Episode).filter(Episode.id == episode_id).first()
+        episode = self.get_episode(db, episode_id)
         if not episode:
-            raise ValueError(f"Episode with id {episode_id} not found")
+            raise ValueError(f"Episode {episode_id} not found")
         
-        if episode.is_downloaded:
+        if episode.is_downloaded and episode.local_audio_path and os.path.exists(episode.local_audio_path):
             return episode
         
-        # Create episode directory
-        episode_dir = self.base_dir / str(episode.podcast_id) / str(episode_id)
-        episode_dir.mkdir(parents=True, exist_ok=True)
+        # Create podcast directory if it doesn't exist
+        podcast_dir = self.base_dir / str(episode.podcast_id)
+        podcast_dir.mkdir(exist_ok=True)
         
-        # Download audio file
-        response = requests.get(episode.audio_url, stream=True)
-        response.raise_for_status()
+        # Generate a safe filename from the episode title
+        safe_title = "".join(c for c in episode.title if c.isalnum() or c in (' ', '-', '_')).strip()
+        safe_title = safe_title.replace(' ', '_')
+        filename = f"{episode.id}_{safe_title}.mp3"
+        local_path = podcast_dir / filename
         
-        audio_path = episode_dir / "audio.mp3"
-        with open(audio_path, "wb") as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                f.write(chunk)
-        
-        # Update episode metadata
-        audio = eyed3.load(str(audio_path))
-        if audio and audio.info:
-            episode.duration = int(audio.info.time_secs)
-        
-        episode.local_audio_path = str(audio_path)
-        episode.is_downloaded = True
-        db.commit()
-        db.refresh(episode)
-        
-        return episode
+        # Download the audio file
+        try:
+            response = requests.get(episode.audio_url, stream=True)
+            response.raise_for_status()
+            
+            with open(local_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+            
+            # Update episode with local path
+            episode.local_audio_path = str(local_path)
+            episode.is_downloaded = True
+            db.commit()
+            
+            # Try to update metadata using eyed3
+            try:
+                audio = eyed3.load(local_path)
+                if audio and audio.tag:
+                    audio.tag.title = episode.title
+                    audio.tag.artist = episode.podcast.author
+                    audio.tag.album = episode.podcast.title
+                    audio.tag.save()
+            except Exception as e:
+                logger.warning(f"Failed to update audio metadata: {str(e)}")
+            
+            return episode
+            
+        except Exception as e:
+            if local_path.exists():
+                local_path.unlink()
+            raise Exception(f"Failed to download episode: {str(e)}")
 
     def get_podcast(self, db: Session, podcast_id: int) -> Optional[Podcast]:
         """Get a podcast by ID."""
