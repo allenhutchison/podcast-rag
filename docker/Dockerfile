@@ -24,7 +24,7 @@ COPY prompts/ ./prompts/
 RUN mkdir -p /app/data/podcasts /app/data/transcripts /app/data/chroma
 
 # Set environment variables
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app:/app/src
 ENV DATABASE_URL=sqlite:///./data/podcast_rag.db
 
 # Expose port
