@@ -19,7 +19,7 @@ class PodcastMetadata(BaseModel):
     )
     hosts: List[str] = Field(
         description="List of host names",
-        min_items=1
+        min_length=1
     )
     co_hosts: List[str] = Field(
         description="List of co-host names"
@@ -34,8 +34,8 @@ class PodcastMetadata(BaseModel):
     )
     keywords: List[str] = Field(
         description="List of 5-10 relevant keywords or topics discussed",
-        min_items=5,
-        max_items=10
+        min_length=5,
+        max_length=10
     )
 
 

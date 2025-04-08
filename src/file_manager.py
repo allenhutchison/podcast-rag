@@ -3,7 +3,7 @@ import os
 
 from argparse_shared import (add_dry_run_argument, add_log_level_argument,
                              add_ai_system_argument, get_base_parser)
-from chroma_vectordb import VectorDbManager
+from db.chroma_vectordb import VectorDbManager
 from config import Config
 from metadata_extractor import MetadataExtractor
 from transcribe_podcasts import TranscriptionManager

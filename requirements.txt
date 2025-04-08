@@ -9,8 +9,10 @@ markdown
 APScheduler
 flask-cors
 google-generativeai
+google-genai
 ollama
 eyed3
 pydantic
 feedparser
 requests
+SQLAlchemy

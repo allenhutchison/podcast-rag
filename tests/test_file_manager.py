@@ -22,14 +22,11 @@ def test_process_podcasts_dry_run(monkeypatch, tmpdir):
     with open(mock_podcast_file, 'w') as f:
         f.write("Fake MP3 content")
 
-    transcription_manager = TranscriptionManager(config=config, dry_run=True)
-
-    # Instantiate TranscriptionManager
-    manager = FileManager(config=config, dry_run=True, transcription_manager=transcription_manager)
+    # Instantiate FileManager with dry_run=True
+    manager = FileManager(config=config, dry_run=True)
     
-    # Mock start_transcription method so that it doesn't actually run
-    with patch.object(transcription_manager, 'handle_transcription') as mock_transcribe:
+    # Mock the TranscriptionManager's handle_transcription method
+    with patch.object(manager.transcription_manager, 'handle_transcription') as mock_transcribe:
         manager.process_directory()
-
-        # Check that start_transcription was not called in dry-run mode
+        # Check that handle_transcription was called
         mock_transcribe.assert_called()
