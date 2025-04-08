@@ -8,7 +8,7 @@ gunicorn
 markdown
 APScheduler
 flask-cors
-google-genai
+google-generativeai
 ollama
 eyed3
 pydantic

@@ -22,11 +22,11 @@ COPY . .
 RUN mkdir -p /app/media
 
 # Set environment variables
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app/src
 ENV MEDIA_EMBED_BASE_DIRECTORY=/app/media
 
 # Expose port for Flask application
-EXPOSE 5000
+EXPOSE 8080
 
 # Command to run the application
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "src.app:app"] 
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "app:app"] 

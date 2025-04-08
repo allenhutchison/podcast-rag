@@ -11,13 +11,17 @@ from markupsafe import Markup
 from config import Config
 from rag import RagManager
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--env-file', type=str, help='Path to environment file')
-args = parser.parse_args()
-
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
-config = Config(env_file=args.env_file)
+
+# Only parse arguments when running directly
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--env-file', type=str, help='Path to environment file')
+    args = parser.parse_args()
+    config = Config(env_file=args.env_file)
+else:
+    config = Config()
 
 class GenerateContentResponseConverter:
     @staticmethod
