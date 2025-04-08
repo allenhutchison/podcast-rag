@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="1.1">
+  <head>
+    <title>My Podcast Feeds</title>
+    <dateCreated>Mon, 1 Jan 2023 12:00:00 GMT</dateCreated>
+  </head>
+  <body>
+    <outline text="Technology">
+      <outline text="Tech News Today" type="rss" xmlUrl="https://feeds.megaphone.fm/technewstoday" />
+      <outline text="The Vergecast" type="rss" xmlUrl="https://www.theverge.com/rss/vergecast/index.xml" />
+    </outline>
+    <outline text="Science">
+      <outline text="Science Friday" type="rss" xmlUrl="https://www.sciencefriday.com/feed/" />
+      <outline text="Radiolab" type="rss" xmlUrl="https://feeds.wnyc.org/radiolab" />
+    </outline>
+    <outline text="Business">
+      <outline text="Planet Money" type="rss" xmlUrl="https://www.npr.org/rss/podcast.php?id=510289" />
+    </outline>
+  </body>
+</opml> 
