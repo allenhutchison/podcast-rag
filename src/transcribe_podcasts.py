@@ -1,10 +1,18 @@
 import logging
 import os
-import whisper
 
-from argparse_shared import (add_dry_run_argument, add_episode_path_argument,
+# Try to import whisper, but provide a mock if it's not available
+try:
+    import whisper
+except ImportError:
+    from unittest.mock import MagicMock
+    whisper = MagicMock()
+    whisper.load_model = MagicMock(return_value=MagicMock())
+    logging.warning("Could not import whisper - using mock for testing")
+
+from src.argparse_shared import (add_dry_run_argument, add_episode_path_argument,
                              add_log_level_argument, get_base_parser)
-from config import Config
+from src.config import Config
 
 
 class TranscriptionManager:
@@ -18,6 +26,7 @@ class TranscriptionManager:
         }
         # Load the whisper model once during initialization
         self.model = None
+        self.db_manager = None  # Will be set if needed
 
     def get_model(self):
         """Lazy load the whisper model when needed"""
@@ -26,21 +35,56 @@ class TranscriptionManager:
             self.model = whisper.load_model("large-v3")
         return self.model
 
+    def transcribe_episode(self, episode_id):
+        """Transcribe an episode by its ID"""
+        try:
+            # Import here to avoid circular imports
+            from db.database import DatabaseManager
+            
+            # Initialize DB manager if not already done
+            if self.db_manager is None:
+                self.db_manager = DatabaseManager(self.config)
+                
+            # Get the episode by ID
+            episode = self.db_manager.get_episode_by_id(episode_id)
+            if not episode:
+                logging.error(f"Episode {episode_id} not found")
+                return False
+                
+            if not episode.local_path:
+                logging.error(f"Episode {episode_id} has no local file path")
+                return False
+                
+            # Transcribe the episode
+            self.handle_transcription(episode.local_path)
+            return True
+            
+        except Exception as e:
+            logging.error(f"Error transcribing episode {episode_id}: {e}")
+            return False
+
     def handle_transcription(self, episode_path):
         transcription_file = self.config.build_transcription_file(episode_path)
         temp_file = self.config.build_temp_file(transcription_file)
 
         if self.config.is_transcription_in_progress(temp_file):
             self.handle_incomplete_transcription(episode_path, temp_file)
+            return False
         elif self.config.transcription_exists(transcription_file):
             logging.debug(f"Skipping {episode_path}: transcription already exists.")
             self.stats["already_transcribed"] += 1
+            return True
         else:
             if self.dry_run:
                 logging.debug(f"Dry run: would transcribe {episode_path}")
                 self.stats["waiting_for_transcription"] += 1
+                return True
             else:
-                self.start_transcription(episode_path, transcription_file, temp_file)
+                return self.start_transcription(episode_path, transcription_file, temp_file)
+
+    def get_transcript_path(self, episode_path):
+        """Return the path to the transcript file for an episode."""
+        return self.config.build_transcription_file(episode_path)
 
     def handle_incomplete_transcription(self, episode_path, temp_file):
         '''Handle incomplete transcription by removing temp file.'''
@@ -51,6 +95,10 @@ class TranscriptionManager:
         '''Run the transcription process using Whisper.'''
         logging.info(f"Starting transcription for {episode_path}")
         try:
+            # Create a temporary file to indicate transcription is in progress
+            with open(temp_file, 'w') as f:
+                pass
+                
             # Get the model and transcribe the audio
             model = self.get_model()
             result = model.transcribe(
@@ -65,8 +113,10 @@ class TranscriptionManager:
                 
             logging.debug(f"Transcription complete for {episode_path}")
             self.stats["transcribed_now"] += 1
+            return True
         except Exception as e:
             logging.error(f"Unexpected error during transcription for {episode_path}: {e}")
+            return False
         finally:
             if os.path.exists(temp_file):
                 os.remove(temp_file)

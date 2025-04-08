@@ -1,16 +1,28 @@
-openai-whisper
-pytest
-python-dotenv
-chromadb
-nltk
+# Core dependencies
+apscheduler==3.10.1
+feedparser==6.0.10
+python-dotenv==1.0.0
+
+# Audio processing
+mutagen==1.47.0
+
+# Machine learning and NLP
+openai-whisper==20231117
+sentence-transformers==2.2.2
+
+# Database and vector store
+chromadb==0.4.18
+
+# Testing
+pytest==7.4.3
+pytest-mock==3.12.0
+
 Flask
 gunicorn
 markdown
-APScheduler
 flask-cors
 google-generativeai
 ollama
 eyed3
 pydantic
-feedparser
 requests

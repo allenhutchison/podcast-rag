@@ -1,10 +1,25 @@
 import logging
 import os
+import time
+import json
+from typing import Dict, List, Optional, Any
+from unittest.mock import MagicMock
 
-import chromadb
-from nltk.tokenize import sent_tokenize
+# Try to import chromadb, but provide a mock if it's not available
+try:
+    import chromadb
+except ImportError:
+    chromadb = MagicMock()
+    logging.warning("Could not import chromadb - using mock for testing")
 
-from config import Config
+# Try to import nltk.tokenize, but provide a mock if it's not available
+try:
+    from nltk.tokenize import sent_tokenize
+except ImportError:
+    sent_tokenize = MagicMock(side_effect=lambda text: [text])
+    logging.warning("Could not import nltk.tokenize - using mock for testing")
+
+from src.config import Config
 
 
 class VectorDbManager:

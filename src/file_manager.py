@@ -1,12 +1,17 @@
 import logging
 import os
+import requests
+import json
+import time
+from typing import Dict, Optional, Any
 
-from argparse_shared import (add_dry_run_argument, add_log_level_argument,
+from src.argparse_shared import (add_dry_run_argument, add_log_level_argument,
                              add_ai_system_argument, get_base_parser)
-from chroma_vectordb import VectorDbManager
-from config import Config
-from metadata_extractor import MetadataExtractor
-from transcribe_podcasts import TranscriptionManager
+from src.config import Config
+from src.metadata_extractor import MetadataExtractor
+from src.transcribe_podcasts import TranscriptionManager
+from src.db.database import DatabaseManager, Job, JobType, JobStatus, Episode
+from src.chroma_vectordb import VectorDbManager
 
 
 class FileManager:
@@ -65,6 +70,146 @@ class FileManager:
         self.metadata_extractor.log_stats()
         if not self.skip_vectordb:
             self.vector_db_manager.log_stats()
+            
+    # New methods for workflow-based processing
+    
+    def download_episode(self, episode: Episode) -> bool:
+        """Download an episode to the local filesystem"""
+        try:
+            if self.dry_run:
+                logging.info(f"[DRY RUN] Would download episode: {episode.title} from {episode.url}")
+                return True
+                
+            # Create podcast directory if it doesn't exist
+            podcast_dir = os.path.join(self.config.BASE_DIRECTORY, f"podcast_{episode.feed_id}")
+            os.makedirs(podcast_dir, exist_ok=True)
+            
+            # Determine the local file path
+            file_name = f"{episode.id}_{episode.title.replace(' ', '_')}.mp3"
+            local_path = os.path.join(podcast_dir, file_name)
+            
+            # Download the file
+            logging.info(f"Downloading episode: {episode.title} from {episode.url}")
+            response = requests.get(episode.url, stream=True)
+            response.raise_for_status()
+            
+            # Save the file
+            with open(local_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+                    
+            # Update the episode with the local path
+            episode.local_path = local_path
+            episode.download_date = time.time()
+            
+            logging.info(f"Successfully downloaded episode: {episode.title} to {local_path}")
+            return True
+            
+        except Exception as e:
+            logging.error(f"Error downloading episode {episode.title}: {e}")
+            return False
+            
+    def extract_metadata(self, episode: Episode) -> Optional[Dict[str, Any]]:
+        """Extract metadata from an episode"""
+        try:
+            if self.dry_run:
+                logging.info(f"[DRY RUN] Would extract metadata for episode: {episode.title}")
+                return {"title": episode.title, "duration": "00:00:00"}
+                
+            if not episode.local_path or not os.path.exists(episode.local_path):
+                logging.error(f"Episode file not found: {episode.local_path}")
+                return None
+                
+            # Extract metadata using the metadata extractor
+            metadata = self.metadata_extractor.handle_metadata_extraction(episode.local_path)
+            
+            if metadata:
+                logging.info(f"Successfully extracted metadata for episode: {episode.title}")
+                return metadata
+            else:
+                logging.error(f"Failed to extract metadata for episode: {episode.title}")
+                return None
+                
+        except Exception as e:
+            logging.error(f"Error extracting metadata for episode {episode.title}: {e}")
+            return None
+            
+    def transcribe_episode(self, episode: Episode) -> bool:
+        """Transcribe an episode"""
+        try:
+            if self.dry_run:
+                logging.info(f"[DRY RUN] Would transcribe episode: {episode.title}")
+                return True
+                
+            if not episode.local_path or not os.path.exists(episode.local_path):
+                logging.error(f"Episode file not found: {episode.local_path}")
+                return False
+                
+            # Transcribe the episode
+            success = self.transcription_manager.handle_transcription(episode.local_path)
+            
+            if success:
+                logging.info(f"Successfully transcribed episode: {episode.title}")
+                return True
+            else:
+                logging.error(f"Failed to transcribe episode: {episode.title}")
+                return False
+                
+        except Exception as e:
+            logging.error(f"Error transcribing episode {episode.title}: {e}")
+            return False
+            
+    def create_embeddings(self, episode: Episode) -> bool:
+        """Create embeddings for an episode"""
+        try:
+            if self.dry_run:
+                logging.info(f"[DRY RUN] Would create embeddings for episode: {episode.title}")
+                return True
+                
+            if self.skip_vectordb:
+                logging.warning("Skipping embeddings creation as vectordb is disabled")
+                return True
+                
+            # Get the transcript file path
+            transcript_path = self.transcription_manager.get_transcript_path(episode.local_path)
+            if not transcript_path or not os.path.exists(transcript_path):
+                logging.error(f"Transcript file not found for episode: {episode.title}")
+                return False
+                
+            # Create embeddings
+            success = self.vector_db_manager.handle_indexing(transcript_path)
+            
+            if success:
+                logging.info(f"Successfully created embeddings for episode: {episode.title}")
+                return True
+            else:
+                logging.error(f"Failed to create embeddings for episode: {episode.title}")
+                return False
+                
+        except Exception as e:
+            logging.error(f"Error creating embeddings for episode {episode.title}: {e}")
+            return False
+            
+    def delete_mp3(self, episode: Episode) -> bool:
+        """Delete the MP3 file for an episode"""
+        try:
+            if self.dry_run:
+                logging.info(f"[DRY RUN] Would delete MP3 for episode: {episode.title}")
+                return True
+                
+            if not episode.local_path or not os.path.exists(episode.local_path):
+                logging.error(f"Episode file not found: {episode.local_path}")
+                return False
+                
+            # Delete the file
+            os.remove(episode.local_path)
+            logging.info(f"Successfully deleted MP3 for episode: {episode.title}")
+            return True
+            
+        except Exception as e:
+            logging.error(f"Error deleting MP3 for episode {episode.title}: {e}")
+            return False
+
 
 if __name__ == "__main__":
     parser = get_base_parser()

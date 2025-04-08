@@ -43,28 +43,28 @@ class Config:
 
     # Utility functions related to file paths and suffixes
     def build_transcription_file(self, episode_path):
-        '''Generate the transcription file path based on episode file path.'''
-        return os.path.splitext(episode_path)[0] + self.TRANSCRIPTION_OUTPUT_SUFFIX
-
+        """Build the path for the transcription file."""
+        if not episode_path:
+            return None
+        return os.path.splitext(episode_path)[0] + ".txt"
+        
     def build_temp_file(self, transcription_file):
-        '''Generate the temp file path for in-progress transcriptions.'''
-        return transcription_file + self.TRANSCRIPTION_TEMP_FILE_SUFFIX
-
-    def is_transcription_file(self, file_path):
-        '''Check if the given file is a transcription file.'''
-        return os.path.isfile(file_path) and file_path.endswith(self.TRANSCRIPTION_OUTPUT_SUFFIX)
+        """Build the path for the temp file."""
+        if not transcription_file:
+            return None
+        return transcription_file + ".transcription_in_progress"
+        
+    def is_transcription_in_progress(self, temp_file):
+        """Check if transcription is in progress."""
+        return temp_file and os.path.exists(temp_file)
+        
+    def transcription_exists(self, transcription_file):
+        """Check if transcription file exists."""
+        return transcription_file and os.path.exists(transcription_file)
 
     def is_mp3_file(self, file_path):
         '''Check if the given file is an MP3.'''
         return os.path.isfile(file_path) and file_path.endswith(".mp3")
-
-    def is_transcription_in_progress(self, temp_file):
-        '''Check if a transcription is in progress.'''
-        return os.path.exists(temp_file)
-
-    def transcription_exists(self, transcription_file):
-        '''Check if the transcription already exists using helper function from config.'''
-        return os.path.exists(transcription_file) and os.path.getsize(transcription_file) > 0
 
 # Helper functions
 def does_transcription_exist(transcription_file):

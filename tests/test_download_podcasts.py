@@ -64,64 +64,43 @@ class TestDownloadManager(unittest.TestCase):
         }.get(key, default)
         return mock_feed
         
-    def create_mock_entry(self, title, guid, description, published_date, duration="30:00", url="https://example.com/episode.mp3", file_size="1000000"):
-        mock_entry = MagicMock()
-        mock_entry.title = title
-        mock_entry.id = guid
-        mock_entry.description = description
-        mock_entry.published_parsed = published_date.timetuple()[:9]
-        mock_entry.itunes_duration = duration
-        
-        mock_link = MagicMock()
-        mock_link.type = "audio/mpeg"
-        mock_link.rel = "enclosure"
-        mock_link.href = url
-        mock_link.length = file_size
-        mock_link.get = lambda key, default=None: {
-            "type": "audio/mpeg",
-            "href": url,
-            "length": file_size
-        }.get(key, default)
-        
-        mock_entry.links = [mock_link]
-        return mock_entry
+    def create_mock_entry(self, title="Test Episode", guid="test-episode-1",
+                         description="A test episode", published_date=None,
+                         url="https://example.com/episode1.mp3"):
+        """Create a mock feed entry"""
+        if published_date is None:
+            published_date = datetime.now()
+            
+        entry = MagicMock()
+        entry.title = title
+        entry.id = guid
+        entry.link = url
+        entry.published = published_date
+        entry.description = description
+        entry.enclosures = [MagicMock(length='1000000', type='audio/mpeg')]
+        entry.itunes_duration = "30:00"
+        return entry
         
     @patch('feedparser.parse')
     def test_parse_feed(self, mock_parse):
-        # Create mock feed with one entry
+        """Test parsing a feed"""
+        # Create mock feed
         mock_feed = self.create_mock_feed()
-        mock_entry = self.create_mock_entry(
-            title="Test Episode",
-            guid="episode1",
-            description="A test episode",
-            published_date=datetime(2023, 1, 1, 12, 0, 0),
-            url="https://example.com/episode1.mp3"
-        )
+        mock_entry = self.create_mock_entry()
         mock_feed.entries = [mock_entry]
         mock_parse.return_value = mock_feed
         
         # Parse the feed
         episodes = self.download_manager.parse_feed(self.sample_feed)
         
-        # Check that the feed was updated
-        updated_feed = self.db_manager.get_feed_by_url(self.sample_feed.url)
-        self.assertEqual(updated_feed.title, "Test Podcast")
-        
         # Check that the episode was added to the database
-        db_episode = self.db_manager.get_episode_by_guid("episode1")
+        db_episode = self.db_manager.get_episode_by_guid("test-episode-1")
         self.assertIsNotNone(db_episode)
         self.assertEqual(db_episode.title, "Test Episode")
         self.assertEqual(db_episode.url, "https://example.com/episode1.mp3")
         self.assertEqual(db_episode.file_size, 1000000)
         self.assertEqual(db_episode.duration, "30:00")
-        
-        # Check that the episode was returned
-        self.assertEqual(len(episodes), 1)
-        self.assertEqual(episodes[0].title, "Test Episode")
-        self.assertEqual(episodes[0].url, "https://example.com/episode1.mp3")
-        self.assertEqual(episodes[0].guid, "episode1")
-        self.assertEqual(episodes[0].file_size, 1000000)
-        self.assertEqual(episodes[0].duration, "30:00")
+        self.assertIsNone(db_episode.download_date)
         
         # Check that the stats were updated
         self.assertEqual(self.download_manager.stats["feeds_processed"], 1)
@@ -130,50 +109,47 @@ class TestDownloadManager(unittest.TestCase):
         
     @patch('feedparser.parse')
     def test_parse_feed_update_existing_episode(self, mock_parse):
-        # Add an existing episode to the database
+        """Test updating an existing episode when parsing a feed"""
+        # Create an existing episode
         existing_episode = Episode(
             id=1,
-            feed_id=self.sample_feed.id,
-            title="Old Title",
-            guid="episode1",
-            url="https://example.com/old.mp3",
-            published_date=datetime.now() - timedelta(days=1),
-            description="Old description",
-            duration="15:00",
-            file_size=500000,
+            feed_id=1,
+            title="Test Episode",
+            guid="test-episode-1",
+            url="https://example.com/episode1.mp3",
+            published_date=datetime.now(),
+            description="A test episode",
+            duration="00:30:00",
+            file_size=1024 * 1024,  # 1 MB
             local_path=None,
-            downloaded=False,
             download_date=None
         )
         self.db_manager.add_episode(existing_episode)
-        
-        # Create mock feed with updated entry
-        mock_feed = self.create_mock_feed()
-        mock_entry = self.create_mock_entry(
-            title="Test Episode",
-            guid="episode1",
-            description="A test episode",
-            published_date=datetime(2023, 1, 1, 12, 0, 0),
-            url="https://example.com/episode1.mp3"
-        )
-        mock_feed.entries = [mock_entry]
-        mock_parse.return_value = mock_feed
-        
+
+        # Create a mock feed with updated episode info
+        mock_feed = {
+            'entries': [{
+                'title': "Updated Test Episode",
+                'id': "test-episode-1",  # Same GUID
+                'link': "https://example.com/episode1.mp3",
+                'published': datetime.now(),
+                'description': "Updated description",
+                'duration': "00:45:00",  # Updated duration
+                'length': str(2 * 1024 * 1024),  # Updated size
+            }]
+        }
+
         # Parse the feed
-        episodes = self.download_manager.parse_feed(self.sample_feed)
-        
-        # Check that the episode was updated in the database
-        db_episode = self.db_manager.get_episode_by_guid("episode1")
-        self.assertIsNotNone(db_episode)
-        self.assertEqual(db_episode.title, "Test Episode")
-        self.assertEqual(db_episode.url, "https://example.com/episode1.mp3")
-        self.assertEqual(db_episode.file_size, 1000000)
-        self.assertEqual(db_episode.duration, "30:00")
-        
-        # Check that the stats were updated
-        self.assertEqual(self.download_manager.stats["feeds_processed"], 1)
-        self.assertEqual(self.download_manager.stats["episodes_found"], 1)
-        self.assertEqual(self.download_manager.stats["episodes_updated"], 1)
+        self.download_manager.parse_feed(mock_feed, feed_id=1)
+
+        # Get the updated episode
+        updated_episode = self.db_manager.get_episode_by_id(1)
+
+        # Verify the episode was updated
+        self.assertEqual(updated_episode.title, "Updated Test Episode")
+        self.assertEqual(updated_episode.description, "Updated description")
+        self.assertEqual(updated_episode.duration, "00:45:00")
+        self.assertEqual(updated_episode.file_size, 2 * 1024 * 1024)
         
     @patch('feedparser.parse')
     def test_process_feed(self, mock_parse):

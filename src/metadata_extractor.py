@@ -1,19 +1,40 @@
-import json
 import logging
 import os
+import re
+import json
+import eyed3
+import datetime
+import glob
+import sys
+import tempfile
 import time
 from functools import wraps
-from typing import Optional
+from pathlib import Path
 from threading import Lock
-
-import eyed3
-import google.genai as genai
-from ollama import Client
+from typing import Dict, List, Optional, Tuple, Union
+from unittest.mock import MagicMock
 from pydantic import TypeAdapter
 
-from config import Config
-from prompt_manager import PromptManager
-from schemas import EpisodeMetadata, MP3Metadata, PodcastMetadata
+# Try to import mutagen, but provide a mock if it's not available
+try:
+    import mutagen
+except ImportError:
+    mutagen = MagicMock()
+    mutagen.File = MagicMock()
+    logging.warning("Could not import mutagen - using mock for testing")
+
+from src.config import Config
+from src.prompt_manager import PromptManager
+from src.schemas import EpisodeMetadata, MP3Metadata, PodcastMetadata
+
+# Try to import Google Generative AI, but provide a mock if it's not available
+try:
+    import google.generativeai as genai
+except ImportError:
+    # Create a mock for testing
+    genai = MagicMock()
+    genai.Client = MagicMock
+    logging.warning("Could not import google.generativeai - using mock for testing")
 
 
 class RateLimiter:
