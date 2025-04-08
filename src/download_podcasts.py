@@ -1,14 +1,17 @@
+#!/usr/bin/env python
 import logging
 import os
 import time
 from typing import List, Dict, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timedelta
 import feedparser
 import requests
 from dataclasses import dataclass
 import eyed3
 from pathlib import Path
 
+from argparse_shared import (add_dry_run_argument, add_log_level_argument, 
+                          get_base_parser)
 from config import Config
 
 
@@ -33,8 +36,8 @@ class PodcastEpisode:
         return f"{safe_title}.mp3"
 
 
-class PodcastDownloader:
-    def __init__(self, config: Config, dry_run: bool = False):
+class DownloadManager:
+    def __init__(self, config: Config, dry_run=False):
         self.config = config
         self.dry_run = dry_run
         self.stats = {
@@ -205,14 +208,12 @@ class PodcastDownloader:
 
 
 if __name__ == "__main__":
-    from argparse_shared import (add_dry_run_argument, add_log_level_argument, get_base_parser)
-    import argparse
-    
     parser = get_base_parser()
-    parser.description = "Download podcast episodes from RSS feeds"
+    parser.description = "Download podcasts from RSS feeds"
     add_dry_run_argument(parser)
     add_log_level_argument(parser)
     
+    # Add download-specific arguments
     parser.add_argument('-f', '--feed', help='RSS feed URL to download from')
     parser.add_argument('--feed-file', help='File containing a list of RSS feed URLs (one per line)')
     parser.add_argument('--limit', type=int, default=5, 
@@ -232,15 +233,15 @@ if __name__ == "__main__":
     # Load configuration
     config = Config(env_file=args.env_file)
     
-    # Create downloader
-    downloader = PodcastDownloader(config=config, dry_run=args.dry_run)
+    # Create download manager
+    manager = DownloadManager(config=config, dry_run=args.dry_run)
     
     # Process feeds
     if args.feed:
-        downloader.process_feed(args.feed, limit=args.limit, min_age_days=args.min_age_days)
+        manager.process_feed(args.feed, limit=args.limit, min_age_days=args.min_age_days)
     elif args.feed_file:
         with open(args.feed_file, 'r') as f:
             feeds = [line.strip() for line in f if line.strip() and not line.startswith('#')]
-        downloader.process_feed_list(feeds, limit_per_feed=args.limit, min_age_days=args.min_age_days)
+        manager.process_feed_list(feeds, limit_per_feed=args.limit, min_age_days=args.min_age_days)
     else:
         parser.error("Either --feed or --feed-file must be specified") 

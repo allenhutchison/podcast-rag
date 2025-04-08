@@ -8,7 +8,7 @@ from argparse_shared import (add_dry_run_argument, add_log_level_argument,
                           add_ai_system_argument, get_base_parser)
 from config import Config
 from file_manager import FileManager
-from podcast_downloader import PodcastDownloader
+from download_podcasts import DownloadManager
 from datetime import timedelta
 
 
@@ -43,7 +43,7 @@ def download_podcasts(config: Config, args) -> List[str]:
         logging.info("Skipping podcast downloads as requested")
         return []
         
-    downloader = PodcastDownloader(config=config, dry_run=args.dry_run)
+    downloader = DownloadManager(config=config, dry_run=args.dry_run)
     
     processed_dirs = []
     if args.feed:
