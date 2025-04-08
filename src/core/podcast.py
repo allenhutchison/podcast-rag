@@ -157,7 +157,7 @@ class PodcastManager:
 
     def download_episode(self, db: Session, episode_id: int) -> Episode:
         """Download an episode's audio file."""
-        episode = self.get_episode(db, episode_id)
+        episode = db.query(Episode).filter(Episode.id == episode_id).first()
         if not episode:
             raise ValueError(f"Episode {episode_id} not found")
         
@@ -191,21 +191,27 @@ class PodcastManager:
             
             # Try to update metadata using eyed3
             try:
+                # Load the podcast to get metadata
+                podcast = db.query(Podcast).filter(Podcast.id == episode.podcast_id).first()
+                if not podcast:
+                    logger.warning(f"Podcast {episode.podcast_id} not found when setting ID3 tags")
+                    return episode
+                
                 audio = eyed3.load(local_path)
                 if audio and audio.tag:
                     audio.tag.title = episode.title
-                    audio.tag.artist = episode.podcast.author
-                    audio.tag.album = episode.podcast.title
+                    audio.tag.artist = podcast.author
+                    audio.tag.album = podcast.title
                     audio.tag.save()
             except Exception as e:
-                logger.warning(f"Failed to update audio metadata: {str(e)}")
+                logger.warning(f"Failed to set ID3 tags: {str(e)}")
             
             return episode
-            
         except Exception as e:
-            if local_path.exists():
-                local_path.unlink()
-            raise Exception(f"Failed to download episode: {str(e)}")
+            # Clean up the file if it was partially downloaded
+            if os.path.exists(local_path):
+                os.remove(local_path)
+            raise ValueError(f"Failed to download episode: {str(e)}")
 
     def get_podcast(self, db: Session, podcast_id: int) -> Optional[Podcast]:
         """Get a podcast by ID."""
