@@ -6,7 +6,7 @@ from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 from dataclasses import dataclass
 
-from config import Config
+from src.config import Config
 
 
 @dataclass
@@ -48,6 +48,11 @@ class DatabaseManager:
     def _connect(self):
         """Connect to the SQLite database"""
         try:
+            # Ensure the directory exists
+            db_dir = os.path.dirname(self.db_path)
+            os.makedirs(db_dir, exist_ok=True)
+            logging.info(f"Created database directory: {db_dir}")
+            
             self.conn = sqlite3.connect(self.db_path)
             self.conn.row_factory = sqlite3.Row  # This enables column access by name
             self.cursor = self.conn.cursor()

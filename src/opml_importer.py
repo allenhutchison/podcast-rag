@@ -5,16 +5,22 @@ import xml.etree.ElementTree as ET
 from typing import List, Dict, Optional
 from datetime import datetime
 
-from argparse_shared import (add_dry_run_argument, add_log_level_argument, 
+from src.argparse_shared import (add_dry_run_argument, add_log_level_argument, 
                           get_base_parser)
-from config import Config
-from db import DatabaseManager, Feed
+from src.config import Config
+from src.db import DatabaseManager, Feed
 
 
 class OPMLImporter:
     def __init__(self, config: Config, dry_run=False):
         self.config = config
         self.dry_run = dry_run
+        
+        # Ensure database directory exists
+        if not os.path.exists(config.BASE_DIRECTORY):
+            os.makedirs(config.BASE_DIRECTORY, exist_ok=True)
+            logging.info(f"Created base directory: {config.BASE_DIRECTORY}")
+            
         self.db = DatabaseManager(config)
         self.stats = {
             "feeds_found": 0,
@@ -155,16 +161,16 @@ class OPMLImporter:
         
     def log_stats(self):
         """Log import statistics"""
-        logging.info(f"Feeds found in OPML: {this.stats['feeds_found']}")
-        logging.info(f"Feeds added: {this.stats['feeds_added']}")
-        logging.info(f"Feeds updated: {this.stats['feeds_updated']}")
-        logging.info(f"Feeds skipped: {this.stats['feeds_skipped']}")
-        logging.info(f"Import errors: {this.stats['import_errors']}")
+        logging.info(f"Feeds found in OPML: {self.stats['feeds_found']}")
+        logging.info(f"Feeds added: {self.stats['feeds_added']}")
+        logging.info(f"Feeds updated: {self.stats['feeds_updated']}")
+        logging.info(f"Feeds skipped: {self.stats['feeds_skipped']}")
+        logging.info(f"Import errors: {self.stats['import_errors']}")
         
     def __del__(self):
         """Clean up database connection when object is destroyed"""
-        if hasattr(this, 'db'):
-            this.db.close()
+        if hasattr(self, 'db'):
+            self.db.close()
 
 
 if __name__ == "__main__":

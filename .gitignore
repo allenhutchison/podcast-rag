@@ -1,6 +1,8 @@
 # non-standard stuff
 *.out
 *.log
+podcast.db
+**/podcast.db
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
