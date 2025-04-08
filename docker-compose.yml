@@ -1,0 +1,26 @@
+services:
+  app:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./media:/app/media
+      - ./.env:/app/.env
+    environment:
+      - CHROMA_DB_HOST=chroma
+      - CHROMA_DB_PORT=8000
+    depends_on:
+      - chroma
+
+  chroma:
+    image: chromadb/chroma:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - ALLOW_RESET=true
+      - ANONYMIZED_TELEMETRY=false
+
+volumes:
+  chroma_data: 
