@@ -13,6 +13,7 @@ from pathlib import Path
 from argparse_shared import (add_dry_run_argument, add_log_level_argument, 
                           get_base_parser)
 from config import Config
+from db import DatabaseManager, Feed as DBFeed, Episode as DBEpisode
 
 
 @dataclass
@@ -47,6 +48,7 @@ class DownloadManager:
             "episodes_skipped": 0,
             "download_errors": 0
         }
+        self.db = DatabaseManager(config)
         
     def parse_feed(self, feed_url: str) -> Tuple[str, List[PodcastEpisode]]:
         """Parse a podcast RSS feed and return podcast name and list of episodes"""
@@ -55,6 +57,30 @@ class DownloadManager:
         try:
             feed = feedparser.parse(feed_url)
             podcast_title = feed.feed.title
+            
+            # Check if feed already exists in database
+            db_feed = self.db.get_feed_by_url(feed_url)
+            if db_feed:
+                # Update existing feed
+                db_feed.title = podcast_title
+                db_feed.last_updated = datetime.now()
+                db_feed.description = feed.feed.get('description')
+                db_feed.language = feed.feed.get('language')
+                db_feed.image_url = feed.feed.get('image', {}).get('href')
+                self.db.update_feed(db_feed)
+                feed_id = db_feed.id
+            else:
+                # Create new feed
+                db_feed = DBFeed(
+                    id=0,  # Will be set by database
+                    title=podcast_title,
+                    url=feed_url,
+                    last_updated=datetime.now(),
+                    description=feed.feed.get('description'),
+                    language=feed.feed.get('language'),
+                    image_url=feed.feed.get('image', {}).get('href')
+                )
+                feed_id = self.db.add_feed(db_feed)
             
             episodes = []
             for entry in feed.entries:
@@ -86,6 +112,35 @@ class DownloadManager:
                             file_size=int(file_size) if file_size and file_size.isdigit() else None
                         )
                         episodes.append(episode)
+                        
+                        # Check if episode already exists in database
+                        db_episode = self.db.get_episode_by_guid(episode.guid)
+                        if db_episode:
+                            # Update existing episode
+                            db_episode.title = episode.title
+                            db_episode.url = episode.url
+                            db_episode.published_date = episode.published_date
+                            db_episode.description = episode.description
+                            db_episode.duration = episode.duration
+                            db_episode.file_size = episode.file_size
+                            self.db.update_episode(db_episode)
+                        else:
+                            # Add new episode
+                            db_episode = DBEpisode(
+                                id=0,  # Will be set by database
+                                feed_id=feed_id,
+                                title=episode.title,
+                                guid=episode.guid,
+                                url=episode.url,
+                                published_date=episode.published_date,
+                                description=episode.description,
+                                duration=episode.duration,
+                                file_size=episode.file_size,
+                                local_path=None,
+                                downloaded=False,
+                                download_date=None
+                            )
+                            self.db.add_episode(db_episode)
             
             self.stats['episodes_found'] += len(episodes)
             self.stats['feeds_processed'] += 1
@@ -101,6 +156,13 @@ class DownloadManager:
         os.makedirs(podcast_dir, exist_ok=True)
         output_path = os.path.join(podcast_dir, episode.filename)
         
+        # Check if episode is already downloaded in database
+        db_episode = self.db.get_episode_by_guid(episode.guid)
+        if db_episode and db_episode.downloaded and os.path.exists(db_episode.local_path):
+            logging.info(f"Skipping {episode.title} - already downloaded")
+            self.stats['episodes_skipped'] += 1
+            return False
+            
         # Skip if file already exists
         if os.path.exists(output_path):
             logging.info(f"Skipping {episode.title} - file already exists")
@@ -142,6 +204,13 @@ class DownloadManager:
                     audio_file.tag.save()
             except Exception as e:
                 logging.warning(f"Could not add ID3 tags to {output_path}: {e}")
+                
+            # Update episode in database
+            if db_episode:
+                db_episode.local_path = output_path
+                db_episode.downloaded = True
+                db_episode.download_date = datetime.now()
+                self.db.update_episode(db_episode)
                 
             self.stats['episodes_downloaded'] += 1
             return True
@@ -205,6 +274,11 @@ class DownloadManager:
         logging.info(f"Episodes downloaded: {self.stats['episodes_downloaded']}")
         logging.info(f"Episodes skipped: {self.stats['episodes_skipped']}")
         logging.info(f"Download errors: {self.stats['download_errors']}")
+        
+    def __del__(self):
+        """Clean up database connection when object is destroyed"""
+        if hasattr(self, 'db'):
+            self.db.close()
 
 
 if __name__ == "__main__":
