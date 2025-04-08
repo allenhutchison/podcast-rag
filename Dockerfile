@@ -22,8 +22,9 @@ COPY . .
 RUN mkdir -p /app/media
 
 # Set environment variables
-ENV PYTHONPATH=/app/src
+ENV PYTHONPATH=/app:/app/src
 ENV MEDIA_EMBED_BASE_DIRECTORY=/app/media
+ENV FLASK_APP=app.py
 
 # Expose port for Flask application
 EXPOSE 8080

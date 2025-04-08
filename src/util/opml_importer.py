@@ -1,7 +1,7 @@
-import xml.etree.ElementTree as ET
 import logging
 from typing import List, Dict, Optional
 from urllib.parse import urlparse
+import listparser
 
 from src.db.metadatadb import PodcastDB
 
@@ -27,25 +27,44 @@ class OPMLImporter:
             List[Dict[str, str]]: List of dictionaries containing podcast information
         """
         try:
-            root = ET.fromstring(opml_content)
-            # Find all outline elements that have either type="rss" or xmlUrl attribute
+            # Use listparser to parse the OPML content
+            result = listparser.parse(opml_content)
+            
+            # Check if there were any parsing errors
+            if result.bozo:
+                self.logger.error(f"Error parsing OPML: {result.bozo_exception}")
+            
             podcasts = []
             seen_urls = set()  # Track seen URLs to avoid duplicates
             
-            # Use a more specific XPath to find podcast entries
-            for outline in root.findall(".//outline[@xmlUrl]"):
-                feed_url = outline.get('xmlUrl', '')
+            # Process each feed entry from listparser
+            for feed in result.feeds:
+                feed_url = feed.url
                 
                 # Skip if we've seen this URL before
                 if feed_url in seen_urls:
                     continue
                 seen_urls.add(feed_url)
                 
+                # Get the title and description
+                title = feed.title or ""
+                
+                # If there's no title, extract it from the URL
+                if not title:
+                    title = self._extract_domain_from_url(feed_url)
+                
+                # Get description if available
+                description = ""
+                if hasattr(feed, "description"):
+                    description = feed.description or ""
+                
+                self.logger.info(f"Parsing podcast: title='{title}', feed_url='{feed_url}'")
+                
                 podcast = {
-                    'title': outline.get('text', ''),
+                    'title': title,
                     'feed_url': feed_url,
-                    'description': outline.get('description', ''),
-                    'image_url': outline.get('imageUrl', '')  # Some OPML files include image URLs
+                    'description': description,
+                    'image_url': getattr(feed, "image", {}).get("href", "") if hasattr(feed, "image") else ""
                 }
                 
                 # Validate the feed URL
@@ -53,18 +72,33 @@ class OPMLImporter:
                     self.logger.warning(f"Invalid feed URL for podcast '{podcast['title']}': {podcast['feed_url']}")
                     continue
                 
-                # Validate image URL if present
-                if podcast['image_url'] and not self._is_valid_feed_url(podcast['image_url']):
-                    self.logger.warning(f"Invalid image URL for podcast '{podcast['title']}': {podcast['image_url']}")
-                    podcast['image_url'] = ''  # Clear invalid image URL
-                
                 podcasts.append(podcast)
             
             return podcasts
             
-        except ET.ParseError as e:
+        except Exception as e:
             self.logger.error(f"Failed to parse OPML content: {e}")
             return []
+    
+    def _extract_domain_from_url(self, url: str) -> str:
+        """Extract a readable name from the domain in a URL.
+        
+        Args:
+            url (str): URL to extract domain from
+            
+        Returns:
+            str: Clean domain name suitable for display
+        """
+        try:
+            domain = urlparse(url).netloc
+            # Remove subdomains like www, feeds, etc.
+            main_domain = '.'.join(domain.split('.')[-2:]) if len(domain.split('.')) > 1 else domain
+            # Remove TLD
+            name = main_domain.split('.')[0]
+            # Clean up the name
+            return name.replace('-', ' ').replace('_', ' ').title()
+        except:
+            return url
     
     def _is_valid_feed_url(self, url: str) -> bool:
         """Check if a URL is valid and likely to be a podcast feed.

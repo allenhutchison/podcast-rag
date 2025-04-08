@@ -1,255 +1,83 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <title>Flask RAG App</title>
-    <style>
-        :root {
-            --primary-color: #2563eb;
-            --primary-hover: #1d4ed8;
-            --background-color: #f8fafc;
-            --text-color: #1e293b;
-            --border-color: #e2e8f0;
-            --footnote-bg: #f1f5f9;
-            --card-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-        }
+{% extends "base.html" %}
 
-        body {
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: var(--background-color);
-            color: var(--text-color);
-            line-height: 1.5;
-        }
+{% block title %}Search Podcast Transcriptions{% endblock %}
 
-        .container {
-            max-width: 900px;
-            margin: 40px auto;
-            padding: 0 24px;
-        }
+{% block content %}
+<div class="container">
+    <h1>Search Podcast Transcriptions</h1>
+    <form method="POST" action="/">
+        <input class="search-input" type="text" name="query" placeholder="Enter your query" />
+        <button class="search-button" type="submit">Search</button>
+    </form>
 
-        h1 {
-            font-size: 2.25rem;
-            font-weight: 700;
-            color: var(--text-color);
-            margin-bottom: 1.5rem;
-            text-align: center;
-        }
+    {% if styled_text %}
+      <div class="results">
+        <h2>LLM Result</h2>
+        <div>
+            {{ styled_text|safe }}
+        </div>
+      </div>
+    {% endif %}
 
-        form {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 2rem;
-            background: white;
-            padding: 1.5rem;
-            border-radius: 12px;
-            box-shadow: var(--card-shadow);
-        }
-
-        .search-input {
-            width: 100%;
-            padding: 12px 16px;
-            font-size: 1rem;
-            border-radius: 8px;
-            border: 2px solid var(--border-color);
-            transition: border-color 0.15s ease;
-            outline: none;
-        }
-
-        .search-input:focus {
-            border-color: var(--primary-color);
-        }
-
-        .search-button {
-            padding: 12px 24px;
-            font-size: 1rem;
-            font-weight: 600;
-            border-radius: 8px;
-            border: none;
-            background-color: var(--primary-color);
-            color: white;
-            cursor: pointer;
-            transition: background-color 0.15s ease;
-            white-space: nowrap;
-        }
-
-        .search-button:hover {
-            background-color: var(--primary-hover);
-        }
-
-        .results {
-            background: white;
-            padding: 2rem;
-            border-radius: 12px;
-            box-shadow: var(--card-shadow);
-            margin-top: 2rem;
-        }
-
-        .results h2 {
-            font-size: 1.5rem;
-            margin-top: 0;
-            margin-bottom: 1rem;
-            color: var(--text-color);
-        }
-
-        .footnotes {
-            margin-top: 2rem;
-            padding-top: 2rem;
-            border-top: 2px solid var(--border-color);
-        }
-
-        .footnote-references {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            margin: 1rem 0;
-        }
-
-        .footnote-number {
-            cursor: pointer;
-            color: var(--primary-color);
-            text-decoration: none;
-            padding: 4px 10px;
-            border-radius: 6px;
-            background-color: var(--footnote-bg);
-            font-size: 0.875rem;
-            transition: background-color 0.15s ease;
-        }
-
-        .footnote-number:hover {
-            background-color: #e2e8f0;
-        }
-
-        .footnote-content {
-            display: none;
-            padding: 1rem;
-            margin: 0.5rem 0;
-            background-color: var(--footnote-bg);
-            border-radius: 8px;
-            font-size: 0.9375rem;
-        }
-
-        .footnote-ref {
-            font-size: 0.75rem;
-            vertical-align: super;
-            color: var(--primary-color);
-            text-decoration: none;
-            cursor: pointer;
-            margin: 0 2px;
-            font-weight: 500;
-        }
-
-        .footnote-content.highlight {
-            animation: highlight 2s ease-in-out;
-        }
-
-        @keyframes highlight {
-            0% { background-color: #fef9c3; }
-            100% { background-color: var(--footnote-bg); }
-        }
-
-        /* Responsive adjustments */
-        @media (max-width: 640px) {
-            .container {
-                padding: 0 16px;
-                margin: 24px auto;
-            }
-
-            form {
-                flex-direction: column;
-                padding: 1rem;
-            }
-
-            .search-button {
-                width: 100%;
-            }
-
-            .results {
-                padding: 1rem;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Search Podcast Transcriptions</h1>
-        <form method="POST" action="/">
-            <input class="search-input" type="text" name="query" placeholder="Enter your query" />
-            <button class="search-button" type="submit">Search</button>
-        </form>
-
-        {% if styled_text %}
-          <div class="results">
-            <h2>LLM Result</h2>
-            <div>
-                {{ styled_text|safe }}
-            </div>
-          </div>
-        {% endif %}
-
-        {% if db_results %}
-        <div class="footnotes">
-            <hr>
-            <div class="footnote-references">
-                {% for result in db_results %}
-                    <span class="footnote-number" onclick="toggleFootnote('{{ loop.index }}', event)">
-                        {{ result.footnote }}
-                    </span>
-                {% endfor %}
-            </div>
+    {% if db_results %}
+    <div class="footnotes">
+        <hr>
+        <div class="footnote-references">
             {% for result in db_results %}
-                <div id="footnote-content-{{ loop.index }}" class="footnote-content">
-                    {{ result.text }}
-                    {% if result.source %}
-                    <br>
-                    <small>Source: <a href="{{ result.source }}">{{ result.source_text }}</a></small>
-                    {% endif %}
-                    {% if result.metadata %}
-                    <br>
-                    <small>{{ result.metadata|safe }}</small>
-                    {% endif %}
-                </div>
+                <span class="footnote-number" onclick="toggleFootnote('{{ loop.index }}', event)">
+                    {{ result.footnote }}
+                </span>
             {% endfor %}
         </div>
-        {% endif %}
+        {% for result in db_results %}
+            <div id="footnote-content-{{ loop.index }}" class="footnote-content">
+                {{ result.text }}
+                {% if result.source %}
+                <br>
+                <small>Source: <a href="{{ result.source }}">{{ result.source_text }}</a></small>
+                {% endif %}
+                {% if result.metadata %}
+                <br>
+                <small>{{ result.metadata|safe }}</small>
+                {% endif %}
+            </div>
+        {% endfor %}
     </div>
-    <script>
-        function toggleFootnote(index, event) {
-            if (event) {
-                event.preventDefault();
+    {% endif %}
+</div>
+<script>
+    function toggleFootnote(index, event) {
+        if (event) {
+            event.preventDefault();
+        }
+        const content = document.getElementById(`footnote-content-${index}`);
+        const allFootnotes = document.getElementsByClassName('footnote-content');
+        
+        Array.from(allFootnotes).forEach(note => {
+            if (note.id !== `footnote-content-${index}`) {
+                note.style.display = 'none';
             }
-            const content = document.getElementById(`footnote-content-${index}`);
-            const allFootnotes = document.getElementsByClassName('footnote-content');
-            
-            Array.from(allFootnotes).forEach(note => {
-                if (note.id !== `footnote-content-${index}`) {
-                    note.style.display = 'none';
-                }
-            });
-            
-            content.style.display = content.style.display === 'none' ? 'block' : 'none';
-        }
+        });
+        
+        content.style.display = content.style.display === 'none' ? 'block' : 'none';
+    }
 
-        function processFootnotes() {
-            const content = document.querySelector('.results div');
-            if (!content) return;
-            
-            // Replace both single [n] and grouped [n,m,p] footnotes
-            content.innerHTML = content.innerHTML.replace(
-                /\[(\d+(?:\s*,\s*\d+)*)\]/g,
-                function(match, numbers) {
-                    const nums = numbers.split(',').map(n => n.trim());
-                    return nums.map(num => 
-                        `<a class="footnote-ref" onclick="toggleFootnote(${num}, event)">[${num}]</a>`
-                    ).join('');
-                }
-            );
-        }
+    function processFootnotes() {
+        const content = document.querySelector('.results div');
+        if (!content) return;
+        
+        // Replace both single [n] and grouped [n,m,p] footnotes
+        content.innerHTML = content.innerHTML.replace(
+            /\[(\d+(?:\s*,\s*\d+)*)\]/g,
+            function(match, numbers) {
+                const nums = numbers.split(',').map(n => n.trim());
+                return nums.map(num => 
+                    `<a class="footnote-ref" onclick="toggleFootnote(${num}, event)">[${num}]</a>`
+                ).join('');
+            }
+        );
+    }
 
-        document.addEventListener('DOMContentLoaded', processFootnotes);
-    </script>
-</body>
-</html>
+    document.addEventListener('DOMContentLoaded', processFootnotes);
+</script>
+{% endblock %}

@@ -16,3 +16,4 @@ pydantic
 feedparser
 requests
 SQLAlchemy
+listparser==0.20

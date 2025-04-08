@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Podcast Management{% endblock %}
+
+{% block content %}
+<div class="podcast-management">
+    <h2>Podcast Management</h2>
+    
+    <!-- OPML Import Section -->
+    <div class="opml-import">
+        <h3>Import OPML File</h3>
+        <form action="{{ url_for('import_opml') }}" method="post" enctype="multipart/form-data">
+            <input type="file" name="opml_file" accept=".opml,.xml" required>
+            <button type="submit">Import OPML</button>
+        </form>
+    </div>
+
+    <!-- Podcast List Section -->
+    <div class="podcast-list">
+        <h3>Your Podcasts</h3>
+        {% if podcasts %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Description</th>
+                        <th>Last Updated</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for podcast in podcasts %}
+                    <tr>
+                        <td>{{ podcast.title }}</td>
+                        <td>{{ podcast.description[:200] }}{% if podcast.description|length > 200 %}...{% endif %}</td>
+                        <td>{{ podcast.last_updated.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                        <td>
+                            <form action="{{ url_for('delete_podcast') }}" method="post" style="display: inline;">
+                                <input type="hidden" name="feed_url" value="{{ podcast.feed_url }}">
+                                <button type="submit" onclick="return confirm('Are you sure you want to delete this podcast?')">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p>No podcasts found. Import an OPML file to get started.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %} 

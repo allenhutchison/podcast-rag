@@ -1,18 +1,27 @@
 import argparse
 import logging
 import json
+import os
+from werkzeug.utils import secure_filename
 
 import markdown
-from flask import Flask, jsonify, render_template, request
-from flask_cors import CORS  # Add this import
+from flask import Flask, jsonify, render_template, request, redirect, url_for, flash
+from flask_cors import CORS
 from google.generativeai.types import GenerateContentResponse
 from markupsafe import Markup
 
 from config import Config
 from rag import RagManager
+from db.metadatadb import PodcastDB
+from util.opml_importer import OPMLImporter
 
-app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+# Get the absolute path to the template and static folders
+template_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'templates'))
+static_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'static'))
+
+app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
+CORS(app)
+app.secret_key = os.urandom(24)  # Required for flash messages
 
 # Only parse arguments when running directly
 if __name__ == '__main__':
@@ -22,6 +31,9 @@ if __name__ == '__main__':
     config = Config(env_file=args.env_file)
 else:
     config = Config()
+
+# Initialize database
+podcast_db = PodcastDB()
 
 class GenerateContentResponseConverter:
     @staticmethod
@@ -155,6 +167,88 @@ def search():
     except Exception as e:
         logging.error(f"Search error: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/podcasts')
+def podcasts():
+    """Display the podcast management page."""
+    all_podcasts = podcast_db.get_all_podcasts()
+    return render_template('podcasts.html', podcasts=all_podcasts)
+
+@app.route('/debug-podcasts')
+def debug_podcasts():
+    """Debugging route to check podcast data."""
+    all_podcasts = podcast_db.get_all_podcasts()
+    result = []
+    for p in all_podcasts:
+        result.append({
+            'id': p.id,
+            'title': p.title,
+            'description': p.description,
+            'feed_url': p.feed_url
+        })
+    return jsonify(result)
+
+@app.route('/reset-podcasts')
+def reset_podcasts():
+    """Reset the podcast database by deleting all entries."""
+    from sqlalchemy import delete
+    from src.db.metadatadb import Podcast
+    
+    # Delete all podcasts
+    podcast_db.session.execute(delete(Podcast))
+    podcast_db.session.commit()
+    
+    return jsonify({"message": "All podcasts have been deleted"})
+
+@app.route('/import-opml', methods=['POST'])
+def import_opml():
+    """Handle OPML file import."""
+    if 'opml_file' not in request.files:
+        flash('No file uploaded', 'error')
+        return redirect(url_for('podcasts'))
+    
+    file = request.files['opml_file']
+    if file.filename == '':
+        flash('No file selected', 'error')
+        return redirect(url_for('podcasts'))
+    
+    if not file.filename.endswith(('.opml', '.xml')):
+        flash('Invalid file type. Please upload an OPML or XML file.', 'error')
+        return redirect(url_for('podcasts'))
+    
+    try:
+        # Read the OPML content
+        opml_content = file.read().decode('utf-8')
+        
+        # Initialize OPML importer
+        importer = OPMLImporter(podcast_db)
+        
+        # Import podcasts
+        imported_count = importer.import_from_string(opml_content)
+        
+        flash(f'Successfully imported {imported_count} podcasts', 'success')
+    except Exception as e:
+        flash(f'Error importing OPML file: {str(e)}', 'error')
+    
+    return redirect(url_for('podcasts'))
+
+@app.route('/delete-podcast', methods=['POST'])
+def delete_podcast():
+    """Delete a podcast from the database."""
+    feed_url = request.form.get('feed_url')
+    if not feed_url:
+        flash('No feed URL provided', 'error')
+        return redirect(url_for('podcasts'))
+    
+    try:
+        if podcast_db.delete_podcast(feed_url):
+            flash('Podcast deleted successfully', 'success')
+        else:
+            flash('Podcast not found', 'error')
+    except Exception as e:
+        flash(f'Error deleting podcast: {str(e)}', 'error')
+    
+    return redirect(url_for('podcasts'))
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001, debug=True)

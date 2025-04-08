@@ -9,7 +9,26 @@
 <body>
     <header>
         <h1>Flask RAG Application</h1>
+        <nav>
+            <ul>
+                <li><a href="{{ url_for('index') }}">Home</a></li>
+                <li><a href="{{ url_for('podcasts') }}">Podcasts</a></li>
+            </ul>
+        </nav>
     </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="flash-messages">
+                {% for category, message in messages %}
+                    <div class="flash-message {{ category }}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
     <main>
         {% block content %}{% endblock %}
     </main>
