@@ -13,6 +13,7 @@ class Podcast(Base):
     title = Column(String(255), nullable=False)
     description = Column(Text)
     feed_url = Column(String(512), unique=True, nullable=False)
+    image_url = Column(String(512))  # URL to podcast cover image
     last_updated = Column(DateTime, default=lambda: datetime.now(UTC))
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
 
@@ -28,13 +29,14 @@ class PodcastDB:
         Session = sessionmaker(bind=self.engine)
         self.session = Session()
     
-    def add_podcast(self, title, description, feed_url):
+    def add_podcast(self, title, description, feed_url, image_url=None):
         """Add a new podcast to the database.
         
         Args:
             title (str): Podcast title
             description (str): Podcast description
             feed_url (str): RSS feed URL
+            image_url (str, optional): URL to podcast cover image
             
         Returns:
             Podcast: The created podcast object
@@ -42,7 +44,8 @@ class PodcastDB:
         podcast = Podcast(
             title=title,
             description=description,
-            feed_url=feed_url
+            feed_url=feed_url,
+            image_url=image_url
         )
         self.session.add(podcast)
         self.session.commit()
