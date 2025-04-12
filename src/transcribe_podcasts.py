@@ -1,6 +1,8 @@
 import logging
 import os
 import whisper
+import gc
+import torch
 
 from argparse_shared import (add_dry_run_argument, add_episode_path_argument,
                              add_log_level_argument, get_base_parser)
@@ -25,6 +27,19 @@ class TranscriptionManager:
             logging.info("Loading Whisper model (large-v3)...")
             self.model = whisper.load_model("large-v3")
         return self.model
+    
+    def unload_model(self):
+        """Unload the Whisper model to free up GPU memory"""
+        if self.model is not None:
+            logging.info("Unloading Whisper model to free GPU memory...")
+            # Clear the model from memory
+            self.model = None
+            # Force garbage collection
+            gc.collect()
+            # Clear CUDA cache if available
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            logging.info("Whisper model unloaded successfully")
 
     def handle_transcription(self, episode_path):
         transcription_file = self.config.build_transcription_file(episode_path)
@@ -68,6 +83,8 @@ class TranscriptionManager:
         except Exception as e:
             logging.error(f"Unexpected error during transcription for {episode_path}: {e}")
         finally:
+            # Unload the model to free up GPU memory
+            self.unload_model()
             if os.path.exists(temp_file):
                 os.remove(temp_file)
 

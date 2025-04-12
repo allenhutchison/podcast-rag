@@ -32,17 +32,21 @@ class FileManager:
 
     def process_podcast(self, podcast_dir):
         '''Process all podcast files in a directory.'''
-        for episode_file in os.listdir(podcast_dir):
-            episode_path = os.path.join(podcast_dir, episode_file)
-            if self.config.is_mp3_file(episode_path):
-                self.stats["total_mp3_files"] += 1
-                # Handle transcription for MP3 files
-                self.transcription_manager.handle_transcription(episode_path)
-                # Extract metadata from transcript and MP3
-                metadata = self.metadata_extractor.handle_metadata_extraction(episode_path)
-                # Handle indexing for transcripts with embedding and metadata
-                if not self.skip_vectordb:
-                    self.vector_db_manager.handle_indexing(episode_path, metadata=metadata)
+        try:
+            for episode_file in os.listdir(podcast_dir):
+                episode_path = os.path.join(podcast_dir, episode_file)
+                if self.config.is_mp3_file(episode_path):
+                    self.stats["total_mp3_files"] += 1
+                    # Handle transcription for MP3 files
+                    self.transcription_manager.handle_transcription(episode_path)
+                    # Extract metadata from transcript and MP3
+                    metadata = self.metadata_extractor.handle_metadata_extraction(episode_path)
+                    # Handle indexing for transcripts with embedding and metadata
+                    if not self.skip_vectordb:
+                        self.vector_db_manager.handle_indexing(episode_path, metadata=metadata)
+        finally:
+            # Ensure the Whisper model is unloaded after processing all files in the directory
+            self.transcription_manager.unload_model()
 
     def process_directory(self):
         '''Main function to start processing podcasts.'''
@@ -50,11 +54,15 @@ class FileManager:
             logging.error(f"Directory {self.config.BASE_DIRECTORY} does not exist.")
             return
 
-        for podcast_name in os.listdir(self.config.BASE_DIRECTORY):
-            podcast_dir = os.path.join(self.config.BASE_DIRECTORY, podcast_name)
+        try:
+            for podcast_name in os.listdir(self.config.BASE_DIRECTORY):
+                podcast_dir = os.path.join(self.config.BASE_DIRECTORY, podcast_name)
 
-            if os.path.isdir(podcast_dir):
-                self.process_podcast(podcast_dir)
+                if os.path.isdir(podcast_dir):
+                    self.process_podcast(podcast_dir)
+        finally:
+            # Ensure the Whisper model is unloaded after processing all directories
+            self.transcription_manager.unload_model()
 
         self.log_stats()
 

@@ -18,7 +18,12 @@ def run_file_manager(env_file=None):
     """Run the file manager with the given environment file."""
     config = Config(env_file=env_file)
     file_manager = FileManager(config=config, dry_run=False)
-    file_manager.process_directory()
+    try:
+        file_manager.process_directory()
+    finally:
+        # Ensure the Whisper model is unloaded after each scheduled run
+        if hasattr(file_manager, 'transcription_manager'):
+            file_manager.transcription_manager.unload_model()
 
 if __name__ == "__main__":
     parser = get_base_parser()
