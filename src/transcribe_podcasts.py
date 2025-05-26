@@ -1,6 +1,8 @@
 import logging
 import os
 import whisper
+import torch
+import gc
 
 from argparse_shared import (add_dry_run_argument, add_episode_path_argument,
                              add_log_level_argument, get_base_parser)
@@ -70,6 +72,15 @@ class TranscriptionManager:
         finally:
             if os.path.exists(temp_file):
                 os.remove(temp_file)
+
+    def release_model(self):
+        if self.model is not None:
+            logging.info("Releasing Whisper model from memory.")
+            del self.model
+            self.model = None # Ensure it's None so get_model reloads if needed
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            gc.collect()
 
     def log_stats(self):
         '''Log transcription statistics.'''

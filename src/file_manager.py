@@ -57,6 +57,8 @@ class FileManager:
                 self.process_podcast(podcast_dir)
 
         self.log_stats()
+        # Release the model after processing is complete for the directory
+        self.transcription_manager.release_model()
 
     def log_stats(self):
         '''Log transcription statistics.'''
