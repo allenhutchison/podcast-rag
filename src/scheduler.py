@@ -14,9 +14,8 @@ def job_listener(event):
     else:
         logging.info("Job completed successfully")
 
-def run_file_manager(env_file=None):
-    """Run the file manager with the given environment file."""
-    config = Config(env_file=env_file)
+def run_file_manager(config):
+    """Run the file manager with the given configuration."""
     file_manager = FileManager(config=config, dry_run=False)
     file_manager.process_directory()
 
@@ -40,8 +39,11 @@ if __name__ == "__main__":
         logging.getLogger('httpx').setLevel("WARNING")
         logging.getLogger('httpcore').setLevel("WARNING")
 
+    # Create config instance once
+    config = Config(env_file=args.env_file)
+
     # Run the file manager once before starting the scheduler
-    run_file_manager(env_file=args.env_file)
+    run_file_manager(config=config)
 
     scheduler = BlockingScheduler()
     scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
@@ -49,7 +51,7 @@ if __name__ == "__main__":
         run_file_manager,
         'interval',
         hours=1,
-        kwargs={'env_file': args.env_file}
+        args=[config]
     )
 
     try:
