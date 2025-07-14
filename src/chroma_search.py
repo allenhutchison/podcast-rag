@@ -4,7 +4,7 @@ from typing import Dict, List, Tuple
 import chromadb
 from nltk.tokenize import sent_tokenize
 
-from config import Config
+from src.config import Config
 
 
 class VectorDbSearchManager:
