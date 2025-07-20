@@ -20,3 +20,4 @@ listparser==0.20
 mcp
 httpx
 boto3
+tqdm
