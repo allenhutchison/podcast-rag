@@ -22,3 +22,5 @@ httpx
 boto3
 tqdm
 python-dateutil
+psycopg2-binary
+pgvector
