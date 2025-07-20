@@ -6,7 +6,6 @@ services:
       - "8080:8080"
     volumes:
       - .:/app
-      - ./.env:/app/.env
     depends_on:
       db-init:
         condition: service_completed_successfully
@@ -16,7 +15,6 @@ services:
     command: python src/podcast_download_service.py
     volumes:
       - .:/app
-      - ./.env:/app/.env
     depends_on:
       db-init:
         condition: service_completed_successfully
@@ -26,7 +24,6 @@ services:
     command: python src/transcription_service.py
     volumes:
       - .:/app
-      - ./.env:/app/.env
     depends_on:
       db-init:
         condition: service_completed_successfully
@@ -36,7 +33,6 @@ services:
     command: python scripts/init_db.py --yes
     volumes:
       - .:/app
-      - ./.env:/app/.env
     depends_on:
       postgres:
         condition: service_healthy
