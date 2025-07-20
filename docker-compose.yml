@@ -29,7 +29,7 @@ services:
       - postgres
 
   postgres:
-    image: ankane/pgvector:latest
+    image: pgvector/pgvector:latest
     ports:
       - "5432:5432"
     volumes:
