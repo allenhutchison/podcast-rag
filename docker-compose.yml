@@ -29,7 +29,7 @@ services:
       - postgres
 
   postgres:
-    image: pgvector/pgvector:latest
+    image: pgvector/pgvector:pg16
     ports:
       - "5432:5432"
     volumes:
