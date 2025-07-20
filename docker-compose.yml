@@ -38,7 +38,8 @@ services:
       - .:/app
       - ./.env:/app/.env
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
   postgres:
     image: pgvector/pgvector:pg16
@@ -50,6 +51,11 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-podcast_rag_db}
       - POSTGRES_USER=${POSTGRES_USER:-podcast_rag_user}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-insecure_password_change_me}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-podcast_rag_user} -d ${POSTGRES_DB:-podcast_rag_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres_data: 
