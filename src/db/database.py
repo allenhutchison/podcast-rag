@@ -4,16 +4,22 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
 
-# Load environment variables to get the database URL
-# This allows the module to be self-contained for scripts that might import it.
+# Load environment variables from a .env file if it exists.
+# This is useful for local development.
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+# Build the database URL from individual components, providing sensible defaults
+# for a Docker Compose environment.
+DB_USER = os.getenv("POSTGRES_USER", "podcast_rag_user")
+DB_PASSWORD = os.getenv("POSTGRES_PASSWORD", "insecure_password_change_me")
+DB_HOST = os.getenv("POSTGRES_HOST", "postgres") # 'postgres' is the service name in docker-compose
+DB_PORT = os.getenv("POSTGRES_PORT", "5432")
+DB_NAME = os.getenv("POSTGRES_DB", "podcast_rag_db")
 
-if not DATABASE_URL:
-    # A fallback for local development could be added here if desired
-    print("Error: DATABASE_URL environment variable not set.")
-    # Forcing an exit if the DB URL isn't set is safer for a DB-dependent app
+DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+
+if not all([DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME]):
+    print("Error: One or more PostgreSQL environment variables are missing.")
     exit(1)
 
 engine = create_engine(DATABASE_URL)
