@@ -8,7 +8,8 @@ services:
       - .:/app
       - ./.env:/app/.env
     depends_on:
-      - postgres
+      db-init:
+        condition: service_completed_successfully
 
   podcast-downloader:
     build: .
@@ -17,11 +18,22 @@ services:
       - .:/app
       - ./.env:/app/.env
     depends_on:
-      - postgres
+      db-init:
+        condition: service_completed_successfully
 
   transcription-service:
     build: .
     command: python src/transcription_service.py
+    volumes:
+      - .:/app
+      - ./.env:/app/.env
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+
+  db-init:
+    build: .
+    command: python scripts/init_db.py --yes
     volumes:
       - .:/app
       - ./.env:/app/.env

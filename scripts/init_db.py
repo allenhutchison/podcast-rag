@@ -2,6 +2,7 @@
 
 import os
 import sys
+import argparse
 from sqlalchemy import text
 
 # Adjust path to import from src
@@ -20,10 +21,7 @@ def initialize_database():
             print("Creating 'vector' extension if it doesn't exist...")
             connection.execute(text('CREATE EXTENSION IF NOT EXISTS vector;'))
             
-            print("Dropping all existing tables (if any) for a clean setup...")
-            Base.metadata.drop_all(bind=engine)
-            
-            print("Creating all new tables from models...")
+            print("Creating tables if they don't exist...")
             Base.metadata.create_all(bind=engine)
             
             print("\nDatabase initialization complete.")
@@ -35,10 +33,15 @@ def initialize_database():
         exit(1)
 
 if __name__ == "__main__":
-    # A simple confirmation step to prevent accidental execution
-    confirm = input("Are you sure you want to initialize the database? This will drop all existing tables. (y/n): ")
-    if confirm.lower() == 'y':
-        initialize_database()
-    else:
-        print("Database initialization cancelled.")
+    parser = argparse.ArgumentParser(description="Initialize the database. Drops and recreates all tables.")
+    parser.add_argument("--yes", "-y", action="store_true", help="Bypass confirmation prompt.")
+    args = parser.parse_args()
+
+    if not args.yes:
+        confirm = input("Are you sure you want to initialize the database? This will drop all existing tables. (y/n): ")
+        if confirm.lower() != 'y':
+            print("Database initialization cancelled.")
+            exit(0)
+            
+    initialize_database()
 
