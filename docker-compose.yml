@@ -1,26 +1,43 @@
 services:
-  app:
+  web-query-service:
     build: .
+    command: python app.py
     ports:
       - "8080:8080"
     volumes:
-      - ./media:/app/media
+      - .:/app
       - ./.env:/app/.env
-    environment:
-      - CHROMA_DB_HOST=chroma
-      - CHROMA_DB_PORT=8000
     depends_on:
-      - chroma
+      - postgres
 
-  chroma:
-    image: chromadb/chroma:latest
-    ports:
-      - "8000:8000"
+  podcast-downloader:
+    build: .
+    command: python src/podcast_download_service.py
     volumes:
-      - chroma_data:/chroma/chroma
+      - .:/app
+      - ./.env:/app/.env
+    depends_on:
+      - postgres
+
+  transcription-service:
+    build: .
+    command: python src/transcription_service.py
+    volumes:
+      - .:/app
+      - ./.env:/app/.env
+    depends_on:
+      - postgres
+
+  postgres:
+    image: ankane/pgvector:latest
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     environment:
-      - ALLOW_RESET=true
-      - ANONYMIZED_TELEMETRY=false
+      - POSTGRES_DB=${POSTGRES_DB:-podcast_rag_db}
+      - POSTGRES_USER=${POSTGRES_USER:-podcast_rag_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-insecure_password_change_me}
 
 volumes:
-  chroma_data: 
+  postgres_data: 

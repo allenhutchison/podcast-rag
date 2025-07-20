@@ -21,3 +21,4 @@ mcp
 httpx
 boto3
 tqdm
+python-dateutil
