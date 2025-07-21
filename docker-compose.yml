@@ -44,11 +44,11 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
-      - POSTGRES_DB=${POSTGRES_DB:-podcast_rag_db}
-      - POSTGRES_USER=${POSTGRES_USER:-podcast_rag_user}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-insecure_password_change_me}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-podcast_rag_user} -d ${POSTGRES_DB:-podcast_rag_db}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
