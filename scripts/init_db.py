@@ -23,17 +23,18 @@ def initialize_database(db_url: str):
         from src.db.database import engine
         from src.db.models import Base
 
-        logging.info("Attempting to connect to the database...")
+        logging.info("Phase 1: Ensuring 'vector' extension is enabled.")
         with engine.connect() as connection:
-            logging.info("Database connection successful.")
-            
-            logging.info("Creating 'vector' extension if it doesn't exist...")
-            connection.execute(text('CREATE EXTENSION IF NOT EXISTS vector;'))
-            
-            logging.info("Creating tables if they don't exist...")
-            Base.metadata.create_all(bind=engine)
-            
-            logging.info("Database initialization complete. All tables created successfully.")
+            with connection.begin():
+                logging.info("Creating 'vector' extension if it doesn't exist...")
+                connection.execute(text('CREATE EXTENSION IF NOT EXISTS vector;'))
+            logging.info("Extension check complete and transaction committed.")
+
+        logging.info("Phase 2: Creating all tables from models.")
+        # The engine is now connected to a database where the vector extension is guaranteed to be available.
+        Base.metadata.create_all(bind=engine)
+        
+        logging.info("Database initialization complete. All tables created successfully.")
             
     except Exception as e:
         logging.error("An error occurred during database initialization.")

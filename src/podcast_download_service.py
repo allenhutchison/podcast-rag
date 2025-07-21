@@ -13,8 +13,6 @@ from dateutil import parser as date_parser
 # Adjust path to import from src
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from config import Config
-from db.database import get_db
-from db.models import Podcast, Episode
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -31,6 +29,10 @@ def get_r2_client(config: Config):
 
 def poll_all_feeds(config: Config, r2_client):
     """The main job function that polls all podcast feeds."""
+    # Defer database imports until after config is loaded
+    from db.database import get_db
+    from db.models import Podcast, Episode
+
     logging.info("Starting new polling cycle for all podcast feeds...")
     db_session: Session = next(get_db())
     
