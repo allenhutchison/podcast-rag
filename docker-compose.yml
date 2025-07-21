@@ -19,14 +19,14 @@ services:
       db-init:
         condition: service_completed_successfully
 
-  transcription-service:
-    build: .
-    command: python src/transcription_service.py
-    volumes:
-      - .:/app
-    depends_on:
-      db-init:
-        condition: service_completed_successfully
+  # transcription-service:
+  #   build: .
+  #   command: python src/transcription_service.py
+  #   volumes:
+  #     - .:/app
+  #   depends_on:
+  #     db-init:
+  #       condition: service_completed_successfully
 
   db-init:
     build: .
