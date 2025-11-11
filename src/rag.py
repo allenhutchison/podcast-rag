@@ -4,7 +4,7 @@ import json
 
 import google.generativeai as genai
 
-from argparse_shared import (add_ai_system_argument, add_dry_run_argument,
+from argparse_shared import (add_dry_run_argument,
                              add_log_level_argument, add_query_argument,
                              get_base_parser)
 from chroma_search import VectorDbSearchManager
@@ -13,17 +13,15 @@ from prompt_manager import PromptManager
 
 
 class RagManager:
-    def __init__(self, config: Config, dry_run=False, print_results=True, ai_system="gemini"):
+    def __init__(self, config: Config, dry_run=False, print_results=True):
         self.config = config
         self.dry_run = dry_run
         self.print_results = print_results
-        self.ai_system = ai_system
         self.prompt_manager = PromptManager(config=config, print_results=print_results)
         self.vector_db_manager = VectorDbSearchManager(config=config, dry_run=dry_run)
         self.last_query = None
         self.last_vector_db_results = None
 
-        logging.info("Using Gemini for AI system.")
         genai.configure(api_key=self.config.GEMINI_API_KEY)
         self.gemini_client = genai.GenerativeModel(model_name=self.config.GEMINI_MODEL)
 
@@ -120,9 +118,8 @@ if __name__ == "__main__":
 
     add_dry_run_argument(parser)
     add_log_level_argument(parser)
-    add_ai_system_argument(parser)
     add_query_argument(parser)
-    
+
     args = parser.parse_args()
 
     # Configure logging based on command-line argument
@@ -133,5 +130,5 @@ if __name__ == "__main__":
     )
 
     config = Config(env_file=args.env_file)
-    rag_manager = RagManager(config=config, print_results=True, ai_system=args.ai_system)
+    rag_manager = RagManager(config=config, print_results=True)
     rag_manager.query(args.query)

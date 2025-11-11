@@ -77,7 +77,6 @@ def index():
     if request.method == 'POST':
         query = request.form.get('query', '')
         log_level = request.form.get('log_level', 'INFO')
-        ai_system = request.form.get('ai_system', 'gemini')
 
         logging.basicConfig(
             level=getattr(logging, log_level.upper(), "INFO"),
@@ -85,7 +84,7 @@ def index():
             handlers=[logging.StreamHandler()]
         )
 
-        rag_manager = RagManager(config=config, print_results=True, ai_system=ai_system)
+        rag_manager = RagManager(config=config, print_results=True)
 
         # 1) Get LLM result
         raw_result = rag_manager.query(query)
@@ -138,7 +137,6 @@ def search():
         data = request.get_json() if request.is_json else request.form
         query = data.get('query')
         log_level = data.get('log_level', 'INFO')
-        ai_system = data.get('ai_system', 'gemini')
 
         if not query:
             return jsonify({'error': 'Query is required'}), 400
@@ -150,7 +148,7 @@ def search():
             handlers=[logging.StreamHandler()]
         )
 
-        rag_manager = RagManager(config=config, print_results=True, ai_system=ai_system)
+        rag_manager = RagManager(config=config, print_results=True)
         raw_result = rag_manager.query(query)
 
         json_result = GenerateContentResponseConverter.to_dict(raw_result)
