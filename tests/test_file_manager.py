@@ -19,9 +19,10 @@ def test_process_podcasts_dry_run(monkeypatch, tmpdir):
     with open(mock_podcast_file, 'w') as f:
         f.write("Fake MP3 content")
 
-    # Instantiate FileManager with dry_run=True
-    manager = FileManager(config=config, dry_run=True)
-    
+    # Instantiate FileManager with dry_run=True and skip_vectordb=True
+    # We skip vectordb since this test doesn't require File Search functionality
+    manager = FileManager(config=config, dry_run=True, skip_vectordb=True)
+
     # Mock the TranscriptionManager's handle_transcription method
     with patch.object(manager.transcription_manager, 'handle_transcription') as mock_transcribe:
         manager.process_directory()

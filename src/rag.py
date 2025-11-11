@@ -1,119 +1,187 @@
-import logging
-import sys
-import json
+"""
+RAG Manager using Gemini File Search for podcast transcript queries.
 
-from src.argparse_shared import (add_dry_run_argument,
-                             add_log_level_argument, add_query_argument,
-                             get_base_parser)
-from src.chroma_search import VectorDbSearchManager
+This module provides a simplified RAG interface that leverages Google's
+hosted File Search solution for automatic semantic search with citations.
+"""
+
+import logging
+import json
+from typing import Dict, List, Optional
+
+from google import genai
+from google.genai import types
+
+from src.argparse_shared import (
+    add_dry_run_argument,
+    add_log_level_argument,
+    add_query_argument,
+    get_base_parser
+)
 from src.config import Config
-from src.prompt_manager import PromptManager
+from src.db.gemini_file_search import GeminiFileSearchManager
 
 
 class RagManager:
+    """
+    Manages RAG queries using Gemini File Search.
+
+    Uses Google's hosted File Search to automatically retrieve relevant
+    transcript chunks and generate responses with proper citations.
+    """
+
     def __init__(self, config: Config, dry_run=False, print_results=True):
-        import google.generativeai as genai
+        """
+        Initialize the RAG manager.
+
+        Args:
+            config: Configuration object
+            dry_run: If True, log operations without executing
+            print_results: If True, log detailed results
+        """
         self.config = config
         self.dry_run = dry_run
         self.print_results = print_results
-        self.prompt_manager = PromptManager(config=config, print_results=print_results)
-        self.vector_db_manager = VectorDbSearchManager(config=config, dry_run=dry_run)
+
+        # Validate model compatibility with File Search
+        if not dry_run:
+            config.validate_file_search_model()
+
+        # Initialize Gemini client (newer SDK)
+        self.client = genai.Client(api_key=config.GEMINI_API_KEY)
+
+        # Initialize File Search manager
+        self.file_search_manager = GeminiFileSearchManager(config=config, dry_run=dry_run)
+        self.store_name = None
+
+        # Cache for last query results
         self.last_query = None
-        self.last_vector_db_results = None
+        self.last_response = None
+        self.last_grounding_metadata = None
 
-        genai.configure(api_key=self.config.GEMINI_API_KEY)
-        self.gemini_client = genai.GenerativeModel(model_name=self.config.GEMINI_MODEL)
+        logging.info("RAG Manager initialized with Gemini File Search")
 
-    def search_vector_db(self, query):
-        results = self.vector_db_manager.search_transcriptions(query, print_results=False)
-        return results
-    
-    def prepare_model_context(self, query):
-        vector_db_results = self.search_vector_db(query)
-        self.last_vector_db_results = vector_db_results
-        document_results = vector_db_results['documents']
-        metadata_results = vector_db_results['metadatas']
-        return document_results, metadata_results
+    def _ensure_store(self):
+        """Ensure File Search store is created and cached."""
+        if self.store_name is None:
+            self.store_name = self.file_search_manager.create_or_get_store()
+        return self.store_name
 
+    def query(self, query: str) -> str:
+        """
+        Query the podcast archive using File Search.
 
-    def query(self, query):
+        Args:
+            query: User's question
+
+        Returns:
+            Generated response text
+        """
         self.last_query = query
-        refined_query = self.refine_query(query)
-        document_results, metadata_results = self.prepare_model_context(refined_query)
-        prompt = self.format_prompt(refined_query, document_results, metadata_results)
-        self.last_context = "Some transcript text..."
-        logging.info(f"Query called with: {query}")
-        return self.query_with_gemini(prompt)
-        
+        logging.info(f"Processing query: {query}")
 
-    
-    def query_with_gemini(self, prompt):
-        results = self.gemini_client.generate_content(prompt)
-        if self.print_results:
-            logging.info("Gemini Response: %s", results)
-        return results
+        store_name = self._ensure_store()
 
-    def refine_query(self, query):
-        # Implement logic to refine the query if necessary
-        return query
+        if self.dry_run:
+            logging.info(f"[DRY RUN] Would query File Search with: {query}")
+            return "This is a dry run response."
 
-    def format_prompt(self, query, document_results, metadata_results):
-        context_documents = ''
-        iteration = 1
-        for document_list, metadata_list in zip(document_results, metadata_results):
-            for document, metadata in zip(document_list, metadata_list):
-                snippet = self.prompt_manager.build_prompt(
-                    prompt_name = "podcast_snippet",
-                    iteration = iteration,
-                    podcast = metadata.get('podcast', 'Unknown Podcast'),
-                    episode = metadata.get('episode', 'Unknown Episode'),
-                    release_date = metadata.get('release_date', 'Unknown Date'),
-                    hosts = metadata.get('hosts', 'Unknown Host(s)'),
-                    guests = metadata.get('guests', 'Unknown Guest(s)'),
-                    transcript = document.strip(),
-                    keywords = metadata.get('keywords', ''),
-                    timestamp = metadata.get('timestamp', '')
+        try:
+            # Query using File Search tool
+            response = self.client.models.generate_content(
+                model=self.config.GEMINI_MODEL,
+                contents=query,
+                config=types.GenerateContentConfig(
+                    tools=[types.Tool(
+                        file_search=types.FileSearchToolConfig(
+                            file_search_store_names=[store_name]
+                        )
+                    )],
+                    response_modalities=["TEXT"]
                 )
-                context_documents += snippet
-                iteration += 1
-    
-        prompt = self.prompt_manager.build_prompt(
-            prompt_name = "archive_question",
-            context = context_documents,
-            query = query
-        )
-        if self.print_results:
-            logging.info("Prompt Prepared: %s", prompt)
-            logging.info("Prompt Size: %s", sys.getsizeof(prompt))
-        return prompt
+            )
 
-    def search_snippets(self, query: str):
-        logging.info(f"Searching snippets for: {query}")
-        if query != self.last_query:
-            logging.info("Note: Query differs from last query stored.")
+            # Cache the response and grounding metadata
+            self.last_response = response
 
-        if not self.last_vector_db_results:
-            return json.dumps([])
+            # Extract grounding metadata if available
+            if hasattr(response, 'candidates') and len(response.candidates) > 0:
+                candidate = response.candidates[0]
+                if hasattr(candidate, 'grounding_metadata'):
+                    self.last_grounding_metadata = candidate.grounding_metadata
 
-        document_results = self.last_vector_db_results['documents']
-        metadata_results = self.last_vector_db_results['metadatas']
-        final_snippets = []
-        for document_list, metadata_list in zip(document_results, metadata_results):
-            for document, metadata in zip(document_list, metadata_list):
-                snippet = {
-                    "text": document.strip(),
-                    "source": metadata.get("source", ""),
-                    "episode": metadata.get("episode", "")
-                }
-                final_snippets.append(snippet)
-                
-        return json.dumps(final_snippets, indent=2)
+            # Get response text
+            response_text = response.text if hasattr(response, 'text') else str(response)
+
+            if self.print_results:
+                logging.info(f"Response: {response_text}")
+                if self.last_grounding_metadata:
+                    logging.info(f"Grounding metadata: {self.last_grounding_metadata}")
+
+            return response_text
+
+        except Exception as e:
+            logging.error(f"Query failed: {e}")
+            raise
+
+    def get_citations(self) -> List[Dict]:
+        """
+        Get citations from the last query's grounding metadata.
+
+        Returns:
+            List of citation dictionaries with file and chunk information
+        """
+        if not self.last_grounding_metadata:
+            return []
+
+        citations = []
+
+        # Parse grounding metadata structure
+        if hasattr(self.last_grounding_metadata, 'file_search_citations'):
+            for citation in self.last_grounding_metadata.file_search_citations:
+                citations.append({
+                    'file_id': getattr(citation, 'file_id', None),
+                    'chunk_index': getattr(citation, 'chunk_index', None),
+                    'score': getattr(citation, 'score', None)
+                })
+
+        return citations
+
+    def search_snippets(self, query: Optional[str] = None) -> str:
+        """
+        Get search snippets with citations for the last query.
+
+        Args:
+            query: Optional query (uses last query if None)
+
+        Returns:
+            JSON string of snippets with metadata
+        """
+        if query and query != self.last_query:
+            logging.warning("Query differs from last cached query")
+            # Re-run query to get fresh results
+            self.query(query)
+
+        citations = self.get_citations()
+
+        # Convert citations to snippet format
+        snippets = []
+        for i, citation in enumerate(citations):
+            snippets.append({
+                'index': i + 1,
+                'file_id': citation.get('file_id', ''),
+                'chunk_index': citation.get('chunk_index', 0),
+                'score': citation.get('score', 0.0)
+            })
+
+        return json.dumps(snippets, indent=2)
 
 
 if __name__ == "__main__":
     import argparse
+
     parser = get_base_parser()
-    parser.description = "Search podcast transcriptions using Gemini"
+    parser.description = "Query podcast transcriptions using Gemini File Search"
 
     add_dry_run_argument(parser)
     add_log_level_argument(parser)
@@ -121,7 +189,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Configure logging based on command-line argument
+    # Configure logging
     logging.basicConfig(
         level=getattr(logging, args.log_level.upper(), "INFO"),
         format="%(asctime)s - %(levelname)s - %(message)s",
@@ -130,4 +198,21 @@ if __name__ == "__main__":
 
     config = Config(env_file=args.env_file)
     rag_manager = RagManager(config=config, print_results=True)
-    rag_manager.query(args.query)
+
+    result = rag_manager.query(args.query)
+    print("\n" + "="*80)
+    print("ANSWER:")
+    print("="*80)
+    print(result)
+    print("="*80)
+
+    # Show citations if available
+    citations = rag_manager.get_citations()
+    if citations:
+        print("\nCITATIONS:")
+        print("="*80)
+        for i, citation in enumerate(citations, 1):
+            print(f"{i}. File: {citation.get('file_id', 'N/A')}, "
+                  f"Chunk: {citation.get('chunk_index', 'N/A')}, "
+                  f"Score: {citation.get('score', 'N/A'):.3f}")
+        print("="*80)

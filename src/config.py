@@ -26,16 +26,14 @@ class Config:
         self.TRANSCRIPTION_OUTPUT_SUFFIX = "_transcription.txt"
         self.TRANSCRIPTION_TEMP_FILE_SUFFIX = ".transcription_in_progress"
 
-        # ChromaDB-related constants (to be removed later)
-        self.CHROMA_DB_HOST = os.getenv("CHROMA_DB_HOST", "localhost")
-        self.CHROMA_DB_PORT = os.getenv("CHROMA_DB_PORT", 50051)
-        self.CHROMA_DB_COLLECTION = os.getenv("CHROMA_DB_COLLECTION", "podcasts_collection")
-        self.INDEX_OUTPUT_SUFFIX = "_index.txt"
-        self.INDEX_TEMP_FILE_SUFFIX = ".index_in_progress"
-
         # Model configuration
         self.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "your_api_key_here")
         self.GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-exp")
+
+        # Gemini File Search configuration
+        self.GEMINI_FILE_SEARCH_STORE_NAME = os.getenv("GEMINI_FILE_SEARCH_STORE_NAME", "podcast-transcripts")
+        self.GEMINI_CHUNK_SIZE = int(os.getenv("GEMINI_CHUNK_SIZE", "1000"))
+        self.GEMINI_CHUNK_OVERLAP = int(os.getenv("GEMINI_CHUNK_OVERLAP", "100"))
 
         # S3/R2 Configuration
         self.S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")

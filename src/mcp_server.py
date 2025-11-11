@@ -3,7 +3,7 @@ import sys
 import os
 from mcp.server import FastMCP as MCP
 from src.config import Config
-from src.chroma_search import VectorDbSearchManager
+from src.gemini_search import GeminiSearchManager
 from src.argparse_shared import get_base_parser, add_log_level_argument
 
 def main():
@@ -68,9 +68,9 @@ def main():
             logging.info(f"DEBUG: get_rag_context tool called with query: {query}")
         
         try:
-            print("DEBUG: Creating VectorDbSearchManager...", file=sys.stderr)
-            search_manager = VectorDbSearchManager(config=config, dry_run=False)
-            print("DEBUG: VectorDbSearchManager created successfully", file=sys.stderr)
+            print("DEBUG: Creating GeminiSearchManager...", file=sys.stderr)
+            search_manager = GeminiSearchManager(config=config, dry_run=False)
+            print("DEBUG: GeminiSearchManager created successfully", file=sys.stderr)
             
             print(f"DEBUG: Searching transcriptions for query: {query}", file=sys.stderr)
             results = search_manager.search_transcriptions(query, print_results=False)
@@ -108,9 +108,9 @@ def main():
         logging.info(f"DEBUG: search_podcasts tool called with query: {query}, limit: {limit}")
         
         try:
-            print("DEBUG: Creating VectorDbSearchManager for search_podcasts...", file=sys.stderr)
-            search_manager = VectorDbSearchManager(config=config, dry_run=False)
-            print("DEBUG: VectorDbSearchManager created successfully", file=sys.stderr)
+            print("DEBUG: Creating GeminiSearchManager for search_podcasts...", file=sys.stderr)
+            search_manager = GeminiSearchManager(config=config, dry_run=False)
+            print("DEBUG: GeminiSearchManager created successfully", file=sys.stderr)
             
             print(f"DEBUG: Searching podcasts with query: {query}, limit: {limit}", file=sys.stderr)
             results = search_manager.search_transcriptions(query, print_results=False)
@@ -156,22 +156,21 @@ def main():
         logging.info("DEBUG: get_podcast_info tool called")
         
         try:
-            print("DEBUG: Creating VectorDbSearchManager for get_podcast_info...", file=sys.stderr)
-            search_manager = VectorDbSearchManager(config=config, dry_run=False)
-            print("DEBUG: VectorDbSearchManager created successfully", file=sys.stderr)
-            
-            # Get collection info
-            print("DEBUG: Getting collection info...", file=sys.stderr)
-            collection = search_manager.vector_db.get_collection()
-            count = collection.count()
-            print(f"DEBUG: Collection count: {count}", file=sys.stderr)
-            
+            print("DEBUG: Creating GeminiSearchManager for get_podcast_info...", file=sys.stderr)
+            search_manager = GeminiSearchManager(config=config, dry_run=False)
+            print("DEBUG: GeminiSearchManager created successfully", file=sys.stderr)
+
+            # Get File Search store info
+            print("DEBUG: Getting File Search store info...", file=sys.stderr)
+            store_info = search_manager.file_search_manager.get_store_info()
+            file_list = search_manager.file_search_manager.list_files()
+            print(f"DEBUG: File count: {len(file_list)}", file=sys.stderr)
+
             response = {
                 "database_info": {
-                    "collection_name": config.CHROMA_DB_COLLECTION,
-                    "host": config.CHROMA_DB_HOST,
-                    "port": config.CHROMA_DB_PORT,
-                    "total_episodes": count
+                    "store_name": config.GEMINI_FILE_SEARCH_STORE_NAME,
+                    "display_name": store_info.get('display_name', 'N/A'),
+                    "total_files": len(file_list)
                 },
                 "status": "success"
             }

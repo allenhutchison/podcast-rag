@@ -1,8 +1,6 @@
 openai-whisper
 pytest
 python-dotenv
-chromadb
-nltk
 Flask
 gunicorn
 markdown

@@ -7,7 +7,6 @@ from werkzeug.utils import secure_filename
 import markdown
 from flask import Flask, jsonify, render_template, request, redirect, url_for, flash
 from flask_cors import CORS
-from google.generativeai.types import GenerateContentResponse
 from markupsafe import Markup
 
 from src.config import Config
@@ -38,21 +37,27 @@ podcast_db = PodcastDB()
 class GenerateContentResponseConverter:
     @staticmethod
     def to_dict(response):
-        if not isinstance(response, GenerateContentResponse):
-            return response
+        # Handle string responses (from new RAG manager)
+        if isinstance(response, str):
+            return {
+                'done': True,
+                'candidates': [{'content': response, 'finish_reason': 'STOP', 'avg_logprobs': None}],
+                'usage_metadata': {}
+            }
 
+        # Handle structured response objects
         candidates_list = []
         if hasattr(response, "candidates"):
             for candidate in response.candidates:
                 text = ""
-                if (hasattr(candidate, "content") and 
-                    hasattr(candidate.content, "parts") and 
+                if (hasattr(candidate, "content") and
+                    hasattr(candidate.content, "parts") and
                     candidate.content.parts):
                     text = candidate.content.parts[0].text
                 candidates_list.append({
                     'content': text,
-                    'finish_reason': candidate.finish_reason,
-                    'avg_logprobs': candidate.avg_logprobs
+                    'finish_reason': getattr(candidate, 'finish_reason', 'STOP'),
+                    'avg_logprobs': getattr(candidate, 'avg_logprobs', None)
                 })
 
         usage_meta = {}
@@ -64,7 +69,7 @@ class GenerateContentResponseConverter:
             }
 
         return {
-            'done': getattr(response, 'done', None),
+            'done': getattr(response, 'done', True),
             'candidates': candidates_list,
             'usage_metadata': usage_meta,
         }
@@ -96,37 +101,27 @@ def index():
             html_content = markdown.markdown(text_md)
             styled_text = Markup(html_content)
 
-        # 3) Get vector DB snippets and parse JSON
-        db_snippets = json.loads(rag_manager.search_snippets(query))
+        # 3) Get File Search citations
+        citations = rag_manager.get_citations()
         db_results = []
 
-        # 4) Build footnotes with episode info
-        for i, snippet in enumerate(db_snippets, start=1):
+        # 4) Build citation display from grounding metadata
+        for i, citation in enumerate(citations, start=1):
             footnote_link = f"[{i}]"
-            source_text = f"{snippet['episode']}" if snippet.get('episode') else ''
-            source_link = snippet.get('source', '#')
-            
-            # Build metadata text with all available fields
-            metadata_text = []
-            if snippet.get('release_date'):
-                metadata_text.append(f"Release Date: {snippet['release_date']}")
-            if snippet.get('hosts'):
-                metadata_text.append(f"Host(s): {snippet['hosts']}")
-            if snippet.get('guests'):
-                metadata_text.append(f"Guest(s): {snippet['guests']}")
-            if snippet.get('keywords'):
-                metadata_text.append(f"Keywords: {snippet['keywords']}")
-            if snippet.get('timestamp'):
-                metadata_text.append(f"Timestamp: {snippet['timestamp']}")
-            
-            metadata_html = '<br>'.join(metadata_text) if metadata_text else ''
-            
+            file_id = citation.get('file_id', 'Unknown')
+            chunk_index = citation.get('chunk_index', 0)
+            score = citation.get('score', 0.0)
+
+            # Extract filename from file_id if possible
+            # File IDs are typically like "files/abc123"
+            filename = file_id.split('/')[-1] if file_id else 'Unknown'
+
             db_results.append({
                 'footnote': footnote_link,
-                'text': snippet['text'],
-                'source': source_link,
-                'source_text': source_text,
-                'metadata': metadata_html
+                'text': f"Source file: {filename}, Chunk {chunk_index}",
+                'source': '#',
+                'source_text': f"File {filename}",
+                'metadata': f"Chunk: {chunk_index}<br>Relevance Score: {score:.3f}"
             })
 
     return render_template('index.html', results=results, styled_text=styled_text, db_results=db_results)
