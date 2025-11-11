@@ -10,9 +10,9 @@ import eyed3
 import google.genai as genai
 from pydantic import TypeAdapter
 
-from config import Config
-from prompt_manager import PromptManager
-from schemas import EpisodeMetadata, MP3Metadata, PodcastMetadata
+from src.config import Config
+from src.prompt_manager import PromptManager
+from src.schemas import EpisodeMetadata, MP3Metadata, PodcastMetadata
 
 
 class RateLimiter:

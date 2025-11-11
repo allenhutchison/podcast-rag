@@ -4,12 +4,12 @@ import json
 
 import google.generativeai as genai
 
-from argparse_shared import (add_dry_run_argument,
+from src.argparse_shared import (add_dry_run_argument,
                              add_log_level_argument, add_query_argument,
                              get_base_parser)
-from chroma_search import VectorDbSearchManager
-from config import Config
-from prompt_manager import PromptManager
+from src.chroma_search import VectorDbSearchManager
+from src.config import Config
+from src.prompt_manager import PromptManager
 
 
 class RagManager:

@@ -3,7 +3,7 @@ import os
 import textwrap
 from string import Template
 
-from config import Config
+from src.config import Config
 
 
 class PromptManager:

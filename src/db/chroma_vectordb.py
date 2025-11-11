@@ -4,7 +4,7 @@ import os
 import chromadb
 from nltk.tokenize import sent_tokenize
 
-from config import Config
+from src.config import Config
 
 
 class VectorDbManager:

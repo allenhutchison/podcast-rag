@@ -11,11 +11,9 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from sqlalchemy.orm import Session
 from botocore.exceptions import ClientError
 
-# Adjust path to import from src
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from config import Config
-from db.database import get_db
-from db.models import Episode, ProcessingStatus
+from src.config import Config
+from src.db.database import get_db
+from src.db.models import Episode, ProcessingStatus
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

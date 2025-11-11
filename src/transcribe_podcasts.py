@@ -4,9 +4,9 @@ import whisper
 import torch
 import gc
 
-from argparse_shared import (add_dry_run_argument, add_episode_path_argument,
+from src.argparse_shared import (add_dry_run_argument, add_episode_path_argument,
                              add_log_level_argument, get_base_parser)
-from config import Config
+from src.config import Config
 
 
 class TranscriptionManager:

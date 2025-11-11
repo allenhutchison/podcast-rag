@@ -3,9 +3,9 @@ import logging
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
 from apscheduler.schedulers.blocking import BlockingScheduler
 
-from argparse_shared import add_log_level_argument, get_base_parser
-from config import Config
-from file_manager import FileManager
+from src.argparse_shared import add_log_level_argument, get_base_parser
+from src.config import Config
+from src.file_manager import FileManager
 
 
 def job_listener(event):

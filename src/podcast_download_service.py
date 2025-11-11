@@ -10,9 +10,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from sqlalchemy.orm import Session
 from dateutil import parser as date_parser
 
-# Adjust path to import from src
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from config import Config
+from src.config import Config
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
