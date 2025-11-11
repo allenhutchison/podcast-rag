@@ -15,9 +15,9 @@ def add_episode_path_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-p", "--episode-path", help="Path to an MP3 file", required=True)
 
 def add_ai_system_argument(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("-a", "--ai-system", 
-                       help="AI system to use (ollama or gemini)", 
-                       choices=["ollama", "gemini"],
+    parser.add_argument("-a", "--ai-system",
+                       help="AI system to use (gemini)",
+                       choices=["gemini"],
                        default="gemini")
 
 def add_query_argument(parser: argparse.ArgumentParser) -> None:

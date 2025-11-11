@@ -9,11 +9,11 @@ This document provides context for AI assistants working with this codebase.
 **Core Functionality:**
 - Downloads podcast episodes from RSS feeds
 - Transcribes audio using OpenAI Whisper
-- Extracts structured metadata using AI (Gemini/Ollama)
+- Extracts structured metadata using AI (Gemini)
 - Stores transcriptions in vector databases for semantic search
 - Answers natural language queries with source citations via web UI or CLI
 
-**Tech Stack:** Python 3.11, Flask, PostgreSQL + pgvector, ChromaDB, Whisper, Gemini/Ollama
+**Tech Stack:** Python 3.11, Flask, PostgreSQL + pgvector, ChromaDB, Whisper, Gemini
 
 ## Architecture
 
@@ -202,9 +202,6 @@ pytest --cov=src tests/
 - **Gemini API:** Requires `GEMINI_API_KEY` environment variable
   - Model: `gemini-2.0-flash-exp` (configurable via `GEMINI_MODEL`)
   - Used for: RAG queries, metadata extraction
-- **Ollama:** Local LLM alternative
-  - Host: `OLLAMA_HOST` (default: http://localhost:11434)
-  - Model: Configurable via `OLLAMA_MODEL`
 
 **Cloud Storage:**
 - S3/Cloudflare R2 for audio file storage (optional but recommended)
@@ -231,7 +228,6 @@ pytest --cov=src tests/
 
 **Optional:**
 - `GEMINI_API_KEY` - For Gemini-based RAG
-- `OLLAMA_HOST`, `OLLAMA_MODEL` - For local LLM
 - `S3_BUCKET_NAME`, AWS credentials - For cloud storage
 - `DOWNLOAD_POLL_INTERVAL_MINUTES` - RSS polling frequency (default: 60)
 
@@ -321,7 +317,6 @@ Working on: `claude/generate-claude-md-011CV2TtD4R9Z11NP64p6u5F`
 
 ### AI Query Failures
 - Gemini: Verify `GEMINI_API_KEY` is valid
-- Ollama: Ensure Ollama is running and model is pulled
 - Check network connectivity for API calls
 
 ## Resources

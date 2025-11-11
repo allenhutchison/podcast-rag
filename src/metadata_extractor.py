@@ -8,7 +8,6 @@ from threading import Lock
 
 import eyed3
 import google.genai as genai
-from ollama import Client
 from pydantic import TypeAdapter
 
 from config import Config
