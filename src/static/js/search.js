@@ -5,8 +5,7 @@ fetch('/search', {
     },
     body: JSON.stringify({
         query: searchQuery,
-        env_file: null,
-        ai_system: 'gemini'
+        env_file: null
     })
 })
 .then(response => response.json())

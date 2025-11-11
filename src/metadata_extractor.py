@@ -8,7 +8,6 @@ from threading import Lock
 
 import eyed3
 import google.genai as genai
-from ollama import Client
 from pydantic import TypeAdapter
 
 from config import Config
@@ -75,24 +74,17 @@ def retry_with_exponential_backoff(max_retries=5, base_delay=1, max_delay=32):
 
 
 class MetadataExtractor:
-    def __init__(self, config: Config, dry_run=False, ai_system="gemini"):
+    def __init__(self, config: Config, dry_run=False):
         self.config = config
         self.dry_run = dry_run
-        self.ai_system = ai_system
         self.prompt_manager = PromptManager(config=config, print_results=False)
         self.stats = {
             "already_processed": 0,
             "processed": 0,
             "failed": 0,
         }
-        
+
         # Initialize AI client
-        if self.ai_system != "gemini":
-            logging.error("Metadata extraction requires Gemini. Please set ai_system to 'gemini'.")
-            self.ai_client = None
-            return
-            
-        logging.info("Using Gemini for metadata extraction.")
         self.ai_client = genai.Client(api_key=self.config.GEMINI_API_KEY)
         # Initialize rate limiter for 10 requests per minute
         self.rate_limiter = RateLimiter(max_requests=9, time_window=60)
@@ -181,10 +173,6 @@ class MetadataExtractor:
     @retry_with_exponential_backoff()
     def extract_metadata_from_transcript(self, transcript: str, filename: str) -> Optional[PodcastMetadata]:
         """Extract metadata from transcript using AI."""
-        if self.ai_system != "gemini":
-            logging.error("Metadata extraction requires Gemini. Please set ai_system to 'gemini'.")
-            return None
-            
         prompt = self.prompt_manager.build_prompt(
             prompt_name="metadata_extraction",
             transcript=transcript,
@@ -314,15 +302,14 @@ class MetadataExtractor:
 
 
 if __name__ == "__main__":
-    from argparse_shared import (add_ai_system_argument, add_dry_run_argument,
+    from argparse_shared import (add_dry_run_argument,
                                add_episode_path_argument, add_log_level_argument,
                                get_base_parser)
-    
+
     parser = get_base_parser()
     add_dry_run_argument(parser)
     add_log_level_argument(parser)
     add_episode_path_argument(parser)
-    add_ai_system_argument(parser)
     parser.description = "Extract metadata from podcast episodes"
     args = parser.parse_args()
 
@@ -338,8 +325,7 @@ if __name__ == "__main__":
     # Create metadata extractor
     extractor = MetadataExtractor(
         config=config,
-        dry_run=args.dry_run,
-        ai_system=args.ai_system
+        dry_run=args.dry_run
     )
 
     # Process single episode if specified

@@ -2,7 +2,7 @@ import logging
 import os
 
 from argparse_shared import (add_dry_run_argument, add_log_level_argument,
-                             add_ai_system_argument, get_base_parser)
+                             get_base_parser)
 from db.chroma_vectordb import VectorDbManager
 from config import Config
 from metadata_extractor import MetadataExtractor
@@ -10,12 +10,12 @@ from transcribe_podcasts import TranscriptionManager
 
 
 class FileManager:
-    def __init__(self, config: Config, dry_run=False, ai_system="gemini", skip_vectordb=False):
+    def __init__(self, config: Config, dry_run=False, skip_vectordb=False):
         self.config = config
         self.dry_run = dry_run
         self.skip_vectordb = skip_vectordb
         self.transcription_manager = TranscriptionManager(config=config, dry_run=dry_run)
-        self.metadata_extractor = MetadataExtractor(config=config, dry_run=dry_run, ai_system=ai_system)
+        self.metadata_extractor = MetadataExtractor(config=config, dry_run=dry_run)
         
         # Initialize vector_db_manager only if not skipping vectordb operations
         if not skip_vectordb:
@@ -72,7 +72,6 @@ if __name__ == "__main__":
     parser = get_base_parser()
     add_dry_run_argument(parser)
     add_log_level_argument(parser)
-    add_ai_system_argument(parser)
     parser.description = "Process podcast files with transcription, metadata extraction, and indexing"
     args = parser.parse_args()
 
@@ -92,6 +91,6 @@ if __name__ == "__main__":
     config = Config(env_file=args.env_file)
 
     # Instantiate the FileManager with the loaded configuration
-    file_manager = FileManager(config=config, dry_run=args.dry_run, ai_system=args.ai_system)
+    file_manager = FileManager(config=config, dry_run=args.dry_run)
 
     file_manager.process_directory()

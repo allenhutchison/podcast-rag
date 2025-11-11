@@ -4,8 +4,8 @@ import argparse
 import os
 from typing import List
 
-from argparse_shared import (add_dry_run_argument, add_log_level_argument, 
-                          add_ai_system_argument, get_base_parser)
+from argparse_shared import (add_dry_run_argument, add_log_level_argument,
+                          get_base_parser)
 from config import Config
 from file_manager import FileManager
 from podcast_downloader import PodcastDownloader
@@ -18,7 +18,6 @@ def setup_argparse():
     parser.description = "Download podcasts from feeds and transcribe them"
     add_dry_run_argument(parser)
     add_log_level_argument(parser)
-    add_ai_system_argument(parser)
     
     # Add download-specific arguments
     parser.add_argument('-f', '--feed', help='RSS feed URL to download from')
@@ -73,9 +72,8 @@ def transcribe_podcasts(config: Config, args, podcast_dirs: List[str] = None):
     if args.skip_transcription:
         logging.info("Skipping transcription as requested")
         return
-    
-    file_manager = FileManager(config=config, dry_run=args.dry_run, 
-                              ai_system=args.ai_system, 
+
+    file_manager = FileManager(config=config, dry_run=args.dry_run,
                               skip_vectordb=args.skip_vectordb)
     
     if podcast_dirs:
