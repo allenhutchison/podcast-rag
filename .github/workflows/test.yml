@@ -36,6 +36,8 @@ jobs:
           pip install pytest-cov
 
       - name: Run tests with pytest
+        env:
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           pytest -v --cov=src --cov-report=term-missing --cov-report=xml tests/
 
