@@ -2,8 +2,6 @@ import logging
 import sys
 import json
 
-import google.generativeai as genai
-
 from src.argparse_shared import (add_dry_run_argument,
                              add_log_level_argument, add_query_argument,
                              get_base_parser)
@@ -14,6 +12,7 @@ from src.prompt_manager import PromptManager
 
 class RagManager:
     def __init__(self, config: Config, dry_run=False, print_results=True):
+        import google.generativeai as genai
         self.config = config
         self.dry_run = dry_run
         self.print_results = print_results

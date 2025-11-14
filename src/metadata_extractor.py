@@ -6,8 +6,6 @@ from functools import wraps
 from typing import Optional
 from threading import Lock
 
-import eyed3
-import google.genai as genai
 from pydantic import TypeAdapter
 
 from src.config import Config
@@ -84,10 +82,14 @@ class MetadataExtractor:
             "failed": 0,
         }
 
-        # Initialize AI client
-        self.ai_client = genai.Client(api_key=self.config.GEMINI_API_KEY)
-        # Initialize rate limiter for 10 requests per minute
-        self.rate_limiter = RateLimiter(max_requests=9, time_window=60)
+        # Initialize AI client only when not in dry run mode
+        self.ai_client = None
+        self.rate_limiter = None
+        if not dry_run:
+            import google.genai as genai
+            self.ai_client = genai.Client(api_key=self.config.GEMINI_API_KEY)
+            # Initialize rate limiter for 10 requests per minute
+            self.rate_limiter = RateLimiter(max_requests=9, time_window=60)
 
     def build_metadata_file(self, episode_path: str) -> str:
         """Build the path for the metadata file."""
@@ -121,6 +123,7 @@ class MetadataExtractor:
 
     def extract_mp3_metadata(self, episode_path: str) -> MP3Metadata:
         """Extract metadata from MP3 file using eyed3."""
+        import eyed3
         try:
             audiofile = eyed3.load(episode_path)
             if audiofile and audiofile.tag:
