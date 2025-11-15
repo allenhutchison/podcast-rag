@@ -6,7 +6,6 @@ gunicorn
 markdown
 APScheduler
 flask-cors
-google-generativeai
 google-genai
 eyed3
 pydantic
