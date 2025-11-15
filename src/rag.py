@@ -75,7 +75,7 @@ class RagManager:
             query: User's question
 
         Returns:
-            Generated response text
+            Generated response text with inline citations
         """
         self.last_query = query
         logging.info(f"Processing query: {query}")
@@ -113,6 +113,9 @@ class RagManager:
             # Get response text
             response_text = response.text if hasattr(response, 'text') else str(response)
 
+            # Add inline citations
+            response_text = self._add_inline_citations(response_text)
+
             if self.print_results:
                 logging.info(f"Response: {response_text}")
                 if self.last_grounding_metadata:
@@ -123,6 +126,55 @@ class RagManager:
         except Exception as e:
             logging.error(f"Query failed: {e}")
             raise
+
+    def _add_inline_citations(self, text: str) -> str:
+        """
+        Add inline citation markers to the response text.
+
+        Args:
+            text: Original response text
+
+        Returns:
+            Text with inline citations like [1], [2], etc.
+        """
+        if not self.last_grounding_metadata:
+            return text
+
+        if not hasattr(self.last_grounding_metadata, 'grounding_supports'):
+            return text
+
+        # Build a map of text positions to citation indices
+        # We'll insert citations after segments they support
+        citation_inserts = []
+
+        for support in self.last_grounding_metadata.grounding_supports:
+            if hasattr(support, 'segment') and hasattr(support, 'grounding_chunk_indices'):
+                segment = support.segment
+                chunk_indices = support.grounding_chunk_indices
+
+                if hasattr(segment, 'end_index') and chunk_indices:
+                    # Convert chunk indices to citation numbers (1-based)
+                    citation_nums = [idx + 1 for idx in chunk_indices]
+                    citation_text = ''.join(f'[{num}]' for num in citation_nums)
+
+                    citation_inserts.append({
+                        'position': segment.end_index,
+                        'text': citation_text
+                    })
+
+        # Sort by position in reverse order so we can insert without messing up indices
+        citation_inserts.sort(key=lambda x: x['position'], reverse=True)
+
+        # Insert citations
+        result = text
+        for insert in citation_inserts:
+            pos = insert['position']
+            cite = insert['text']
+            # Insert after the position
+            if pos <= len(result):
+                result = result[:pos] + cite + result[pos:]
+
+        return result
 
     def get_citations(self) -> List[Dict]:
         """
@@ -136,14 +188,26 @@ class RagManager:
 
         citations = []
 
-        # Parse grounding metadata structure
+        # Parse grounding metadata structure - try both old and new formats
         if hasattr(self.last_grounding_metadata, 'file_search_citations'):
+            # Old format
             for citation in self.last_grounding_metadata.file_search_citations:
                 citations.append({
                     'file_id': getattr(citation, 'file_id', None),
                     'chunk_index': getattr(citation, 'chunk_index', None),
                     'score': getattr(citation, 'score', None)
                 })
+        elif hasattr(self.last_grounding_metadata, 'grounding_chunks'):
+            # New format with grounding_chunks
+            for i, chunk in enumerate(self.last_grounding_metadata.grounding_chunks):
+                if hasattr(chunk, 'retrieved_context'):
+                    context = chunk.retrieved_context
+                    citations.append({
+                        'index': i,
+                        'title': getattr(context, 'title', 'Unknown'),
+                        'text': getattr(context, 'text', ''),
+                        'uri': getattr(context, 'uri', None)
+                    })
 
         return citations
 
@@ -209,10 +273,62 @@ if __name__ == "__main__":
     # Show citations if available
     citations = rag_manager.get_citations()
     if citations:
-        print("\nCITATIONS:")
+        print("\n" + "="*80)
+        print("SOURCES & CITATIONS:")
         print("="*80)
+
         for i, citation in enumerate(citations, 1):
-            print(f"{i}. File: {citation.get('file_id', 'N/A')}, "
-                  f"Chunk: {citation.get('chunk_index', 'N/A')}, "
-                  f"Score: {citation.get('score', 'N/A'):.3f}")
-        print("="*80)
+            # Handle both old and new citation formats
+            if 'title' in citation:
+                # New format with grounding chunks
+                title = citation.get('title', 'Unknown')
+                text = citation.get('text', '')
+
+                # Fetch document metadata
+                doc_info = rag_manager.file_search_manager.get_document_by_name(title)
+
+                print(f"\n[{i}]", end='')
+
+                # Display metadata if available
+                if doc_info and doc_info.get('metadata'):
+                    metadata = doc_info['metadata']
+
+                    # Format: Podcast - Episode (Year) - Host
+                    parts = []
+                    if metadata.get('podcast'):
+                        parts.append(metadata['podcast'])
+                    if metadata.get('episode'):
+                        parts.append(metadata['episode'])
+
+                    if parts:
+                        print(f" {' - '.join(parts)}", end='')
+
+                    if metadata.get('release_date'):
+                        print(f" ({metadata['release_date']})", end='')
+
+                    if metadata.get('hosts'):
+                        print(f" - Host: {metadata['hosts']}", end='')
+
+                    print()  # Newline after metadata
+                else:
+                    # Fallback to filename if no metadata
+                    print(f" {title}")
+
+                print("-" * 80)
+
+                # Show text excerpt (truncate if too long)
+                if text:
+                    excerpt = text.strip()
+                    if len(excerpt) > 300:
+                        excerpt = excerpt[:297] + "..."
+                    print(excerpt)
+                else:
+                    print("(No text preview available)")
+
+            else:
+                # Old format
+                print(f"\n[{i}] File: {citation.get('file_id', 'N/A')}, "
+                      f"Chunk: {citation.get('chunk_index', 'N/A')}, "
+                      f"Score: {citation.get('score', 'N/A'):.3f}")
+
+        print("\n" + "="*80)

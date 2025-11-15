@@ -8,10 +8,13 @@ chunking, and citation support.
 
 import logging
 import os
+import time
 from typing import Dict, List, Optional
 
 from google import genai
 from google.genai import types
+
+from src.utils.metadata_utils import flatten_episode_metadata
 
 
 class GeminiFileSearchManager:
@@ -41,27 +44,84 @@ class GeminiFileSearchManager:
 
         logging.info("Gemini File Search Manager initialized")
 
-    def _prepare_metadata(self, metadata: Optional[Dict]) -> Dict:
+    def _sanitize_display_name(self, name: str) -> str:
+        """
+        Sanitize display name to ASCII-safe characters.
+
+        Replaces common unicode punctuation with ASCII equivalents to avoid
+        encoding errors in the Gemini File Search API.
+
+        Args:
+            name: Original filename
+
+        Returns:
+            ASCII-safe filename
+        """
+        # Replace common unicode characters with ASCII equivalents
+        replacements = {
+            '\u2019': "'",  # Right single quotation mark
+            '\u2018': "'",  # Left single quotation mark
+            '\u201c': '"',  # Left double quotation mark
+            '\u201d': '"',  # Right double quotation mark
+            '\u2013': '-',  # En dash
+            '\u2014': '--', # Em dash
+            '\u2026': '...', # Horizontal ellipsis
+        }
+        result = name
+        for unicode_char, ascii_char in replacements.items():
+            result = result.replace(unicode_char, ascii_char)
+
+        # Ensure the result is ASCII-encodable, replacing any remaining non-ASCII
+        try:
+            result.encode('ascii')
+            return result
+        except UnicodeEncodeError:
+            # Fall back to ASCII with replacement
+            return result.encode('ascii', 'replace').decode('ascii')
+
+    def _prepare_metadata(self, metadata: Optional[Dict]) -> List[Dict]:
         """
         Convert metadata dictionary to File Search custom_metadata format.
 
-        Converts lists to comma-separated strings and ensures all values are strings.
+        Handles both flat dictionaries and nested EpisodeMetadata structures.
+        Converts lists to comma-separated strings, truncates long values, and ensures all
+        values are strings. Returns a list of key-value pairs as required by the Gemini API.
 
         Args:
-            metadata: Dictionary of metadata values
+            metadata: Dictionary of metadata values (flat or nested EpisodeMetadata)
 
         Returns:
-            Dictionary suitable for File Search custom_metadata
+            List of dicts with 'key' and 'string_value' fields for File Search custom_metadata
         """
-        custom_metadata = {}
-        if metadata:
-            for key in ['podcast', 'episode', 'release_date', 'hosts', 'guests', 'keywords', 'summary']:
-                if key in metadata and metadata[key]:
-                    value = metadata[key]
-                    # Convert lists to comma-separated strings
-                    if isinstance(value, list):
-                        value = ', '.join(str(v) for v in value)
-                    custom_metadata[key] = str(value)
+        MAX_VALUE_LENGTH = 255  # Gemini File Search limit (must be < 256)
+        custom_metadata = []
+
+        if not metadata:
+            return custom_metadata
+
+        # Flatten nested metadata structure using utility
+        flattened = flatten_episode_metadata(metadata)
+
+        # Convert flattened metadata to File Search format
+        for key in ['podcast', 'episode', 'release_date', 'hosts', 'guests', 'keywords', 'summary']:
+            if key in flattened and flattened[key]:
+                value = flattened[key]
+                # Convert lists to comma-separated strings
+                if isinstance(value, list):
+                    value = ', '.join(str(v) for v in value)
+
+                # Convert to string and truncate if necessary
+                value_str = str(value)
+                if len(value_str) > MAX_VALUE_LENGTH:
+                    # Truncate and add ellipsis (ensure total is <= 255)
+                    value_str = value_str[:MAX_VALUE_LENGTH-3] + '...'
+                    logging.debug(f"Truncated metadata '{key}' from {len(str(value))} to {len(value_str)} chars")
+
+                custom_metadata.append({
+                    'key': key,
+                    'string_value': value_str
+                })
+
         return custom_metadata
 
     def create_or_get_store(self, display_name: Optional[str] = None) -> str:
@@ -115,8 +175,10 @@ class GeminiFileSearchManager:
         self,
         transcript_path: str,
         metadata: Optional[Dict] = None,
-        store_name: Optional[str] = None
-    ) -> str:
+        store_name: Optional[str] = None,
+        existing_files: Optional[Dict[str, str]] = None,
+        skip_existing: bool = True
+    ) -> Optional[str]:
         """
         Upload a transcript file to the File Search store.
 
@@ -124,9 +186,11 @@ class GeminiFileSearchManager:
             transcript_path: Path to the transcript text file
             metadata: Dictionary of metadata to attach (podcast, episode, etc.)
             store_name: Store to upload to (uses default if None)
+            existing_files: Dict of display_name -> file_name for existing files (to skip duplicates)
+            skip_existing: If True, skip files that already exist
 
         Returns:
-            File resource name
+            File resource name, or None if skipped
         """
         # Check file exists first before making any API calls
         if not os.path.exists(transcript_path):
@@ -134,6 +198,19 @@ class GeminiFileSearchManager:
 
         if store_name is None:
             store_name = self.create_or_get_store()
+
+        # Get basename and sanitize for ASCII compatibility
+        original_name = os.path.basename(transcript_path)
+        display_name = self._sanitize_display_name(original_name)
+
+        # Log if sanitization changed the name
+        if display_name != original_name:
+            logging.debug(f"Sanitized display name: '{original_name}' -> '{display_name}'")
+
+        # Check if file already exists (use sanitized name for lookup)
+        if skip_existing and existing_files and display_name in existing_files:
+            logging.info(f"Skipping {display_name} - already exists as {existing_files[display_name]}")
+            return None
 
         # Prepare metadata
         custom_metadata = self._prepare_metadata(metadata)
@@ -147,19 +224,65 @@ class GeminiFileSearchManager:
             # Upload file with metadata
             logging.info(f"Uploading {transcript_path} to File Search store...")
 
-            operation = self.client.file_search_stores.upload_to_file_search_store(
-                file=transcript_path,
-                file_search_store_name=store_name,
-                config={
-                    'display_name': os.path.basename(transcript_path),
-                    'custom_metadata': custom_metadata
-                }
-            )
+            # Check if the file path contains non-ASCII characters
+            # If so, copy to a temp file with ASCII-safe name to avoid SDK encoding issues
+            needs_temp_file = False
+            try:
+                transcript_path.encode('ascii')
+            except UnicodeEncodeError:
+                needs_temp_file = True
 
-            # Wait for operation to complete and get file name
-            result = operation.result()
-            logging.info(f"Successfully uploaded: {result.name}")
-            return result.name
+            if needs_temp_file:
+                import tempfile
+                import shutil
+
+                # Create temp file with ASCII-safe name
+                fd, tmp_path = tempfile.mkstemp(suffix='.txt', text=True)
+                os.close(fd)  # Close the file descriptor
+
+                try:
+                    # Copy the original file to temp location
+                    shutil.copy2(transcript_path, tmp_path)
+
+                    # Upload the temp file
+                    operation = self.client.file_search_stores.upload_to_file_search_store(
+                        file=tmp_path,
+                        file_search_store_name=store_name,
+                        config={
+                            'display_name': display_name,
+                            'custom_metadata': custom_metadata
+                        }
+                    )
+
+                    # Poll operation until complete
+                    while not operation.done:
+                        time.sleep(1)
+                        operation = self.client.operations.get(operation)
+
+                    logging.info(f"Successfully uploaded: {display_name}")
+                    return operation.name
+                finally:
+                    # Clean up temp file
+                    if os.path.exists(tmp_path):
+                        os.unlink(tmp_path)
+            else:
+                # File path is ASCII-safe, upload directly
+                operation = self.client.file_search_stores.upload_to_file_search_store(
+                    file=transcript_path,
+                    file_search_store_name=store_name,
+                    config={
+                        'display_name': display_name,
+                        'custom_metadata': custom_metadata
+                    }
+                )
+
+                # Poll operation until complete
+                while not operation.done:
+                    time.sleep(1)
+                    operation = self.client.operations.get(operation)
+
+                logging.info(f"Successfully uploaded: {display_name}")
+                return operation.name
 
         except Exception as e:
             logging.error(f"Failed to upload transcript: {e}")
@@ -187,14 +310,19 @@ class GeminiFileSearchManager:
         if store_name is None:
             store_name = self.create_or_get_store()
 
+        # Sanitize display name for ASCII compatibility
+        sanitized_name = self._sanitize_display_name(display_name)
+        if sanitized_name != display_name:
+            logging.debug(f"Sanitized display name: '{display_name}' -> '{sanitized_name}'")
+
         # Prepare metadata
         custom_metadata = self._prepare_metadata(metadata)
 
         if self.dry_run:
-            logging.info(f"[DRY RUN] Would upload text as {display_name} to {store_name}")
+            logging.info(f"[DRY RUN] Would upload text as {sanitized_name} to {store_name}")
             logging.info(f"[DRY RUN] Text length: {len(text)} characters")
             logging.info(f"[DRY RUN] Metadata: {custom_metadata}")
-            return f"files/dry-run-{display_name}"
+            return f"files/dry-run-{sanitized_name}"
 
         try:
             # Create temporary file with text content
@@ -211,15 +339,18 @@ class GeminiFileSearchManager:
                     file=tmp_path,
                     file_search_store_name=store_name,
                     config={
-                        'display_name': display_name,
+                        'display_name': sanitized_name,
                         'custom_metadata': custom_metadata
                     }
                 )
 
-                # Wait for operation to complete and get file name
-                result = operation.result()
-                logging.info(f"Successfully uploaded text as: {result.name}")
-                return result.name
+                # Poll operation until complete
+                while not operation.done:
+                    time.sleep(1)
+                    operation = self.client.operations.get(operation)
+
+                logging.info(f"Successfully uploaded text as: {sanitized_name}")
+                return operation.name
             finally:
                 # Clean up temporary file
                 if os.path.exists(tmp_path):
@@ -264,13 +395,13 @@ class GeminiFileSearchManager:
 
     def list_files(self, store_name: Optional[str] = None) -> List[str]:
         """
-        List all files in a File Search store.
+        List all documents in a File Search store.
 
         Args:
             store_name: Store to query (uses default if None)
 
         Returns:
-            List of file resource names
+            List of document resource names
         """
         if store_name is None:
             store_name = self.create_or_get_store()
@@ -279,31 +410,100 @@ class GeminiFileSearchManager:
             return []
 
         try:
-            # List files in the store
-            files = self.client.files.list(
-                config={'file_search_store_name': store_name}
-            )
-            return [file.name for file in files]
+            # List documents in the store
+            documents = self.client.file_search_stores.documents.list(parent=store_name)
+            return [doc.name for doc in documents]
         except Exception as e:
-            logging.error(f"Failed to list files: {e}")
+            logging.error(f"Failed to list documents: {e}")
             raise
 
-    def delete_file(self, file_name: str):
+    def get_existing_files(self, store_name: Optional[str] = None) -> Dict[str, str]:
         """
-        Delete a file from the File Search store.
+        Get a mapping of display names to document resource names for existing files.
 
         Args:
-            file_name: File resource name to delete
+            store_name: Store to query (uses default if None)
+
+        Returns:
+            Dictionary mapping display_name -> document resource name
+        """
+        if store_name is None:
+            store_name = self.create_or_get_store()
+
+        if self.dry_run:
+            return {}
+
+        try:
+            # List documents in the store and create mapping
+            documents = self.client.file_search_stores.documents.list(parent=store_name)
+            return {doc.display_name: doc.name for doc in documents}
+        except Exception as e:
+            logging.error(f"Failed to list documents: {e}")
+            raise
+
+    def get_document_by_name(self, display_name: str, store_name: Optional[str] = None) -> Optional[Dict]:
+        """
+        Get document metadata by display name.
+
+        Args:
+            display_name: Display name of the document (e.g., 'filename.txt')
+            store_name: Store to query (uses default if None)
+
+        Returns:
+            Dictionary with document info including custom_metadata, or None if not found
+        """
+        if store_name is None:
+            store_name = self.create_or_get_store()
+
+        if self.dry_run:
+            return None
+
+        try:
+            # List documents and find the matching one
+            documents = self.client.file_search_stores.documents.list(parent=store_name)
+
+            for doc in documents:
+                if doc.display_name == display_name:
+                    # Extract metadata
+                    metadata = {}
+                    if hasattr(doc, 'custom_metadata') and doc.custom_metadata:
+                        for meta in doc.custom_metadata:
+                            if hasattr(meta, 'key') and hasattr(meta, 'string_value'):
+                                metadata[meta.key] = meta.string_value
+
+                    return {
+                        'name': doc.name,
+                        'display_name': doc.display_name,
+                        'metadata': metadata,
+                        'create_time': getattr(doc, 'create_time', None),
+                        'size_bytes': getattr(doc, 'size_bytes', None)
+                    }
+
+            return None
+        except Exception as e:
+            logging.error(f"Failed to get document {display_name}: {e}")
+            return None
+
+    def delete_file(self, file_name: str, force: bool = True):
+        """
+        Delete a document from the File Search store.
+
+        Args:
+            file_name: Document resource name to delete
+            force: If True, delete the document and all its chunks (default: True)
         """
         if self.dry_run:
-            logging.info(f"[DRY RUN] Would delete file: {file_name}")
+            logging.info(f"[DRY RUN] Would delete document: {file_name}")
             return
 
         try:
-            self.client.files.delete(name=file_name)
-            logging.info(f"Deleted file: {file_name}")
+            self.client.file_search_stores.documents.delete(
+                name=file_name,
+                config={'force': force}
+            )
+            logging.info(f"Deleted document: {file_name}")
         except Exception as e:
-            logging.error(f"Failed to delete file: {e}")
+            logging.error(f"Failed to delete document: {e}")
             raise
 
     def batch_upload_directory(

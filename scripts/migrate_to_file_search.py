@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.config import Config
 from src.db.gemini_file_search import GeminiFileSearchManager
+from src.utils.metadata_utils import load_and_flatten_metadata
 
 
 def find_transcripts(base_directory: str, config: Config):
@@ -42,27 +43,19 @@ def find_transcripts(base_directory: str, config: Config):
 
 def load_metadata(transcript_path: str, config: Config):
     """
-    Load metadata for a transcript if available.
+    Load metadata for a transcript if available and map to flat structure.
 
     Args:
         transcript_path: Path to transcript file
         config: Configuration object with TRANSCRIPTION_OUTPUT_SUFFIX
 
     Returns:
-        Metadata dictionary or None
+        Flattened metadata dictionary or None
     """
-    # Construct metadata file path
-    base_path = transcript_path.replace(config.TRANSCRIPTION_OUTPUT_SUFFIX, '')
-    metadata_path = f"{base_path}_metadata.json"
-
-    if os.path.exists(metadata_path):
-        try:
-            with open(metadata_path, 'r') as f:
-                return json.load(f)
-        except (json.JSONDecodeError, IOError, OSError) as e:
-            logging.warning(f"Failed to load metadata from {metadata_path}: {e}")
-
-    return None
+    return load_and_flatten_metadata(
+        transcript_path=transcript_path,
+        transcription_suffix=config.TRANSCRIPTION_OUTPUT_SUFFIX
+    )
 
 
 def migrate_transcripts(
@@ -92,6 +85,11 @@ def migrate_transcripts(
     store_name = file_search_manager.create_or_get_store()
     logging.info(f"Using File Search store: {store_name}")
 
+    # Get existing files to avoid duplicates
+    logging.info("Fetching existing files in store...")
+    existing_files = file_search_manager.get_existing_files(store_name)
+    logging.info(f"Found {len(existing_files)} existing files in store")
+
     # Find all transcripts
     transcripts = find_transcripts(config.BASE_DIRECTORY, config)
     logging.info(f"Found {len(transcripts)} transcript files")
@@ -118,21 +116,30 @@ def migrate_transcripts(
             # Load metadata
             metadata = load_metadata(transcript_path, config)
             if metadata:
-                logging.info(f"  Metadata: {metadata.get('podcast', 'N/A')} - {metadata.get('episode', 'N/A')}")
+                podcast = metadata.get('podcast', 'N/A')
+                episode = metadata.get('episode', 'N/A')
+                logging.info(f"  Metadata: {podcast} - {episode}")
+                logging.debug(f"  Full metadata: {metadata}")
+            else:
+                logging.debug(f"  No metadata file found")
 
             # Upload transcript
             if not dry_run:
                 file_name = file_search_manager.upload_transcript(
                     transcript_path=transcript_path,
                     metadata=metadata,
-                    store_name=store_name
+                    store_name=store_name,
+                    existing_files=existing_files
                 )
-                logging.info(f"  ✓ Uploaded as: {file_name}")
-                stats['uploaded'] += 1
+                if file_name:
+                    logging.info(f"  ✓ Uploaded as: {file_name}")
+                    stats['uploaded'] += 1
 
-                # Rate limiting delay
-                if delay > 0 and i < len(transcripts):
-                    time.sleep(delay)
+                    # Rate limiting delay
+                    if delay > 0 and i < len(transcripts):
+                        time.sleep(delay)
+                else:
+                    stats['skipped'] += 1
             else:
                 logging.info(f"  [DRY RUN] Would upload to {store_name}")
                 stats['uploaded'] += 1

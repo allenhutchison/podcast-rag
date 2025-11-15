@@ -18,11 +18,15 @@ class FileManager:
         self.metadata_extractor = MetadataExtractor(config=config, dry_run=dry_run)
 
         # Initialize File Search manager only if not skipping indexing operations
+        self.existing_files_cache = None
         if not skip_vectordb:
             try:
                 self.file_search_manager = GeminiFileSearchManager(config=config, dry_run=dry_run)
                 # Ensure store is created
-                self.file_search_manager.create_or_get_store()
+                store_name = self.file_search_manager.create_or_get_store()
+                # Cache existing files for idempotency
+                self.existing_files_cache = self.file_search_manager.get_existing_files(store_name)
+                logging.info(f"Found {len(self.existing_files_cache)} existing documents in File Search store")
             except (ValueError, KeyError) as e:
                 # Configuration errors (missing API key, etc.) should fail loudly
                 logging.error(f"Configuration error initializing File Search: {e}")
@@ -54,12 +58,16 @@ class FileManager:
                     try:
                         transcript_path = self.config.build_transcription_file(episode_path)
                         if os.path.exists(transcript_path):
-                            self.file_search_manager.upload_transcript(
+                            file_name = self.file_search_manager.upload_transcript(
                                 transcript_path=transcript_path,
-                                metadata=metadata
+                                metadata=metadata,
+                                existing_files=self.existing_files_cache
                             )
-                            self.stats["total_uploaded"] += 1
-                            logging.info(f"Uploaded transcript to File Search: {transcript_path}")
+                            if file_name:
+                                self.stats["total_uploaded"] += 1
+                                logging.info(f"Uploaded transcript to File Search: {transcript_path}")
+                            else:
+                                logging.debug(f"Skipped upload (already exists): {transcript_path}")
                     except Exception as e:
                         logging.error(f"Failed to upload transcript for {episode_path}: {e}")
 
