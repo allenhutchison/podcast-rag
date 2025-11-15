@@ -74,12 +74,12 @@ The project has been successfully migrated from a self-hosted ChromaDB vector da
 - **`requirements.txt`**
   - Removed `chromadb` (no longer needed)
   - Removed `nltk` (used only for ChromaDB chunking)
-  - Kept both `google-generativeai` and `google-genai` for compatibility
+  - Removed `google-generativeai` (old SDK, standardized on `google-genai`)
 
-### 3. Files Removed (Not Deleted, But No Longer Used)
+### 3. Files Removed
 
-- `src/db/chroma_vectordb.py` - Old ChromaDB manager (should be deleted after verification)
-- `src/chroma_search.py` - Old search interface (replaced by `gemini_search.py`)
+- `src/db/chroma_vectordb.py` - Old ChromaDB manager (deleted)
+- `src/chroma_search.py` - Old search interface (deleted, replaced by `gemini_search.py`)
 
 ## Architecture Changes
 
