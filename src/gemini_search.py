@@ -35,6 +35,10 @@ class GeminiSearchManager:
         self.config = config
         self.dry_run = dry_run
 
+        # Validate model compatibility with File Search
+        if not dry_run:
+            config.validate_file_search_model()
+
         # Initialize Gemini client
         self.client = genai.Client(api_key=config.GEMINI_API_KEY)
         self.store_name = None
@@ -49,7 +53,7 @@ class GeminiSearchManager:
         if self.store_name is None:
             try:
                 # Try to find existing store
-                stores = self.client.files.list_file_search_stores()
+                stores = self.client.file_search_stores.list()
                 for store in stores:
                     if store.display_name == self.config.GEMINI_FILE_SEARCH_STORE_NAME:
                         self.store_name = store.name
@@ -60,8 +64,8 @@ class GeminiSearchManager:
 
             # Create new store if not found
             try:
-                store = self.client.files.create_file_search_store(
-                    display_name=self.config.GEMINI_FILE_SEARCH_STORE_NAME
+                store = self.client.file_search_stores.create(
+                    config={'display_name': self.config.GEMINI_FILE_SEARCH_STORE_NAME}
                 )
                 self.store_name = store.name
                 logging.info(f"Created new File Search store: {self.store_name}")
@@ -98,7 +102,7 @@ class GeminiSearchManager:
                 contents=query,
                 config=types.GenerateContentConfig(
                     tools=[types.Tool(
-                        file_search=types.FileSearchToolConfig(
+                        file_search=types.FileSearch(
                             file_search_store_names=[store_name]
                         )
                     )],
