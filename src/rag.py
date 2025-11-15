@@ -93,7 +93,7 @@ class RagManager:
                 contents=query,
                 config=types.GenerateContentConfig(
                     tools=[types.Tool(
-                        file_search=types.FileSearchToolConfig(
+                        file_search=types.FileSearch(
                             file_search_store_names=[store_name]
                         )
                     )],

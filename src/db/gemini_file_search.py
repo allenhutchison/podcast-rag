@@ -88,7 +88,7 @@ class GeminiFileSearchManager:
 
         try:
             # Try to list existing stores to find one with matching display name
-            stores = self.client.files.list_file_search_stores()
+            stores = self.client.file_search_stores.list()
             for store in stores:
                 if store.display_name == display_name:
                     logging.info(f"Found existing store: {store.name}")
@@ -100,8 +100,8 @@ class GeminiFileSearchManager:
 
         # Create new store
         try:
-            store = self.client.files.create_file_search_store(
-                display_name=display_name
+            store = self.client.file_search_stores.create(
+                config={'display_name': display_name}
             )
             logging.info(f"Created new File Search store: {store.name}")
             self._store_cache = store.name
@@ -128,11 +128,12 @@ class GeminiFileSearchManager:
         Returns:
             File resource name
         """
-        if store_name is None:
-            store_name = self.create_or_get_store()
-
+        # Check file exists first before making any API calls
         if not os.path.exists(transcript_path):
             raise FileNotFoundError(f"Transcript file not found: {transcript_path}")
+
+        if store_name is None:
+            store_name = self.create_or_get_store()
 
         # Prepare metadata
         custom_metadata = self._prepare_metadata(metadata)
@@ -146,18 +147,19 @@ class GeminiFileSearchManager:
             # Upload file with metadata
             logging.info(f"Uploading {transcript_path} to File Search store...")
 
-            with open(transcript_path, 'rb') as f:
-                file = self.client.files.upload(
-                    file=f,
-                    config={
-                        'display_name': os.path.basename(transcript_path),
-                        'file_search_store_name': store_name,
-                        'custom_metadata': custom_metadata
-                    }
-                )
+            operation = self.client.file_search_stores.upload_to_file_search_store(
+                file=transcript_path,
+                file_search_store_name=store_name,
+                config={
+                    'display_name': os.path.basename(transcript_path),
+                    'custom_metadata': custom_metadata
+                }
+            )
 
-            logging.info(f"Successfully uploaded: {file.name}")
-            return file.name
+            # Wait for operation to complete and get file name
+            result = operation.result()
+            logging.info(f"Successfully uploaded: {result.name}")
+            return result.name
 
         except Exception as e:
             logging.error(f"Failed to upload transcript: {e}")
@@ -205,18 +207,19 @@ class GeminiFileSearchManager:
                     tmp_file.write(text)
 
                 # Now upload the closed temporary file
-                with open(tmp_path, 'rb') as f:
-                    file = self.client.files.upload(
-                        file=f,
-                        config={
-                            'display_name': display_name,
-                            'file_search_store_name': store_name,
-                            'custom_metadata': custom_metadata
-                        }
-                    )
+                operation = self.client.file_search_stores.upload_to_file_search_store(
+                    file=tmp_path,
+                    file_search_store_name=store_name,
+                    config={
+                        'display_name': display_name,
+                        'custom_metadata': custom_metadata
+                    }
+                )
 
-                logging.info(f"Successfully uploaded text as: {file.name}")
-                return file.name
+                # Wait for operation to complete and get file name
+                result = operation.result()
+                logging.info(f"Successfully uploaded text as: {result.name}")
+                return result.name
             finally:
                 # Clean up temporary file
                 if os.path.exists(tmp_path):
@@ -248,7 +251,7 @@ class GeminiFileSearchManager:
             }
 
         try:
-            store = self.client.files.get_file_search_store(name=store_name)
+            store = self.client.file_search_stores.get(name=store_name)
             return {
                 'name': store.name,
                 'display_name': store.display_name,
