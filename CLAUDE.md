@@ -203,10 +203,6 @@ pytest --cov=src tests/
   - Model: `gemini-2.0-flash-exp` (configurable via `GEMINI_MODEL`)
   - Used for: RAG queries, metadata extraction
 
-**Cloud Storage:**
-- S3/Cloudflare R2 for audio file storage (optional but recommended)
-- Configure via: `S3_BUCKET_NAME`, `S3_ENDPOINT_URL`, AWS credentials
-
 **Vector Database:**
 - ChromaDB stores transcript embeddings
 - Persisted in `MEDIA_EMBED_BASE_DIRECTORY`
@@ -228,7 +224,6 @@ pytest --cov=src tests/
 
 **Optional:**
 - `GEMINI_API_KEY` - For Gemini-based RAG
-- `S3_BUCKET_NAME`, AWS credentials - For cloud storage
 - `DOWNLOAD_POLL_INTERVAL_MINUTES` - RSS polling frequency (default: 60)
 
 ## Testing Guidelines

@@ -37,12 +37,6 @@ class Config:
         self.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "your_api_key_here")
         self.GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-exp")
 
-        # S3/R2 Configuration
-        self.S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
-        self.S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL")
-        self.AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
-        self.AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
-
         # Prompts configuration
         base_dir = os.path.dirname(__file__)
         default_prompts_dir = os.path.join(base_dir, "../prompts")

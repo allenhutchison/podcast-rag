@@ -3,7 +3,6 @@ import os
 import sys
 import logging
 import requests
-import boto3
 import feedparser
 import time
 from apscheduler.schedulers.blocking import BlockingScheduler
@@ -15,17 +14,7 @@ from src.config import Config
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def get_r2_client(config: Config):
-    """Initializes a boto3 client for Cloudflare R2."""
-    return boto3.client(
-        's3',
-        endpoint_url=config.S3_ENDPOINT_URL,
-        aws_access_key_id=config.AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=config.AWS_SECRET_ACCESS_KEY,
-        region_name='auto'
-    )
-
-def poll_all_feeds(config: Config, r2_client):
+def poll_all_feeds(config: Config):
     """The main job function that polls all podcast feeds."""
     # Defer database imports until after config is loaded
     from db.database import get_db
@@ -67,16 +56,25 @@ def poll_all_feeds(config: Config, r2_client):
 
                     try:
                         file_extension = os.path.splitext(audio_url.split('?')[0])[-1] or '.mp3'
-                        object_key = f"podcasts/{podcast.id}/{guid}{file_extension}"
-                        
-                        logging.info(f"Downloading audio from {audio_url}")
+
+                        # Create podcast directory if it doesn't exist
+                        podcast_dir = os.path.join(config.BASE_DIRECTORY, str(podcast.id))
+                        os.makedirs(podcast_dir, exist_ok=True)
+
+                        # Generate safe filename from guid
+                        safe_filename = "".join(c for c in guid if c.isalnum() or c in ('-', '_'))[:100]
+                        local_filename = f"{safe_filename}{file_extension}"
+                        local_path = os.path.join(podcast_dir, local_filename)
+
+                        logging.info(f"Downloading audio from {audio_url} to {local_path}")
                         with requests.get(audio_url, stream=True) as r:
                             r.raise_for_status()
-                            logging.info(f"Uploading to R2 with key: {object_key}")
-                            r2_client.upload_fileobj(r.raw, config.S3_BUCKET_NAME, object_key)
-                        
-                        r2_object_url = f"{config.S3_ENDPOINT_URL}/{config.S3_BUCKET_NAME}/{object_key}"
-                        
+                            with open(local_path, 'wb') as f:
+                                for chunk in r.iter_content(chunk_size=8192):
+                                    f.write(chunk)
+
+                        logging.info(f"Successfully downloaded audio to {local_path}")
+
                         published_date = date_parser.parse(entry.get('published')) if entry.get('published') else None
 
                         new_episode = Episode(
@@ -84,7 +82,7 @@ def poll_all_feeds(config: Config, r2_client):
                             guid=guid,
                             title=entry.get('title', 'No Title'),
                             published_date=published_date,
-                            audio_url=r2_object_url,
+                            audio_url=local_path,
                             summary=entry.get('summary')
                         )
                         db_session.add(new_episode)
@@ -107,19 +105,18 @@ def poll_all_feeds(config: Config, r2_client):
 
 if __name__ == "__main__":
     config = Config()
-    
-    if not all([config.DATABASE_URL, config.S3_BUCKET_NAME, config.S3_ENDPOINT_URL, config.AWS_ACCESS_KEY_ID, config.AWS_SECRET_ACCESS_KEY]):
-        logging.critical("FATAL: Database or S3/R2 configuration is missing. Please check your .env file.")
+
+    if not config.DATABASE_URL:
+        logging.critical("FATAL: Database configuration is missing. Please check your .env file.")
         exit(1)
 
-    r2_client = get_r2_client(config)
     poll_interval = int(os.getenv("DOWNLOAD_POLL_INTERVAL_MINUTES", 60))
 
     scheduler = BlockingScheduler()
-    
+
     logging.info("Scheduler starting. Triggering immediate first run.")
-    scheduler.add_job(poll_all_feeds, 'date', args=[config, r2_client], misfire_grace_time=600)
-    scheduler.add_job(poll_all_feeds, 'interval', minutes=poll_interval, args=[config, r2_client], misfire_grace_time=600)
+    scheduler.add_job(poll_all_feeds, 'date', args=[config], misfire_grace_time=600)
+    scheduler.add_job(poll_all_feeds, 'interval', minutes=poll_interval, args=[config], misfire_grace_time=600)
 
     logging.info(f"Podcast Download Service started. Polling every {poll_interval} minutes.")
     print("Press Ctrl+C to exit.")
