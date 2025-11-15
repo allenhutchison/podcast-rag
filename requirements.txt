@@ -1,14 +1,11 @@
 openai-whisper
 pytest
 python-dotenv
-chromadb
-nltk
 Flask
 gunicorn
 markdown
 APScheduler
 flask-cors
-google-generativeai
 google-genai
 eyed3
 pydantic

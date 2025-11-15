@@ -26,16 +26,22 @@ class Config:
         self.TRANSCRIPTION_OUTPUT_SUFFIX = "_transcription.txt"
         self.TRANSCRIPTION_TEMP_FILE_SUFFIX = ".transcription_in_progress"
 
-        # ChromaDB-related constants (to be removed later)
-        self.CHROMA_DB_HOST = os.getenv("CHROMA_DB_HOST", "localhost")
-        self.CHROMA_DB_PORT = os.getenv("CHROMA_DB_PORT", 50051)
-        self.CHROMA_DB_COLLECTION = os.getenv("CHROMA_DB_COLLECTION", "podcasts_collection")
-        self.INDEX_OUTPUT_SUFFIX = "_index.txt"
-        self.INDEX_TEMP_FILE_SUFFIX = ".index_in_progress"
-
         # Model configuration
         self.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "your_api_key_here")
-        self.GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-exp")
+        self.GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
+        # Gemini File Search configuration
+        self.GEMINI_FILE_SEARCH_STORE_NAME = os.getenv("GEMINI_FILE_SEARCH_STORE_NAME", "podcast-transcripts")
+        self.GEMINI_CHUNK_SIZE = int(os.getenv("GEMINI_CHUNK_SIZE", "1000"))
+        self.GEMINI_CHUNK_OVERLAP = int(os.getenv("GEMINI_CHUNK_OVERLAP", "100"))
+
+        # File Search compatible models
+        self.FILE_SEARCH_COMPATIBLE_MODELS = [
+            "gemini-2.5-pro",
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-exp",
+            "gemini-2.5-pro-exp"
+        ]
 
         # Prompts configuration
         base_dir = os.path.dirname(__file__)
@@ -71,6 +77,23 @@ class Config:
     def transcription_exists(self, transcription_file):
         '''Check if the transcription already exists using helper function from config.'''
         return os.path.exists(transcription_file) and os.path.getsize(transcription_file) > 0
+
+    def validate_file_search_model(self):
+        """
+        Validate that the configured model is compatible with File Search.
+
+        Raises:
+            ValueError: If model is not compatible with File Search
+        """
+        # Extract base model name (remove version suffixes if present)
+        model_base = self.GEMINI_MODEL.split(':')[0]  # Handle versioned models
+
+        if not any(compatible in model_base for compatible in self.FILE_SEARCH_COMPATIBLE_MODELS):
+            raise ValueError(
+                f"Model '{self.GEMINI_MODEL}' is not compatible with Gemini File Search. "
+                f"Compatible models: {', '.join(self.FILE_SEARCH_COMPATIBLE_MODELS)}. "
+                f"Please update GEMINI_MODEL in your .env file."
+            )
 
 # Helper functions
 def does_transcription_exist(transcription_file):
