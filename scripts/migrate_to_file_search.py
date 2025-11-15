@@ -21,13 +21,13 @@ from src.config import Config
 from src.db.gemini_file_search import GeminiFileSearchManager
 
 
-def find_transcripts(base_directory: str, pattern: str = "*_transcription.txt"):
+def find_transcripts(base_directory: str, config: Config):
     """
     Find all transcript files in the base directory.
 
     Args:
         base_directory: Root directory to search
-        pattern: Glob pattern for transcript files
+        config: Configuration object with TRANSCRIPTION_OUTPUT_SUFFIX
 
     Returns:
         List of transcript file paths
@@ -35,30 +35,31 @@ def find_transcripts(base_directory: str, pattern: str = "*_transcription.txt"):
     transcripts = []
     for root, dirs, files in os.walk(base_directory):
         for file in files:
-            if file.endswith("_transcription.txt"):
+            if file.endswith(config.TRANSCRIPTION_OUTPUT_SUFFIX):
                 transcripts.append(os.path.join(root, file))
     return sorted(transcripts)
 
 
-def load_metadata(transcript_path: str):
+def load_metadata(transcript_path: str, config: Config):
     """
     Load metadata for a transcript if available.
 
     Args:
         transcript_path: Path to transcript file
+        config: Configuration object with TRANSCRIPTION_OUTPUT_SUFFIX
 
     Returns:
         Metadata dictionary or None
     """
     # Construct metadata file path
-    base_path = transcript_path.replace('_transcription.txt', '')
+    base_path = transcript_path.replace(config.TRANSCRIPTION_OUTPUT_SUFFIX, '')
     metadata_path = f"{base_path}_metadata.json"
 
     if os.path.exists(metadata_path):
         try:
             with open(metadata_path, 'r') as f:
                 return json.load(f)
-        except Exception as e:
+        except (json.JSONDecodeError, IOError, OSError) as e:
             logging.warning(f"Failed to load metadata from {metadata_path}: {e}")
 
     return None
@@ -92,7 +93,7 @@ def migrate_transcripts(
     logging.info(f"Using File Search store: {store_name}")
 
     # Find all transcripts
-    transcripts = find_transcripts(config.BASE_DIRECTORY)
+    transcripts = find_transcripts(config.BASE_DIRECTORY, config)
     logging.info(f"Found {len(transcripts)} transcript files")
 
     # Apply limit if specified
@@ -115,7 +116,7 @@ def migrate_transcripts(
 
         try:
             # Load metadata
-            metadata = load_metadata(transcript_path)
+            metadata = load_metadata(transcript_path, config)
             if metadata:
                 logging.info(f"  Metadata: {metadata.get('podcast', 'N/A')} - {metadata.get('episode', 'N/A')}")
 

@@ -28,12 +28,20 @@ class Config:
 
         # Model configuration
         self.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "your_api_key_here")
-        self.GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-exp")
+        self.GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
         # Gemini File Search configuration
         self.GEMINI_FILE_SEARCH_STORE_NAME = os.getenv("GEMINI_FILE_SEARCH_STORE_NAME", "podcast-transcripts")
         self.GEMINI_CHUNK_SIZE = int(os.getenv("GEMINI_CHUNK_SIZE", "1000"))
         self.GEMINI_CHUNK_OVERLAP = int(os.getenv("GEMINI_CHUNK_OVERLAP", "100"))
+
+        # File Search compatible models
+        self.FILE_SEARCH_COMPATIBLE_MODELS = [
+            "gemini-2.5-pro",
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-exp",
+            "gemini-2.5-pro-exp"
+        ]
 
         # S3/R2 Configuration
         self.S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
@@ -75,6 +83,23 @@ class Config:
     def transcription_exists(self, transcription_file):
         '''Check if the transcription already exists using helper function from config.'''
         return os.path.exists(transcription_file) and os.path.getsize(transcription_file) > 0
+
+    def validate_file_search_model(self):
+        """
+        Validate that the configured model is compatible with File Search.
+
+        Raises:
+            ValueError: If model is not compatible with File Search
+        """
+        # Extract base model name (remove version suffixes if present)
+        model_base = self.GEMINI_MODEL.split(':')[0]  # Handle versioned models
+
+        if not any(compatible in model_base for compatible in self.FILE_SEARCH_COMPATIBLE_MODELS):
+            raise ValueError(
+                f"Model '{self.GEMINI_MODEL}' is not compatible with Gemini File Search. "
+                f"Compatible models: {', '.join(self.FILE_SEARCH_COMPATIBLE_MODELS)}. "
+                f"Please update GEMINI_MODEL in your .env file."
+            )
 
 # Helper functions
 def does_transcription_exist(transcription_file):

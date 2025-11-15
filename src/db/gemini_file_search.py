@@ -41,6 +41,29 @@ class GeminiFileSearchManager:
 
         logging.info("Gemini File Search Manager initialized")
 
+    def _prepare_metadata(self, metadata: Optional[Dict]) -> Dict:
+        """
+        Convert metadata dictionary to File Search custom_metadata format.
+
+        Converts lists to comma-separated strings and ensures all values are strings.
+
+        Args:
+            metadata: Dictionary of metadata values
+
+        Returns:
+            Dictionary suitable for File Search custom_metadata
+        """
+        custom_metadata = {}
+        if metadata:
+            for key in ['podcast', 'episode', 'release_date', 'hosts', 'guests', 'keywords', 'summary']:
+                if key in metadata and metadata[key]:
+                    value = metadata[key]
+                    # Convert lists to comma-separated strings
+                    if isinstance(value, list):
+                        value = ', '.join(str(v) for v in value)
+                    custom_metadata[key] = str(value)
+        return custom_metadata
+
     def create_or_get_store(self, display_name: Optional[str] = None) -> str:
         """
         Create a new File Search store or get existing one.
@@ -112,16 +135,7 @@ class GeminiFileSearchManager:
             raise FileNotFoundError(f"Transcript file not found: {transcript_path}")
 
         # Prepare metadata
-        custom_metadata = {}
-        if metadata:
-            # Map metadata fields to custom_metadata
-            for key in ['podcast', 'episode', 'release_date', 'hosts', 'guests', 'keywords', 'summary']:
-                if key in metadata and metadata[key]:
-                    value = metadata[key]
-                    # Convert lists to comma-separated strings
-                    if isinstance(value, list):
-                        value = ', '.join(str(v) for v in value)
-                    custom_metadata[key] = str(value)
+        custom_metadata = self._prepare_metadata(metadata)
 
         if self.dry_run:
             logging.info(f"[DRY RUN] Would upload {transcript_path} to {store_name}")
@@ -172,14 +186,7 @@ class GeminiFileSearchManager:
             store_name = self.create_or_get_store()
 
         # Prepare metadata
-        custom_metadata = {}
-        if metadata:
-            for key in ['podcast', 'episode', 'release_date', 'hosts', 'guests', 'keywords', 'summary']:
-                if key in metadata and metadata[key]:
-                    value = metadata[key]
-                    if isinstance(value, list):
-                        value = ', '.join(str(v) for v in value)
-                    custom_metadata[key] = str(value)
+        custom_metadata = self._prepare_metadata(metadata)
 
         if self.dry_run:
             logging.info(f"[DRY RUN] Would upload text as {display_name} to {store_name}")
@@ -190,12 +197,14 @@ class GeminiFileSearchManager:
         try:
             # Create temporary file with text content
             import tempfile
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as tmp:
-                tmp.write(text)
-                tmp_path = tmp.name
-
+            # Create temp file, write content, and close it before reopening
+            fd, tmp_path = tempfile.mkstemp(suffix='.txt', text=True)
             try:
-                # Upload the temporary file
+                # Write text to file and close the file descriptor
+                with os.fdopen(fd, 'w') as tmp_file:
+                    tmp_file.write(text)
+
+                # Now upload the closed temporary file
                 with open(tmp_path, 'rb') as f:
                     file = self.client.files.upload(
                         file=f,
@@ -210,7 +219,8 @@ class GeminiFileSearchManager:
                 return file.name
             finally:
                 # Clean up temporary file
-                os.unlink(tmp_path)
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
 
         except Exception as e:
             logging.error(f"Failed to upload transcript text: {e}")
