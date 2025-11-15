@@ -2,14 +2,11 @@
 import os
 import sys
 import logging
-import boto3
 import whisper
 import torch
 import gc
-import tempfile
 from apscheduler.schedulers.blocking import BlockingScheduler
 from sqlalchemy.orm import Session
-from botocore.exceptions import ClientError
 
 from src.config import Config
 from src.db.database import get_db
@@ -22,17 +19,6 @@ class TranscriptionService:
     def __init__(self, config: Config):
         self.config = config
         self.whisper_model = None
-        self.r2_client = self._get_r2_client()
-
-    def _get_r2_client(self):
-        """Initializes a boto3 client for Cloudflare R2."""
-        return boto3.client(
-            's3',
-            endpoint_url=self.config.S3_ENDPOINT_URL,
-            aws_access_key_id=self.config.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=self.config.AWS_SECRET_ACCESS_KEY,
-            region_name='auto'
-        )
 
     def _get_whisper_model(self):
         """Lazy loads the Whisper model to conserve memory."""
@@ -84,22 +70,22 @@ class TranscriptionService:
 
     def _transcribe_episode(self, db_session: Session, episode: Episode):
         """Handles the transcription for a single episode."""
-        temp_audio_path = None
         try:
-            # 1. Download audio from R2 to a temporary file
-            object_key = episode.audio_url.replace(f"{self.config.S3_ENDPOINT_URL}/{self.config.S3_BUCKET_NAME}/", "")
-            
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_file:
-                temp_audio_path = temp_file.name
+            # 1. Get local audio file path
+            audio_path = episode.audio_url
 
-            logging.info(f"Downloading audio for episode {episode.id} from R2 key: {object_key}")
-            self.r2_client.download_file(self.config.S3_BUCKET_NAME, object_key, temp_audio_path)
-            logging.info(f"Successfully downloaded to temporary file: {temp_audio_path}")
+            if not os.path.exists(audio_path):
+                logging.error(f"Audio file not found for episode {episode.id}: {audio_path}")
+                episode.transcription_status = ProcessingStatus.FAILED
+                db_session.commit()
+                return
+
+            logging.info(f"Processing audio file for episode {episode.id}: {audio_path}")
 
             # 2. Transcribe using Whisper
             model = self._get_whisper_model()
             logging.info(f"Starting Whisper transcription for episode {episode.id}...")
-            result = model.transcribe(audio=temp_audio_path, language="en", verbose=False)
+            result = model.transcribe(audio=audio_path, language="en", verbose=False)
             transcript_text = result["text"]
             logging.info(f"Transcription complete for episode {episode.id}. Transcript length: {len(transcript_text)}")
 
@@ -109,19 +95,10 @@ class TranscriptionService:
             db_session.commit()
             logging.info(f"Successfully saved transcript for episode {episode.id} to the database.")
 
-        except ClientError as e:
-            logging.error(f"Failed to download audio for episode {episode.id} from R2: {e}")
-            episode.transcription_status = ProcessingStatus.FAILED
-            db_session.commit()
         except Exception as e:
             logging.error(f"An error occurred while transcribing episode {episode.id}: {e}")
             episode.transcription_status = ProcessingStatus.FAILED
             db_session.commit()
-        finally:
-            # 4. Cleanup temporary file
-            if temp_audio_path and os.path.exists(temp_audio_path):
-                os.remove(temp_audio_path)
-                logging.info(f"Cleaned up temporary file: {temp_audio_path}")
 
 if __name__ == "__main__":
     config = Config()
