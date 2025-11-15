@@ -1,7 +1,6 @@
 import json
 import logging
 from typing import Dict, List, Tuple
-import chromadb
 from nltk.tokenize import sent_tokenize
 
 from src.config import Config
@@ -9,6 +8,7 @@ from src.config import Config
 
 class VectorDbSearchManager:
     def __init__(self, config: Config, dry_run=False):
+        import chromadb
         self.config = config
         self.dry_run = dry_run
         logging.debug(f"Connecting to Chroma DB at {config.CHROMA_DB_HOST}:{config.CHROMA_DB_PORT}")

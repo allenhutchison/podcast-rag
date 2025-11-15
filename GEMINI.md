@@ -9,7 +9,7 @@ This project is a comprehensive Python-based tool for building a Retrieval-Augme
 2.  **Transcribe**: Use OpenAI's Whisper model to generate text transcriptions of the audio files.
 3.  **Extract Metadata**: Employ a Gemini-based AI model to extract structured metadata (titles, hosts, guests, summaries, keywords) from the transcriptions. It also extracts technical metadata from the MP3 files.
 4.  **Store**: Save the transcriptions and their embeddings in a ChromaDB vector database and the associated metadata in a local SQLite database.
-5.  **Query**: Use a Flask-based web interface or command-line scripts to ask questions. The system retrieves relevant transcript snippets from ChromaDB and uses an AI model (either local via Ollama or remote via Gemini) to generate a coherent answer with source citations.
+5.  **Query**: Use a Flask-based web interface or command-line scripts to ask questions. The system retrieves relevant transcript snippets from ChromaDB and uses Gemini to generate a coherent answer with source citations.
 
 The project includes a web UI for search, a podcast management interface, and various command-line scripts for batch processing and maintenance.
 
@@ -20,7 +20,7 @@ The project includes a web UI for search, a podcast management interface, and va
 - **Transcription:** `openai-whisper`
 - **Vector Database:** ChromaDB
 - **Metadata Database:** SQLAlchemy (with SQLite)
-- **AI/RAG:** `google-generativeai` (Gemini), `ollama`
+- **AI/RAG:** `google-generativeai` (Gemini)
 - **Scheduling:** APScheduler for recurring jobs.
 - **Data Parsing/Handling:** `feedparser` and `listparser` for RSS/OPML, `pydantic` for data validation, `eyed3` for audio metadata.
 - **Development & Testing:** `pytest` for testing, `python-dotenv` for environment variables.
@@ -113,5 +113,5 @@ pytest
 - **Configuration:** The application uses a `.env` file for configuration (copy `.env.example` to `.env`). Key variables include API keys and paths.
 - **Workflow:** The typical workflow is to run `download_and_transcribe.py` to populate the databases. The `file_manager.py` script is the central point for processing a directory of podcasts, handling transcription, metadata extraction, and indexing.
 - **Metadata:** The `metadata_extractor.py` is crucial. It uses a Gemini model with a JSON response schema (`schemas.py`) to create structured data from unstructured transcripts. This structured data is then used in prompts and for filtering.
-- **RAG Pipeline:** When a query is made via the UI or `rag.py`, the `RagManager` class takes over. It searches ChromaDB for relevant text chunks, combines them with the user's query into a detailed prompt (using templates from `prompt_manager.py`), and sends it to the selected AI (Ollama or Gemini) for a final answer.
+- **RAG Pipeline:** When a query is made via the UI or `rag.py`, the `RagManager` class takes over. It searches ChromaDB for relevant text chunks, combines them with the user's query into a detailed prompt (using templates from `prompt_manager.py`), and sends it to Gemini for a final answer.
 - **Database:** The system uses two databases: SQLite (`metadatadb.py`) for structured podcast/episode metadata (title, feed URL, etc.) and ChromaDB (`chroma_vectordb.py`) for storing vector embeddings of transcript chunks.

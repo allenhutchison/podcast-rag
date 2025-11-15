@@ -5,11 +5,19 @@ from dotenv import load_dotenv
 
 class Config:
     def __init__(self, env_file=None):
-        # Load environment variables from the specified .env file or default location
-        if (env_file):
+        if env_file:
             load_dotenv(env_file)
         else:
             load_dotenv()
+
+        # PostgreSQL Configuration
+        db_user = os.getenv("POSTGRES_USER", "podcast_rag_user")
+        db_password = os.getenv("POSTGRES_PASSWORD", "insecure_password_change_me")
+        db_host = os.getenv("POSTGRES_HOST", "postgres")
+        db_port = os.getenv("POSTGRES_PORT", "5432")
+        db_name = os.getenv("POSTGRES_DB", "podcast_rag_db")
+        self.DATABASE_URL = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+        os.environ['DATABASE_URL'] = self.DATABASE_URL # Set it for other modules
 
         # Environment-based configuration
         self.BASE_DIRECTORY = os.getenv("MEDIA_EMBED_BASE_DIRECTORY", "/opt/podcasts")
@@ -18,7 +26,7 @@ class Config:
         self.TRANSCRIPTION_OUTPUT_SUFFIX = "_transcription.txt"
         self.TRANSCRIPTION_TEMP_FILE_SUFFIX = ".transcription_in_progress"
 
-        # ChromaDB-related constants
+        # ChromaDB-related constants (to be removed later)
         self.CHROMA_DB_HOST = os.getenv("CHROMA_DB_HOST", "localhost")
         self.CHROMA_DB_PORT = os.getenv("CHROMA_DB_PORT", 50051)
         self.CHROMA_DB_COLLECTION = os.getenv("CHROMA_DB_COLLECTION", "podcasts_collection")
@@ -26,8 +34,6 @@ class Config:
         self.INDEX_TEMP_FILE_SUFFIX = ".index_in_progress"
 
         # Model configuration
-        self.OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-        self.OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma2:27b")
         self.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "your_api_key_here")
         self.GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-exp")
 

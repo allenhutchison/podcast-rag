@@ -10,10 +10,10 @@ from flask_cors import CORS
 from google.generativeai.types import GenerateContentResponse
 from markupsafe import Markup
 
-from config import Config
-from rag import RagManager
-from db.metadatadb import PodcastDB
-from util.opml_importer import OPMLImporter
+from src.config import Config
+from src.rag import RagManager
+from src.db.metadatadb import PodcastDB
+from src.util.opml_importer import OPMLImporter
 
 # Get the absolute path to the template and static folders
 template_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'templates'))
@@ -77,7 +77,6 @@ def index():
     if request.method == 'POST':
         query = request.form.get('query', '')
         log_level = request.form.get('log_level', 'INFO')
-        ai_system = request.form.get('ai_system', 'gemini')
 
         logging.basicConfig(
             level=getattr(logging, log_level.upper(), "INFO"),
@@ -85,7 +84,7 @@ def index():
             handlers=[logging.StreamHandler()]
         )
 
-        rag_manager = RagManager(config=config, print_results=True, ai_system=ai_system)
+        rag_manager = RagManager(config=config, print_results=True)
 
         # 1) Get LLM result
         raw_result = rag_manager.query(query)
@@ -138,7 +137,6 @@ def search():
         data = request.get_json() if request.is_json else request.form
         query = data.get('query')
         log_level = data.get('log_level', 'INFO')
-        ai_system = data.get('ai_system', 'gemini')
 
         if not query:
             return jsonify({'error': 'Query is required'}), 400
@@ -150,7 +148,7 @@ def search():
             handlers=[logging.StreamHandler()]
         )
 
-        rag_manager = RagManager(config=config, print_results=True, ai_system=ai_system)
+        rag_manager = RagManager(config=config, print_results=True)
         raw_result = rag_manager.query(query)
 
         json_result = GenerateContentResponseConverter.to_dict(raw_result)
