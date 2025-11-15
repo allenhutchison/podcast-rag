@@ -4,11 +4,11 @@ import argparse
 import os
 from typing import List
 
-from argparse_shared import (add_dry_run_argument, add_log_level_argument,
+from src.argparse_shared import (add_dry_run_argument, add_log_level_argument,
                           get_base_parser)
-from config import Config
-from file_manager import FileManager
-from podcast_downloader import PodcastDownloader
+from src.config import Config
+from src.file_manager import FileManager
+from src.podcast_downloader import PodcastDownloader
 from datetime import timedelta
 
 

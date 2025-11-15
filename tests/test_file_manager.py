@@ -3,12 +3,9 @@ import sys
 import os
 from unittest.mock import patch
 
-# Add the src directory to sys.path so that Config and TranscriptionManager can be imported
-sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
-
-from config import Config
-from transcribe_podcasts import TranscriptionManager
-from file_manager import FileManager
+from src.config import Config
+from src.transcribe_podcasts import TranscriptionManager
+from src.file_manager import FileManager
 
 # Test for process_directory with a dry-run mode (mocked transcription process)
 def test_process_podcasts_dry_run(monkeypatch, tmpdir):

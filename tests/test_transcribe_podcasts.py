@@ -1,14 +1,10 @@
-
 import pytest
 import sys
 import os
 from unittest.mock import patch
 
-# Add the src directory to sys.path so that Config and TranscriptionManager can be imported
-sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
-
-from config import Config
-from transcribe_podcasts import TranscriptionManager
+from src.config import Config
+from src.transcribe_podcasts import TranscriptionManager
 
 # Test for is_mp3_file using a real temporary file
 def test_is_mp3_file(tmpdir):

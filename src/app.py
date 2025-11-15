@@ -10,10 +10,10 @@ from flask_cors import CORS
 from google.generativeai.types import GenerateContentResponse
 from markupsafe import Markup
 
-from config import Config
-from rag import RagManager
-from db.metadatadb import PodcastDB
-from util.opml_importer import OPMLImporter
+from src.config import Config
+from src.rag import RagManager
+from src.db.metadatadb import PodcastDB
+from src.util.opml_importer import OPMLImporter
 
 # Get the absolute path to the template and static folders
 template_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'templates'))

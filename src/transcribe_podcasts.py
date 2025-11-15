@@ -1,12 +1,10 @@
 import logging
 import os
-import whisper
-import torch
 import gc
 
-from argparse_shared import (add_dry_run_argument, add_episode_path_argument,
+from src.argparse_shared import (add_dry_run_argument, add_episode_path_argument,
                              add_log_level_argument, get_base_parser)
-from config import Config
+from src.config import Config
 
 
 class TranscriptionManager:
@@ -24,6 +22,7 @@ class TranscriptionManager:
     def get_model(self):
         """Lazy load the whisper model when needed"""
         if self.model is None:
+            import whisper
             logging.info("Loading Whisper model (large-v3)...")
             self.model = whisper.load_model("large-v3")
         return self.model
@@ -75,6 +74,7 @@ class TranscriptionManager:
 
     def release_model(self):
         if self.model is not None:
+            import torch
             logging.info("Releasing Whisper model from memory.")
             del self.model
             self.model = None # Ensure it's None so get_model reloads if needed

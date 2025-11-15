@@ -1,14 +1,14 @@
 import logging
 import os
 
-import chromadb
 from nltk.tokenize import sent_tokenize
 
-from config import Config
+from src.config import Config
 
 
 class VectorDbManager:
     def __init__(self, config: Config, dry_run=False):
+        import chromadb
         self.config = config
         self.dry_run = dry_run
         self.client = chromadb.HttpClient(host=config.CHROMA_DB_HOST, port=config.CHROMA_DB_PORT, ssl=True)

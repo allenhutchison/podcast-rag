@@ -2,6 +2,7 @@ import logging
 from typing import List, Dict, Optional
 from urllib.parse import urlparse
 import listparser
+import xml.etree.ElementTree as ET
 
 from src.db.metadatadb import PodcastDB
 
@@ -19,63 +20,81 @@ class OPMLImporter:
     
     def parse_opml(self, opml_content: str) -> List[Dict[str, str]]:
         """Parse OPML content and extract podcast information.
-        
+
         Args:
             opml_content (str): The content of the OPML file
-            
+
         Returns:
             List[Dict[str, str]]: List of dictionaries containing podcast information
         """
         try:
+            # Parse XML to extract custom attributes (description, imageUrl)
+            custom_attrs = {}
+            try:
+                root = ET.fromstring(opml_content)
+                for outline in root.findall('.//outline[@xmlUrl]'):
+                    feed_url = outline.get('xmlUrl', '')
+                    if feed_url:
+                        custom_attrs[feed_url] = {
+                            'description': outline.get('description', ''),
+                            'imageUrl': outline.get('imageUrl', '')
+                        }
+            except ET.ParseError as e:
+                self.logger.warning(f"XML parsing failed, continuing without custom attributes: {e}")
+
             # Use listparser to parse the OPML content
             result = listparser.parse(opml_content)
-            
+
             # Check if there were any parsing errors
             if result.bozo:
                 self.logger.error(f"Error parsing OPML: {result.bozo_exception}")
-            
+
             podcasts = []
             seen_urls = set()  # Track seen URLs to avoid duplicates
-            
+
             # Process each feed entry from listparser
             for feed in result.feeds:
                 feed_url = feed.url
-                
+
                 # Skip if we've seen this URL before
                 if feed_url in seen_urls:
                     continue
                 seen_urls.add(feed_url)
-                
-                # Get the title and description
+
+                # Get the title
                 title = feed.title or ""
-                
+
                 # If there's no title, extract it from the URL
                 if not title:
                     title = self._extract_domain_from_url(feed_url)
-                
-                # Get description if available
-                description = ""
-                if hasattr(feed, "description"):
-                    description = feed.description or ""
-                
+
+                # Get description and imageUrl from custom attributes
+                attrs = custom_attrs.get(feed_url, {})
+                description = attrs.get('description', '')
+                image_url = attrs.get('imageUrl', '')
+
+                # Validate image URL
+                if image_url and not self._is_valid_feed_url(image_url):
+                    image_url = ''
+
                 self.logger.info(f"Parsing podcast: title='{title}', feed_url='{feed_url}'")
-                
+
                 podcast = {
                     'title': title,
                     'feed_url': feed_url,
                     'description': description,
-                    'image_url': getattr(feed, "image", {}).get("href", "") if hasattr(feed, "image") else ""
+                    'image_url': image_url
                 }
-                
+
                 # Validate the feed URL
                 if not self._is_valid_feed_url(podcast['feed_url']):
                     self.logger.warning(f"Invalid feed URL for podcast '{podcast['title']}': {podcast['feed_url']}")
                     continue
-                
+
                 podcasts.append(podcast)
-            
+
             return podcasts
-            
+
         except Exception as e:
             self.logger.error(f"Failed to parse OPML content: {e}")
             return []

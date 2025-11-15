@@ -9,7 +9,7 @@ from dataclasses import dataclass
 import eyed3
 from pathlib import Path
 
-from config import Config
+from src.config import Config
 
 
 @dataclass

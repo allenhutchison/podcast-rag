@@ -1,12 +1,12 @@
 import logging
 import os
 
-from argparse_shared import (add_dry_run_argument, add_log_level_argument,
+from src.argparse_shared import (add_dry_run_argument, add_log_level_argument,
                              get_base_parser)
-from db.chroma_vectordb import VectorDbManager
-from config import Config
-from metadata_extractor import MetadataExtractor
-from transcribe_podcasts import TranscriptionManager
+from src.db.chroma_vectordb import VectorDbManager
+from src.config import Config
+from src.metadata_extractor import MetadataExtractor
+from src.transcribe_podcasts import TranscriptionManager
 
 
 class FileManager:
