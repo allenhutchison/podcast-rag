@@ -1,7 +1,7 @@
 
 import enum
 from sqlalchemy import (create_engine, Column, Integer, String, Text,
-                        TIMESTAMP, ForeignKey, Enum)
+                        TIMESTAMP, ForeignKey, Enum, ARRAY)
 from sqlalchemy.orm import declarative_base, relationship, Mapped, mapped_column
 from sqlalchemy.sql import func
 from pgvector.sqlalchemy import Vector
@@ -38,7 +38,7 @@ class Episode(Base):
     published_date: Mapped[TIMESTAMP] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     audio_url: Mapped[str] = mapped_column(String(1024), nullable=True)
     summary: Mapped[str] = mapped_column(Text, nullable=True)
-    keywords: Mapped[list[str]] = mapped_column(Text, nullable=True) # Stored as comma-separated string, to be handled by app logic
+    keywords: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
     full_transcript: Mapped[str] = mapped_column(Text, nullable=True)
     
     transcription_status: Mapped[ProcessingStatus] = mapped_column(Enum(ProcessingStatus), default=ProcessingStatus.PENDING)

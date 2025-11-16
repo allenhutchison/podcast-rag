@@ -32,10 +32,11 @@ The project includes various command-line scripts for batch processing, schedule
   - `rag.py`: Implements the core RAG logic using Gemini File Search for retrieval and generation.
   - `gemini_search.py`: Module for querying transcripts using Gemini File Search.
   - `scheduler.py`: Runs background jobs for scheduled transcription processing.
-  - `transcription_service.py`: Background service for processing audio files with Whisper.
   - `db/`:
+    - `models.py`: SQLAlchemy ORM models for PostgreSQL (primary database).
+    - `database.py`: Database connection management for PostgreSQL.
     - `gemini_file_search.py`: Manages File Search store creation, transcript uploads, and batch migrations.
-    - `metadatadb.py`: Manages the podcast metadata database (PostgreSQL) using SQLAlchemy.
+    - `metadatadb.py`: Legacy SQLite database implementation (test-only, deprecated).
   - `schemas.py`: Defines the Pydantic data models for structured metadata.
   - `prompt_manager.py`: Loads and formats prompts from the `/prompts` directory.
 - `scripts/`:

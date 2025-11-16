@@ -1,12 +1,11 @@
 import json
 import logging
 import os
+import re
 import time
 from functools import wraps
 from typing import Optional
 from threading import Lock
-
-from pydantic import TypeAdapter
 
 from src.config import Config
 from src.prompt_manager import PromptManager
@@ -155,9 +154,8 @@ class MetadataExtractor:
             
         if 'BC' in date_str.upper() or 'BCE' in date_str.upper():
             return None
-            
+
         # Extract first year from date string
-        import re
         year_match = re.match(r'^(\d{4})', date_str)
         if not year_match:
             return None

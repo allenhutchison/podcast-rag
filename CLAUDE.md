@@ -26,14 +26,14 @@ User Query → Vector Search → Context Retrieval → Prompt Formatting → AI 
 
 1. **RAG Manager** (`src/rag.py`) - Orchestrates query processing pipeline
 2. **File Manager** (`src/file_manager.py`) - Central processor for transcription → metadata → indexing
-3. **Background Services:**
-   - `src/transcription_service.py` - Processes audio files with Whisper
+3. **Transcription Manager** (`src/transcribe_podcasts.py`) - Processes audio files with Whisper
+4. **Background Services:**
    - `src/scheduler.py` - Scheduled transcription processing
-4. **Database Layer:**
-   - PostgreSQL (primary) - Episodes, transcripts, embeddings (pgvector)
-   - ChromaDB - Vector similarity search
-   - SQLite (legacy) - Metadata fallback
-5. **MCP Server** (`src/mcp_server.py`) - Claude integration protocol
+5. **Database Layer:**
+   - PostgreSQL (primary) - Episodes, transcripts, metadata
+   - Gemini File Search - Vector embeddings and similarity search
+   - SQLite (test-only) - Legacy metadata DB for testing
+6. **MCP Server** (`src/mcp_server.py`) - Claude integration protocol
 
 ### Project Structure
 
@@ -44,8 +44,8 @@ User Query → Vector Search → Context Retrieval → Prompt Formatting → AI 
 │   ├── config.py           # Configuration management
 │   ├── schemas.py          # Pydantic models for validation
 │   ├── file_manager.py     # Processing orchestrator
+│   ├── transcribe_podcasts.py  # Whisper transcription manager
 │   ├── scheduler.py        # Scheduled processing
-│   ├── transcription_service.py  # Background transcription
 │   │
 │   ├── db/
 │   │   ├── models.py       # SQLAlchemy ORM (PostgreSQL)

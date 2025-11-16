@@ -1,3 +1,10 @@
+"""
+Legacy SQLite database implementation for podcast metadata.
+
+NOTE: This module is deprecated and only used for testing purposes.
+Production code uses PostgreSQL with the models defined in src/db/models.py.
+This module is maintained solely for backward compatibility with existing tests.
+"""
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 import os
