@@ -83,14 +83,24 @@ def flatten_episode_metadata(metadata: Dict) -> Dict:
     elif mp3_meta.get('release_date'):
         flattened['release_date'] = mp3_meta['release_date']
 
-    # Combine hosts and co-hosts
+    # Combine hosts and co-hosts from both sources, with deduplication
     all_hosts = []
     if transcript_meta.get('hosts'):
         all_hosts.extend(transcript_meta['hosts'])
     if transcript_meta.get('co_hosts'):
         all_hosts.extend(transcript_meta['co_hosts'])
+    if mp3_meta.get('hosts'):
+        all_hosts.extend(mp3_meta['hosts'])
+
+    # Deduplicate while preserving order
     if all_hosts:
-        flattened['hosts'] = all_hosts
+        seen = set()
+        unique_hosts = []
+        for host in all_hosts:
+            if host not in seen:
+                seen.add(host)
+                unique_hosts.append(host)
+        flattened['hosts'] = unique_hosts
 
     # Map guests
     if transcript_meta.get('guests'):

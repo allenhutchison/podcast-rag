@@ -44,6 +44,45 @@ class GeminiFileSearchManager:
 
         logging.info("Gemini File Search Manager initialized")
 
+    def _poll_operation(self, operation, timeout: int = 300) -> None:
+        """
+        Poll a long-running operation until completion with timeout and error handling.
+
+        Args:
+            operation: The operation object to poll
+            timeout: Maximum time to wait in seconds (default: 300 = 5 minutes)
+
+        Raises:
+            TimeoutError: If operation doesn't complete within timeout
+            RuntimeError: If operation fails with an error
+        """
+        start_time = time.time()
+        sleep_time = 0.5  # Start with 0.5 second polling
+
+        while not operation.done:
+            elapsed = time.time() - start_time
+
+            # Check timeout
+            if elapsed > timeout:
+                raise TimeoutError(
+                    f"Operation timed out after {timeout}s. "
+                    f"Operation: {getattr(operation, 'name', 'unknown')}"
+                )
+
+            # Exponential backoff with max 5 seconds
+            time.sleep(min(sleep_time, 5.0))
+            sleep_time *= 1.5
+
+            # Refresh operation status
+            operation = self.client.operations.get(operation)
+
+            # Check for operation errors
+            if hasattr(operation, 'error') and operation.error:
+                error_msg = str(operation.error)
+                raise RuntimeError(f"Operation failed: {error_msg}")
+
+        logging.debug(f"Operation completed in {time.time() - start_time:.2f}s")
+
     def _sanitize_display_name(self, name: str) -> str:
         """
         Sanitize display name to ASCII-safe characters.
@@ -114,8 +153,12 @@ class GeminiFileSearchManager:
                 value_str = str(value)
                 if len(value_str) > MAX_VALUE_LENGTH:
                     # Truncate and add ellipsis (ensure total is <= 255)
+                    original_length = len(value_str)
                     value_str = value_str[:MAX_VALUE_LENGTH-3] + '...'
-                    logging.debug(f"Truncated metadata '{key}' from {len(str(value))} to {len(value_str)} chars")
+                    logging.warning(
+                        f"Metadata field '{key}' truncated from {original_length} to {len(value_str)} chars. "
+                        f"Data loss occurred. Consider storing full metadata separately."
+                    )
 
                 custom_metadata.append({
                     'key': key,
@@ -238,9 +281,8 @@ class GeminiFileSearchManager:
 
                 # Create temp file with ASCII-safe name
                 fd, tmp_path = tempfile.mkstemp(suffix='.txt', text=True)
-                os.close(fd)  # Close the file descriptor
-
                 try:
+                    os.close(fd)  # Close the file descriptor immediately
                     # Copy the original file to temp location
                     shutil.copy2(transcript_path, tmp_path)
 
@@ -254,13 +296,19 @@ class GeminiFileSearchManager:
                         }
                     )
 
-                    # Poll operation until complete
-                    while not operation.done:
-                        time.sleep(1)
-                        operation = self.client.operations.get(operation)
+                    # Poll operation until complete with timeout
+                    self._poll_operation(operation)
 
                     logging.info(f"Successfully uploaded: {display_name}")
                     return operation.name
+                except Exception as e:
+                    # Ensure FD is closed even if an error occurred before os.close
+                    try:
+                        if fd is not None:
+                            os.close(fd)
+                    except OSError:
+                        pass  # FD already closed
+                    raise
                 finally:
                     # Clean up temp file
                     if os.path.exists(tmp_path):
@@ -276,10 +324,8 @@ class GeminiFileSearchManager:
                     }
                 )
 
-                # Poll operation until complete
-                while not operation.done:
-                    time.sleep(1)
-                    operation = self.client.operations.get(operation)
+                # Poll operation until complete with timeout
+                self._poll_operation(operation)
 
                 logging.info(f"Successfully uploaded: {display_name}")
                 return operation.name
@@ -344,10 +390,8 @@ class GeminiFileSearchManager:
                     }
                 )
 
-                # Poll operation until complete
-                while not operation.done:
-                    time.sleep(1)
-                    operation = self.client.operations.get(operation)
+                # Poll operation until complete with timeout
+                self._poll_operation(operation)
 
                 logging.info(f"Successfully uploaded text as: {sanitized_name}")
                 return operation.name

@@ -178,3 +178,184 @@ def test_list_files_dry_run():
     # In dry_run mode, should return empty list
     assert isinstance(files, list)
     assert len(files) == 0
+
+
+def test_sanitize_display_name_unicode():
+    """Test unicode character replacement in display names."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+    # Test curly quotes
+    result = manager._sanitize_display_name("Test's Episode")
+    assert result == "Test's Episode"
+    result.encode('ascii')  # Should not raise
+
+    # Test en-dash
+    result = manager._sanitize_display_name("Episode–Title")
+    assert result == "Episode-Title"
+    result.encode('ascii')  # Should not raise
+
+    # Test em-dash
+    result = manager._sanitize_display_name("Episode—Title")
+    assert result == "Episode--Title"
+    result.encode('ascii')  # Should not raise
+
+    # Test ellipsis
+    result = manager._sanitize_display_name("Episode…")
+    assert result == "Episode..."
+    result.encode('ascii')  # Should not raise
+
+    # Test combined
+    result = manager._sanitize_display_name("Test's—Episode…")
+    assert result == "Test's--Episode..."
+    result.encode('ascii')  # Should not raise
+
+
+def test_sanitize_display_name_already_ascii():
+    """Test that ASCII-safe names pass through unchanged."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+    ascii_name = "Episode_Title_123.txt"
+    result = manager._sanitize_display_name(ascii_name)
+    assert result == ascii_name
+
+
+def test_metadata_truncation():
+    """Test metadata values are truncated to 255 chars."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+    # Create metadata with a very long summary (use nested format)
+    long_value = 'x' * 300
+    metadata = {
+        'transcript_metadata': {
+            'summary': long_value
+        }
+    }
+
+    result = manager._prepare_metadata(metadata)
+
+    # Should have one metadata entry
+    assert len(result) == 1
+    assert result[0]['key'] == 'summary'
+
+    # Value should be truncated to 255 chars
+    assert len(result[0]['string_value']) == 255
+    assert result[0]['string_value'].endswith('...')
+
+
+def test_metadata_truncation_preserves_short_values():
+    """Test that short metadata values are not truncated."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+    metadata = {
+        'transcript_metadata': {
+            'summary': 'Short summary'
+        }
+    }
+
+    result = manager._prepare_metadata(metadata)
+
+    assert len(result) == 1
+    assert result[0]['string_value'] == 'Short summary'
+
+
+def test_metadata_list_conversion():
+    """Test that list metadata is converted to comma-separated strings."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+    metadata = {
+        'transcript_metadata': {
+            'hosts': ['Host1', 'Host2', 'Host3'],
+            'keywords': ['AI', 'Tech', 'Science']
+        }
+    }
+
+    result = manager._prepare_metadata(metadata)
+
+    # Find hosts and keywords in result
+    hosts_meta = next((m for m in result if m['key'] == 'hosts'), None)
+    keywords_meta = next((m for m in result if m['key'] == 'keywords'), None)
+
+    assert hosts_meta is not None
+    assert hosts_meta['string_value'] == 'Host1, Host2, Host3'
+
+    assert keywords_meta is not None
+    assert keywords_meta['string_value'] == 'AI, Tech, Science'
+
+
+def test_idempotent_upload_skips_existing(tmpdir):
+    """Test that upload skips files that already exist."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+    # Create a test transcript file
+    transcript_file = tmpdir.join("episode_transcription.txt")
+    transcript_file.write("Test transcript")
+
+    # Create existing files dict
+    existing_files = {
+        'episode_transcription.txt': 'fileSearchStores/store123/documents/doc123'
+    }
+
+    # Try to upload - should skip
+    result = manager.upload_transcript(
+        transcript_path=str(transcript_file),
+        metadata={'podcast': 'Test'},
+        existing_files=existing_files,
+        skip_existing=True
+    )
+
+    # Should return None when skipped
+    assert result is None
+
+
+def test_idempotent_upload_allows_new_files(tmpdir):
+    """Test that upload proceeds for new files."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+    # Create a test transcript file
+    transcript_file = tmpdir.join("new_episode_transcription.txt")
+    transcript_file.write("Test transcript")
+
+    # Create existing files dict with a different file
+    existing_files = {
+        'old_episode_transcription.txt': 'fileSearchStores/store123/documents/doc123'
+    }
+
+    # Try to upload - should proceed
+    result = manager.upload_transcript(
+        transcript_path=str(transcript_file),
+        metadata={'podcast': 'Test'},
+        existing_files=existing_files,
+        skip_existing=True
+    )
+
+    # Should return a file name (dry-run name in this case)
+    assert result is not None
+    assert 'dry-run' in result
+
+
+def test_upload_unicode_filename(tmpdir):
+    """Test uploading file with unicode characters in filename."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+    # Create file with unicode in name
+    # Note: tmpdir handles unicode filenames
+    transcript_file = tmpdir.join("episode's—test_transcription.txt")
+    transcript_file.write("Test transcript")
+
+    # Upload should handle unicode gracefully
+    result = manager.upload_transcript(
+        transcript_path=str(transcript_file),
+        metadata={'podcast': 'Test'}
+    )
+
+    # Should successfully return a result
+    assert result is not None
+    assert 'dry-run' in result

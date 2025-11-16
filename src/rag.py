@@ -165,14 +165,18 @@ class RagManager:
         # Sort by position in reverse order so we can insert without messing up indices
         citation_inserts.sort(key=lambda x: x['position'], reverse=True)
 
-        # Insert citations
+        # Insert citations with position validation
         result = text
         for insert in citation_inserts:
             pos = insert['position']
             cite = insert['text']
-            # Insert after the position
-            if pos <= len(result):
+            # Validate position is within valid range
+            if 0 <= pos <= len(result):
                 result = result[:pos] + cite + result[pos:]
+            else:
+                logging.warning(
+                    f"Invalid citation position {pos} for text length {len(result)}, skipping"
+                )
 
         return result
 

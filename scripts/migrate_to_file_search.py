@@ -141,8 +141,9 @@ def migrate_transcripts(
                 else:
                     stats['skipped'] += 1
             else:
+                # In dry-run mode, count as skipped since nothing is actually uploaded
                 logging.info(f"  [DRY RUN] Would upload to {store_name}")
-                stats['uploaded'] += 1
+                stats['skipped'] += 1
 
         except FileNotFoundError as e:
             logging.error(f"  ✗ File not found: {e}")
