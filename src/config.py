@@ -94,8 +94,3 @@ class Config:
                 f"Compatible models: {', '.join(self.FILE_SEARCH_COMPATIBLE_MODELS)}. "
                 f"Please update GEMINI_MODEL in your .env file."
             )
-
-# Helper functions
-def does_transcription_exist(transcription_file):
-    '''Check if the transcription file exists and is not empty.'''
-    return os.path.exists(transcription_file) and os.path.getsize(transcription_file) > 0
