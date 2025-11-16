@@ -326,8 +326,8 @@ if __name__ == "__main__":
                 # Show text excerpt (truncate if too long)
                 if text:
                     excerpt = text.strip()
-                    if len(excerpt) > self.MAX_EXCERPT_LENGTH:
-                        excerpt = excerpt[:self.MAX_EXCERPT_LENGTH - 3] + "..."
+                    if len(excerpt) > RagManager.MAX_EXCERPT_LENGTH:
+                        excerpt = excerpt[:RagManager.MAX_EXCERPT_LENGTH - 3] + "..."
                     print(excerpt)
                 else:
                     print("(No text preview available)")
