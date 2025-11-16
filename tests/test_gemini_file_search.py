@@ -359,3 +359,55 @@ def test_upload_unicode_filename(tmpdir):
     # Should successfully return a result
     assert result is not None
     assert 'dry-run' in result
+
+
+def test_poll_operation_timeout():
+    """Test that _poll_operation() raises TimeoutError after timeout."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=False)
+
+    # Create a mock operation that never completes
+    mock_operation = MagicMock()
+    mock_operation.done = False
+    mock_operation.error = None  # No error, just doesn't complete
+    mock_operation.name = "operations/test123"
+
+    # Mock the client.operations.get to return the same operation (never completes)
+    with patch.object(manager.client.operations, 'get', return_value=mock_operation):
+        # Should timeout after the specified duration
+        with pytest.raises(TimeoutError, match="Operation timed out"):
+            manager._poll_operation(mock_operation, timeout=1)  # 1 second timeout
+
+
+def test_poll_operation_error():
+    """Test that _poll_operation() raises RuntimeError when operation fails."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=False)
+
+    # Create a mock operation with an error
+    mock_error = MagicMock()
+    mock_error.__str__ = lambda self: "Upload failed: Invalid file"
+
+    mock_operation = MagicMock()
+    mock_operation.done = False
+    mock_operation.error = mock_error
+    mock_operation.name = "operations/test123"
+
+    # Mock the client.operations.get to return the same operation
+    with patch.object(manager.client.operations, 'get', return_value=mock_operation):
+        with pytest.raises(RuntimeError, match="Operation failed"):
+            manager._poll_operation(mock_operation, timeout=5)
+
+
+def test_poll_operation_success():
+    """Test that _poll_operation() completes successfully."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=False)
+
+    # Create a mock operation that completes immediately
+    mock_operation = MagicMock()
+    mock_operation.done = True
+    mock_operation.error = None
+
+    # Should complete without error
+    manager._poll_operation(mock_operation)

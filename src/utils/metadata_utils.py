@@ -38,15 +38,22 @@ def flatten_episode_metadata(metadata: Dict) -> Dict:
     Handles both nested format (transcript_metadata, mp3_metadata) and
     already-flat formats. Combines hosts and co-hosts into a single list.
 
+    Metadata Merge Priority:
+    - Podcast/Episode titles: transcript_metadata only
+    - Release date: transcript_metadata.date > mp3_metadata.release_date
+    - Hosts: Combined from transcript_metadata.hosts + co_hosts + mp3_metadata.hosts
+            (deduplicated while preserving order)
+    - Guests/Keywords/Summary: transcript_metadata only
+
     Args:
         metadata: Nested or flat metadata dictionary
 
     Returns:
         Flattened metadata dictionary with keys:
-        - podcast: str
-        - episode: str
-        - release_date: str
-        - hosts: list
+        - podcast: str (from podcast_title)
+        - episode: str (from episode_title)
+        - release_date: str (from date or release_date)
+        - hosts: list (combined and deduplicated)
         - guests: list
         - keywords: list
         - summary: str

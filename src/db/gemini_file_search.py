@@ -281,8 +281,11 @@ class GeminiFileSearchManager:
 
                 # Create temp file with ASCII-safe name
                 fd, tmp_path = tempfile.mkstemp(suffix='.txt', text=True)
+                fd_closed = False
                 try:
                     os.close(fd)  # Close the file descriptor immediately
+                    fd_closed = True
+
                     # Copy the original file to temp location
                     shutil.copy2(transcript_path, tmp_path)
 
@@ -301,13 +304,13 @@ class GeminiFileSearchManager:
 
                     logging.info(f"Successfully uploaded: {display_name}")
                     return operation.name
-                except Exception as e:
+                except Exception:
                     # Ensure FD is closed even if an error occurred before os.close
-                    try:
-                        if fd is not None:
+                    if not fd_closed:
+                        try:
                             os.close(fd)
-                    except OSError:
-                        pass  # FD already closed
+                        except OSError:
+                            pass  # FD already closed or invalid
                     raise
                 finally:
                     # Clean up temp file
@@ -494,7 +497,14 @@ class GeminiFileSearchManager:
             store_name: Store to query (uses default if None)
 
         Returns:
-            Dictionary with document info including custom_metadata, or None if not found
+            Dictionary with document information, or None if not found:
+            {
+                'name': str,           # Full resource name (e.g., 'fileSearchStores/.../documents/...')
+                'display_name': str,   # Display name (e.g., 'episode_transcription.txt')
+                'metadata': dict,      # Custom metadata as key-value pairs
+                'create_time': str,    # ISO timestamp of creation
+                'size_bytes': int      # Document size in bytes
+            }
         """
         if store_name is None:
             store_name = self.create_or_get_store()

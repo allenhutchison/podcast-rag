@@ -30,6 +30,9 @@ class RagManager:
     transcript chunks and generate responses with proper citations.
     """
 
+    # Maximum length for citation excerpts displayed in CLI
+    MAX_EXCERPT_LENGTH = 300
+
     def __init__(self, config: Config, dry_run=False, print_results=True):
         """
         Initialize the RAG manager.
@@ -323,8 +326,8 @@ if __name__ == "__main__":
                 # Show text excerpt (truncate if too long)
                 if text:
                     excerpt = text.strip()
-                    if len(excerpt) > 300:
-                        excerpt = excerpt[:297] + "..."
+                    if len(excerpt) > self.MAX_EXCERPT_LENGTH:
+                        excerpt = excerpt[:self.MAX_EXCERPT_LENGTH - 3] + "..."
                     print(excerpt)
                 else:
                     print("(No text preview available)")

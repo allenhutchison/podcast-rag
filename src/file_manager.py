@@ -33,7 +33,9 @@ class FileManager:
                 logging.error("Please check your GEMINI_API_KEY and configuration.")
                 raise
             except Exception as e:
-                # Network or other transient errors can be skipped with warning
+                # Network errors, API errors, or other transient issues during initialization
+                # Note: This does NOT catch KeyboardInterrupt or SystemExit (they inherit from BaseException, not Exception)
+                # File Search is an optional feature, so we gracefully degrade rather than failing completely
                 logging.warning(f"Could not initialize GeminiFileSearchManager: {e}")
                 logging.warning("File Search operations will be skipped. Use --skip-vectordb to suppress this warning.")
                 self.skip_vectordb = True
