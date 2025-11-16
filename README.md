@@ -1,13 +1,15 @@
-# Podcast Transcription using Whisper
+# Podcast RAG System
 
-This project provides a Python-based tool to automate the transcription of podcasts using the Whisper model. The tool processes directories of podcast MP3 files, transcribes them, and outputs the results in a text format.
+A Python-based Retrieval-Augmented Generation (RAG) system for intelligent search and question-answering over podcast libraries. The system transcribes audio using Whisper, extracts metadata with AI, and enables semantic search with automatic citations.
 
 ## Features
-- Batch transcription of MP3 files
-- Dry-run mode to preview files without performing transcription
-- Logging for detailed process tracking
-- Support for environment configuration using `.env`
-- Scheduled processing of podcast directories
+- Automatic transcription of MP3 files using OpenAI Whisper
+- AI-powered metadata extraction (titles, hosts, guests, summaries, keywords)
+- Vector embeddings and semantic search using Gemini File Search
+- Natural language queries with source citations
+- PostgreSQL database for metadata storage
+- Scheduled batch processing
+- Dry-run mode and comprehensive logging
 
 ## Installation
 To use this tool, you'll need to set up a Python environment with the required dependencies and install Whisper for transcription.
@@ -36,29 +38,50 @@ pip install -r requirements.txt
 ### Setup
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/podcast-transcription
-cd podcast-transcription
+git clone https://github.com/allenhutchison/podcast-rag
+cd podcast-rag
 ```
 
-2. Set up the environment variables by creating a `.env` file, or export them directly:
+2. Set up the environment variables by creating a `.env` file from the example:
 
 ```bash
-export MEDIA_EMBED_BASE_DIRECTORY="/path/to/your/podcasts"
-export MEDIA_EMBED_WHISPER_PATH="/path/to/whisper"
+cp .env.example .env
+# Edit .env with your configuration
 ```
 
-3. Run the transcription tool in dry-run mode:
+3. Configure required environment variables (see `.env.example` for all options):
+
 ```bash
-python transcribe_podcasts.py --dry-run
+# PostgreSQL database
+POSTGRES_USER=podcast_rag_user
+POSTGRES_PASSWORD=your_password
+POSTGRES_DB=podcast_rag_db
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+
+# Media directory
+MEDIA_EMBED_BASE_DIRECTORY=/path/to/your/podcasts
+
+# Gemini API (for metadata extraction and RAG)
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_MODEL=gemini-2.5-flash
+
+# Gemini File Search
+GEMINI_FILE_SEARCH_STORE_NAME=podcast-transcripts
+```
+
+4. Initialize the database:
+```bash
+python scripts/init_db.py --yes
+```
+
+5. Run the transcription tool in dry-run mode:
+```bash
+python src/file_manager.py --dry-run
 ```
 
 ## Configuration
-The configuration is managed via environment variables:
-
-- `MEDIA_EMBED_BASE_DIRECTORY`: Base directory containing podcast subdirectories.
-- `MEDIA_EMBED_WHISPER_PATH`: Path to the Whisper binary.
-
-The default values can be found in the `config.py` file.
+The configuration is managed via environment variables loaded from a `.env` file. See `.env.example` for all available options and `src/config.py` for implementation details.
 
 ## Usage
 
