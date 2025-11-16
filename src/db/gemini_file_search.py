@@ -8,10 +8,28 @@ chunking, and citation support.
 
 import logging
 import os
-from typing import Dict, List, Optional
+import time
+from typing import Callable, Dict, List, Literal, Optional, TypedDict, TypeVar
 
 from google import genai
 from google.genai import types
+from google.genai.errors import APIError, ClientError
+
+from src.utils.metadata_utils import flatten_episode_metadata
+
+T = TypeVar('T')
+
+
+# Progress callback type definition
+class ProgressInfo(TypedDict, total=False):
+    """Progress information passed to progress callbacks during batch operations."""
+    status: Literal['start', 'progress', 'complete', 'error']
+    current: int  # Current file index (0-based for start, 1-based for progress)
+    total: int  # Total number of files to process
+    file_path: str  # Path to current file being processed
+    file_name: str  # Name of uploaded file (present on success)
+    error: str  # Error message (present on error)
+    uploaded_count: int  # Number of successfully uploaded files
 
 
 class GeminiFileSearchManager:
@@ -41,27 +59,214 @@ class GeminiFileSearchManager:
 
         logging.info("Gemini File Search Manager initialized")
 
-    def _prepare_metadata(self, metadata: Optional[Dict]) -> Dict:
+    def _retry_with_backoff(
+        self,
+        func: Callable[[], T],
+        max_retries: int = 3,
+        initial_delay: float = 1.0,
+        max_delay: float = 60.0,
+        backoff_factor: float = 2.0
+    ) -> T:
+        """
+        Retry a function with exponential backoff for transient errors.
+
+        Args:
+            func: Function to retry (should take no arguments)
+            max_retries: Maximum number of retry attempts (default: 3)
+            initial_delay: Initial delay between retries in seconds (default: 1.0)
+            max_delay: Maximum delay between retries in seconds (default: 60.0)
+            backoff_factor: Multiplier for delay after each retry (default: 2.0)
+
+        Returns:
+            Result of the function call
+
+        Raises:
+            The last exception if all retries are exhausted
+        """
+        delay = initial_delay
+        last_exception = None
+
+        for attempt in range(max_retries + 1):
+            try:
+                return func()
+            except (APIError, ClientError) as e:
+                last_exception = e
+
+                # Don't retry on client errors (4xx) except rate limiting (429)
+                if hasattr(e, 'status_code'):
+                    if 400 <= e.status_code < 500 and e.status_code != 429:
+                        logging.error(f"Client error (non-retryable): {e}")
+                        raise
+
+                if attempt < max_retries:
+                    logging.warning(
+                        f"API error on attempt {attempt + 1}/{max_retries + 1}: {e}. "
+                        f"Retrying in {delay:.1f}s..."
+                    )
+                    time.sleep(delay)
+                    delay = min(delay * backoff_factor, max_delay)
+                else:
+                    logging.error(f"All {max_retries + 1} attempts failed. Last error: {e}")
+
+        raise last_exception
+
+    def _poll_operation(self, operation, timeout: int = 300) -> None:
+        """
+        Poll a long-running operation until completion with timeout and error handling.
+
+        Args:
+            operation: The operation object to poll
+            timeout: Maximum time to wait in seconds (default: 300 = 5 minutes)
+
+        Raises:
+            TimeoutError: If operation doesn't complete within timeout
+            RuntimeError: If operation fails with an error
+        """
+        start_time = time.time()
+        sleep_time = 0.5  # Start with 0.5 second polling
+
+        while not operation.done:
+            elapsed = time.time() - start_time
+
+            # Check timeout
+            if elapsed > timeout:
+                raise TimeoutError(
+                    f"Operation timed out after {timeout}s. "
+                    f"Operation: {getattr(operation, 'name', 'unknown')}"
+                )
+
+            # Exponential backoff with max 5 seconds
+            time.sleep(min(sleep_time, 5.0))
+            sleep_time *= 1.5
+
+            # Refresh operation status
+            operation = self.client.operations.get(operation)
+
+            # Check for operation errors
+            if hasattr(operation, 'error') and operation.error:
+                error_msg = str(operation.error)
+                raise RuntimeError(f"Operation failed: {error_msg}")
+
+        logging.debug(f"Operation completed in {time.time() - start_time:.2f}s")
+
+    def _sanitize_display_name(self, name: str) -> str:
+        """
+        Sanitize display name to ASCII-safe characters.
+
+        Replaces common unicode punctuation with ASCII equivalents to avoid
+        encoding errors in the Gemini File Search API.
+
+        Args:
+            name: Original filename
+
+        Returns:
+            ASCII-safe filename
+        """
+        # Replace common unicode characters with ASCII equivalents
+        replacements = {
+            '\u2019': "'",  # Right single quotation mark
+            '\u2018': "'",  # Left single quotation mark
+            '\u201c': '"',  # Left double quotation mark
+            '\u201d': '"',  # Right double quotation mark
+            '\u2013': '-',  # En dash
+            '\u2014': '--', # Em dash
+            '\u2026': '...', # Horizontal ellipsis
+        }
+        result = name
+        for unicode_char, ascii_char in replacements.items():
+            result = result.replace(unicode_char, ascii_char)
+
+        # Ensure the result is ASCII-encodable, replacing any remaining non-ASCII
+        try:
+            result.encode('ascii')
+            return result
+        except UnicodeEncodeError:
+            # Fall back to ASCII with replacement
+            return result.encode('ascii', 'replace').decode('ascii')
+
+    def _prepare_metadata(self, metadata: Optional[Dict]) -> List[Dict]:
         """
         Convert metadata dictionary to File Search custom_metadata format.
 
-        Converts lists to comma-separated strings and ensures all values are strings.
+        Handles both flat dictionaries and nested EpisodeMetadata structures.
+        Converts lists to comma-separated strings, truncates long values, and ensures all
+        values are strings. Returns a list of key-value pairs as required by the Gemini API.
 
         Args:
-            metadata: Dictionary of metadata values
+            metadata: Dictionary of metadata values (flat or nested EpisodeMetadata)
 
         Returns:
-            Dictionary suitable for File Search custom_metadata
+            List of dicts with 'key' and 'string_value' fields for File Search custom_metadata
+
+        Examples:
+            >>> manager = GeminiFileSearchManager(config=Config(), dry_run=True)
+            >>> metadata = {
+            ...     'podcast': 'Tech Talk',
+            ...     'episode': 'AI Episode',
+            ...     'hosts': ['Alice', 'Bob'],
+            ...     'release_date': '2024-01-15'
+            ... }
+            >>> result = manager._prepare_metadata(metadata)
+            >>> len(result)
+            4
+            >>> result[0]
+            {'key': 'podcast', 'string_value': 'Tech Talk'}
+            >>> result[2]  # hosts list becomes comma-separated
+            {'key': 'hosts', 'string_value': 'Alice, Bob'}
+
+            >>> # Long values are truncated to 256 bytes (UTF-8)
+            >>> long_summary = 'x' * 300
+            >>> metadata = {'summary': long_summary}
+            >>> result = manager._prepare_metadata(metadata)
+            >>> len(result[0]['string_value'].encode('utf-8')) <= 256
+            True
+            >>> result[0]['string_value'].endswith('...')
+            True
         """
-        custom_metadata = {}
-        if metadata:
-            for key in ['podcast', 'episode', 'release_date', 'hosts', 'guests', 'keywords', 'summary']:
-                if key in metadata and metadata[key]:
-                    value = metadata[key]
-                    # Convert lists to comma-separated strings
-                    if isinstance(value, list):
-                        value = ', '.join(str(v) for v in value)
-                    custom_metadata[key] = str(value)
+        MAX_VALUE_BYTES = 256  # Gemini File Search limit (256 bytes in UTF-8, not characters)
+        custom_metadata = []
+
+        if not metadata:
+            return custom_metadata
+
+        # Flatten nested metadata structure using utility
+        flattened = flatten_episode_metadata(metadata)
+
+        # Convert flattened metadata to File Search format
+        for key in ['podcast', 'episode', 'release_date', 'hosts', 'guests', 'keywords', 'summary']:
+            if key in flattened and flattened[key]:
+                value = flattened[key]
+                # Convert lists to comma-separated strings
+                if isinstance(value, list):
+                    value = ', '.join(str(v) for v in value)
+
+                # Convert to string and truncate if necessary (based on BYTE length, not char length)
+                value_str = str(value)
+                value_bytes = value_str.encode('utf-8')
+
+                if len(value_bytes) > MAX_VALUE_BYTES:
+                    # Log before truncation to avoid storing original length
+                    logging.warning(
+                        f"Metadata field '{key}' truncated from {len(value_bytes)} bytes "
+                        f"({len(value_str)} chars) to {MAX_VALUE_BYTES} bytes. "
+                        f"Data loss occurred. Consider storing full metadata separately."
+                    )
+
+                    # Truncate to MAX_VALUE_BYTES - 3 bytes (for '...')
+                    # Then decode, ignoring incomplete multi-byte sequences at the end
+                    truncated_bytes = value_bytes[:MAX_VALUE_BYTES - 3]
+                    value_str = truncated_bytes.decode('utf-8', errors='ignore') + '...'
+
+                    # Verify final byte length is within limit
+                    final_bytes = len(value_str.encode('utf-8'))
+                    assert final_bytes <= MAX_VALUE_BYTES, \
+                        f"Truncation error: expected <= {MAX_VALUE_BYTES} bytes, got {final_bytes}"
+
+                custom_metadata.append({
+                    'key': key,
+                    'string_value': value_str
+                })
+
         return custom_metadata
 
     def create_or_get_store(self, display_name: Optional[str] = None) -> str:
@@ -115,8 +320,10 @@ class GeminiFileSearchManager:
         self,
         transcript_path: str,
         metadata: Optional[Dict] = None,
-        store_name: Optional[str] = None
-    ) -> str:
+        store_name: Optional[str] = None,
+        existing_files: Optional[Dict[str, str]] = None,
+        skip_existing: bool = True
+    ) -> Optional[str]:
         """
         Upload a transcript file to the File Search store.
 
@@ -124,9 +331,37 @@ class GeminiFileSearchManager:
             transcript_path: Path to the transcript text file
             metadata: Dictionary of metadata to attach (podcast, episode, etc.)
             store_name: Store to upload to (uses default if None)
+            existing_files: Dict of display_name -> file_name for existing files (to skip duplicates)
+            skip_existing: If True, skip files that already exist
 
         Returns:
-            File resource name
+            File resource name, or None if skipped
+
+        Examples:
+            >>> manager = GeminiFileSearchManager(config=Config(), dry_run=True)
+            >>> metadata = {
+            ...     'podcast': 'Tech Talk',
+            ...     'episode': 'Episode 1',
+            ...     'hosts': ['Alice'],
+            ...     'release_date': '2024-01-15'
+            ... }
+            >>> # Upload new file
+            >>> file_name = manager.upload_transcript(
+            ...     transcript_path='/path/to/episode_transcription.txt',
+            ...     metadata=metadata
+            ... )
+            >>> file_name
+            'files/dry-run-episode_transcription.txt'
+
+            >>> # Skip existing file
+            >>> existing = {'episode_transcription.txt': 'files/existing123'}
+            >>> result = manager.upload_transcript(
+            ...     transcript_path='/path/to/episode_transcription.txt',
+            ...     existing_files=existing,
+            ...     skip_existing=True
+            ... )
+            >>> result is None  # File was skipped
+            True
         """
         # Check file exists first before making any API calls
         if not os.path.exists(transcript_path):
@@ -134,6 +369,19 @@ class GeminiFileSearchManager:
 
         if store_name is None:
             store_name = self.create_or_get_store()
+
+        # Get basename and sanitize for ASCII compatibility
+        original_name = os.path.basename(transcript_path)
+        display_name = self._sanitize_display_name(original_name)
+
+        # Log if sanitization changed the name
+        if display_name != original_name:
+            logging.debug(f"Sanitized display name: '{original_name}' -> '{display_name}'")
+
+        # Check if file already exists (use sanitized name for lookup)
+        if skip_existing and existing_files and display_name in existing_files:
+            logging.info(f"Skipping {display_name} - already exists as {existing_files[display_name]}")
+            return None
 
         # Prepare metadata
         custom_metadata = self._prepare_metadata(metadata)
@@ -147,19 +395,77 @@ class GeminiFileSearchManager:
             # Upload file with metadata
             logging.info(f"Uploading {transcript_path} to File Search store...")
 
-            operation = self.client.file_search_stores.upload_to_file_search_store(
-                file=transcript_path,
-                file_search_store_name=store_name,
-                config={
-                    'display_name': os.path.basename(transcript_path),
-                    'custom_metadata': custom_metadata
-                }
-            )
+            # Check if the file path contains non-ASCII characters
+            # If so, copy to a temp file with ASCII-safe name to avoid SDK encoding issues
+            needs_temp_file = False
+            try:
+                transcript_path.encode('ascii')
+            except UnicodeEncodeError:
+                needs_temp_file = True
 
-            # Wait for operation to complete and get file name
-            result = operation.result()
-            logging.info(f"Successfully uploaded: {result.name}")
-            return result.name
+            if needs_temp_file:
+                import tempfile
+                import shutil
+
+                # Create temp file with ASCII-safe name
+                fd, tmp_path = tempfile.mkstemp(suffix='.txt', text=True)
+                fd_closed = False
+                try:
+                    os.close(fd)  # Close the file descriptor immediately
+                    fd_closed = True
+
+                    # Copy the original file to temp location
+                    shutil.copy2(transcript_path, tmp_path)
+
+                    # Upload the temp file with retry logic
+                    def _upload():
+                        return self.client.file_search_stores.upload_to_file_search_store(
+                            file=tmp_path,
+                            file_search_store_name=store_name,
+                            config={
+                                'display_name': display_name,
+                                'custom_metadata': custom_metadata
+                            }
+                        )
+
+                    operation = self._retry_with_backoff(_upload)
+
+                    # Poll operation until complete with timeout
+                    self._poll_operation(operation)
+
+                    logging.info(f"Successfully uploaded: {display_name}")
+                    return operation.name
+                except Exception:
+                    # Ensure FD is closed even if an error occurred before os.close
+                    if not fd_closed:
+                        try:
+                            os.close(fd)
+                        except OSError:
+                            pass  # FD already closed or invalid
+                    raise
+                finally:
+                    # Clean up temp file
+                    if os.path.exists(tmp_path):
+                        os.unlink(tmp_path)
+            else:
+                # File path is ASCII-safe, upload directly with retry logic
+                def _upload():
+                    return self.client.file_search_stores.upload_to_file_search_store(
+                        file=transcript_path,
+                        file_search_store_name=store_name,
+                        config={
+                            'display_name': display_name,
+                            'custom_metadata': custom_metadata
+                        }
+                    )
+
+                operation = self._retry_with_backoff(_upload)
+
+                # Poll operation until complete with timeout
+                self._poll_operation(operation)
+
+                logging.info(f"Successfully uploaded: {display_name}")
+                return operation.name
 
         except Exception as e:
             logging.error(f"Failed to upload transcript: {e}")
@@ -187,14 +493,19 @@ class GeminiFileSearchManager:
         if store_name is None:
             store_name = self.create_or_get_store()
 
+        # Sanitize display name for ASCII compatibility
+        sanitized_name = self._sanitize_display_name(display_name)
+        if sanitized_name != display_name:
+            logging.debug(f"Sanitized display name: '{display_name}' -> '{sanitized_name}'")
+
         # Prepare metadata
         custom_metadata = self._prepare_metadata(metadata)
 
         if self.dry_run:
-            logging.info(f"[DRY RUN] Would upload text as {display_name} to {store_name}")
+            logging.info(f"[DRY RUN] Would upload text as {sanitized_name} to {store_name}")
             logging.info(f"[DRY RUN] Text length: {len(text)} characters")
             logging.info(f"[DRY RUN] Metadata: {custom_metadata}")
-            return f"files/dry-run-{display_name}"
+            return f"files/dry-run-{sanitized_name}"
 
         try:
             # Create temporary file with text content
@@ -206,20 +517,24 @@ class GeminiFileSearchManager:
                 with os.fdopen(fd, 'w') as tmp_file:
                     tmp_file.write(text)
 
-                # Now upload the closed temporary file
-                operation = self.client.file_search_stores.upload_to_file_search_store(
-                    file=tmp_path,
-                    file_search_store_name=store_name,
-                    config={
-                        'display_name': display_name,
-                        'custom_metadata': custom_metadata
-                    }
-                )
+                # Now upload the closed temporary file with retry logic
+                def _upload():
+                    return self.client.file_search_stores.upload_to_file_search_store(
+                        file=tmp_path,
+                        file_search_store_name=store_name,
+                        config={
+                            'display_name': sanitized_name,
+                            'custom_metadata': custom_metadata
+                        }
+                    )
 
-                # Wait for operation to complete and get file name
-                result = operation.result()
-                logging.info(f"Successfully uploaded text as: {result.name}")
-                return result.name
+                operation = self._retry_with_backoff(_upload)
+
+                # Poll operation until complete with timeout
+                self._poll_operation(operation)
+
+                logging.info(f"Successfully uploaded text as: {sanitized_name}")
+                return operation.name
             finally:
                 # Clean up temporary file
                 if os.path.exists(tmp_path):
@@ -264,13 +579,13 @@ class GeminiFileSearchManager:
 
     def list_files(self, store_name: Optional[str] = None) -> List[str]:
         """
-        List all files in a File Search store.
+        List all documents in a File Search store.
 
         Args:
             store_name: Store to query (uses default if None)
 
         Returns:
-            List of file resource names
+            List of document resource names
         """
         if store_name is None:
             store_name = self.create_or_get_store()
@@ -279,38 +594,115 @@ class GeminiFileSearchManager:
             return []
 
         try:
-            # List files in the store
-            files = self.client.files.list(
-                config={'file_search_store_name': store_name}
-            )
-            return [file.name for file in files]
+            # List documents in the store
+            documents = self.client.file_search_stores.documents.list(parent=store_name)
+            return [doc.name for doc in documents]
         except Exception as e:
-            logging.error(f"Failed to list files: {e}")
+            logging.error(f"Failed to list documents: {e}")
             raise
 
-    def delete_file(self, file_name: str):
+    def get_existing_files(self, store_name: Optional[str] = None) -> Dict[str, str]:
         """
-        Delete a file from the File Search store.
+        Get a mapping of display names to document resource names for existing files.
 
         Args:
-            file_name: File resource name to delete
+            store_name: Store to query (uses default if None)
+
+        Returns:
+            Dictionary mapping display_name -> document resource name
+        """
+        if store_name is None:
+            store_name = self.create_or_get_store()
+
+        if self.dry_run:
+            return {}
+
+        try:
+            # List documents in the store and create mapping
+            documents = self.client.file_search_stores.documents.list(parent=store_name)
+            return {doc.display_name: doc.name for doc in documents}
+        except Exception as e:
+            logging.error(f"Failed to list documents: {e}")
+            raise
+
+    def get_document_by_name(self, display_name: str, store_name: Optional[str] = None) -> Optional[Dict]:
+        """
+        Get document metadata by display name.
+
+        Args:
+            display_name: Display name of the document (e.g., 'filename.txt')
+            store_name: Store to query (uses default if None)
+
+        Returns:
+            Dictionary with document information, or None if not found:
+            {
+                'name': str,           # Full resource name (e.g., 'fileSearchStores/.../documents/...')
+                'display_name': str,   # Display name (e.g., 'episode_transcription.txt')
+                'metadata': dict,      # Custom metadata as key-value pairs
+                'create_time': str,    # ISO timestamp of creation
+                'size_bytes': int      # Document size in bytes
+            }
+        """
+        if store_name is None:
+            store_name = self.create_or_get_store()
+
+        if self.dry_run:
+            return None
+
+        try:
+            # List documents and find the matching one
+            documents = self.client.file_search_stores.documents.list(parent=store_name)
+
+            for doc in documents:
+                if doc.display_name == display_name:
+                    # Extract metadata
+                    metadata = {}
+                    if hasattr(doc, 'custom_metadata') and doc.custom_metadata:
+                        for meta in doc.custom_metadata:
+                            if hasattr(meta, 'key') and hasattr(meta, 'string_value'):
+                                metadata[meta.key] = meta.string_value
+
+                    return {
+                        'name': doc.name,
+                        'display_name': doc.display_name,
+                        'metadata': metadata,
+                        'create_time': getattr(doc, 'create_time', None),
+                        'size_bytes': getattr(doc, 'size_bytes', None)
+                    }
+
+            return None
+        except Exception as e:
+            logging.error(f"Failed to get document {display_name}: {e}")
+            return None
+
+    def delete_file(self, file_name: str, force: bool = True):
+        """
+        Delete a document from the File Search store.
+
+        Args:
+            file_name: Document resource name to delete
+            force: If True, delete the document and all its chunks (default: True)
         """
         if self.dry_run:
-            logging.info(f"[DRY RUN] Would delete file: {file_name}")
+            logging.info(f"[DRY RUN] Would delete document: {file_name}")
             return
 
         try:
-            self.client.files.delete(name=file_name)
-            logging.info(f"Deleted file: {file_name}")
+            self.client.file_search_stores.documents.delete(
+                name=file_name,
+                config={'force': force}
+            )
+            logging.info(f"Deleted document: {file_name}")
         except Exception as e:
-            logging.error(f"Failed to delete file: {e}")
+            logging.error(f"Failed to delete document: {e}")
             raise
 
     def batch_upload_directory(
         self,
         directory_path: str,
         pattern: str = "*_transcription.txt",
-        metadata_pattern: str = "*_metadata.json"
+        metadata_pattern: str = "*_metadata.json",
+        progress_callback: Optional[Callable[[ProgressInfo], None]] = None
     ) -> Dict[str, str]:
         """
         Batch upload all transcripts from a directory.
@@ -319,6 +711,9 @@ class GeminiFileSearchManager:
             directory_path: Directory containing transcripts
             pattern: Glob pattern for transcript files
             metadata_pattern: Glob pattern for metadata files
+            progress_callback: Optional callback function that receives ProgressInfo
+                with status, progress counts, file paths, and error information.
+                See ProgressInfo TypedDict for full structure.
 
         Returns:
             Dictionary mapping file paths to uploaded file names
@@ -334,7 +729,17 @@ class GeminiFileSearchManager:
 
         logging.info(f"Found {len(transcript_files)} transcript files to upload")
 
-        for transcript_path in transcript_files:
+        # Notify start of batch operation
+        if progress_callback:
+            progress_callback({
+                'status': 'start',
+                'current': 0,
+                'total': len(transcript_files),
+                'file_path': '',
+                'uploaded_count': 0
+            })
+
+        for idx, transcript_path in enumerate(transcript_files):
             # Try to find corresponding metadata file
             metadata = None
             base_path = transcript_path.replace('_transcription.txt', '')
@@ -355,8 +760,41 @@ class GeminiFileSearchManager:
                 )
                 uploaded_files[transcript_path] = file_name
                 logging.info(f"Uploaded {transcript_path} → {file_name}")
+
+                # Notify progress - successful upload
+                if progress_callback:
+                    progress_callback({
+                        'status': 'progress',
+                        'current': idx + 1,
+                        'total': len(transcript_files),
+                        'file_path': transcript_path,
+                        'file_name': file_name,
+                        'uploaded_count': len(uploaded_files)
+                    })
             except Exception as e:
                 logging.error(f"Failed to upload {transcript_path}: {e}")
 
+                # Notify progress - failed upload
+                if progress_callback:
+                    progress_callback({
+                        'status': 'error',
+                        'current': idx + 1,
+                        'total': len(transcript_files),
+                        'file_path': transcript_path,
+                        'error': str(e),
+                        'uploaded_count': len(uploaded_files)
+                    })
+
         logging.info(f"Batch upload complete: {len(uploaded_files)}/{len(transcript_files)} files uploaded")
+
+        # Notify completion
+        if progress_callback:
+            progress_callback({
+                'status': 'complete',
+                'current': len(transcript_files),
+                'total': len(transcript_files),
+                'file_path': '',
+                'uploaded_count': len(uploaded_files)
+            })
+
         return uploaded_files

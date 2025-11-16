@@ -7,7 +7,7 @@ hosted File Search solution for automatic semantic search with citations.
 
 import logging
 import json
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, TypedDict
 
 from google import genai
 from google.genai import types
@@ -22,6 +22,26 @@ from src.config import Config
 from src.db.gemini_file_search import GeminiFileSearchManager
 
 
+# Citation type definitions
+class LegacyCitation(TypedDict):
+    """Legacy citation format from file_search_citations."""
+    file_id: Optional[str]
+    chunk_index: Optional[int]
+    score: Optional[float]
+
+
+class GroundingCitation(TypedDict):
+    """Modern citation format from grounding_chunks."""
+    index: int
+    title: str
+    text: str
+    uri: Optional[str]
+
+
+# Union type for citations (can be either format)
+Citation = LegacyCitation | GroundingCitation
+
+
 class RagManager:
     """
     Manages RAG queries using Gemini File Search.
@@ -29,6 +49,9 @@ class RagManager:
     Uses Google's hosted File Search to automatically retrieve relevant
     transcript chunks and generate responses with proper citations.
     """
+
+    # Maximum length for citation excerpts displayed in CLI
+    MAX_EXCERPT_LENGTH = 300
 
     def __init__(self, config: Config, dry_run=False, print_results=True):
         """
@@ -75,7 +98,7 @@ class RagManager:
             query: User's question
 
         Returns:
-            Generated response text
+            Generated response text with inline citations
         """
         self.last_query = query
         logging.info(f"Processing query: {query}")
@@ -113,6 +136,9 @@ class RagManager:
             # Get response text
             response_text = response.text if hasattr(response, 'text') else str(response)
 
+            # Add inline citations
+            response_text = self._add_inline_citations(response_text)
+
             if self.print_results:
                 logging.info(f"Response: {response_text}")
                 if self.last_grounding_metadata:
@@ -124,26 +150,111 @@ class RagManager:
             logging.error(f"Query failed: {e}")
             raise
 
-    def get_citations(self) -> List[Dict]:
+    def _add_inline_citations(self, text: str) -> str:
+        """
+        Add inline citation markers to the response text.
+
+        Args:
+            text: Original response text
+
+        Returns:
+            Text with inline citations like [1], [2], etc.
+        """
+        if not self.last_grounding_metadata:
+            return text
+
+        if not hasattr(self.last_grounding_metadata, 'grounding_supports'):
+            return text
+
+        # Build a map of text positions to citation indices
+        # We'll insert citations after segments they support
+        citation_inserts = []
+
+        for support in self.last_grounding_metadata.grounding_supports:
+            if hasattr(support, 'segment') and hasattr(support, 'grounding_chunk_indices'):
+                segment = support.segment
+                chunk_indices = support.grounding_chunk_indices
+
+                if hasattr(segment, 'end_index') and chunk_indices:
+                    # Convert chunk indices to citation numbers (1-based)
+                    citation_nums = [idx + 1 for idx in chunk_indices]
+                    citation_text = ''.join(f'[{num}]' for num in citation_nums)
+
+                    citation_inserts.append({
+                        'position': segment.end_index,
+                        'text': citation_text
+                    })
+
+        # Sort by position in reverse order so we can insert without messing up indices
+        citation_inserts.sort(key=lambda x: x['position'], reverse=True)
+
+        # Insert citations with position validation
+        result = text
+        for insert in citation_inserts:
+            pos = insert['position']
+            cite = insert['text']
+            # Validate position is within valid range
+            if 0 <= pos <= len(result):
+                result = result[:pos] + cite + result[pos:]
+            else:
+                logging.warning(
+                    f"Invalid citation position {pos} for text length {len(result)}, skipping"
+                )
+
+        return result
+
+    def get_citations(self) -> List[Citation]:
         """
         Get citations from the last query's grounding metadata.
 
         Returns:
-            List of citation dictionaries with file and chunk information
+            List of citation dictionaries with file and chunk information.
+            Can be either LegacyCitation or GroundingCitation format depending
+            on the API response structure.
+
+        Examples:
+            >>> rag = RagManager(config=Config(), dry_run=True)
+            >>> response = rag.query("What is discussed in episode 5?")
+            >>> citations = rag.get_citations()
+            >>> len(citations)  # Number of source chunks
+            3
+            >>> citations[0].keys()
+            dict_keys(['index', 'title', 'text', 'uri'])
+            >>> citations[0]['title']
+            'episode5_transcription.txt'
+            >>> citations[0]['text'][:50]  # Preview of source text
+            'In this episode, we discuss the fundamentals of...'
+
+            >>> # Citations are empty before first query
+            >>> rag = RagManager(config=Config(), dry_run=True)
+            >>> rag.get_citations()
+            []
         """
         if not self.last_grounding_metadata:
             return []
 
         citations = []
 
-        # Parse grounding metadata structure
+        # Parse grounding metadata structure - try both old and new formats
         if hasattr(self.last_grounding_metadata, 'file_search_citations'):
+            # Old format
             for citation in self.last_grounding_metadata.file_search_citations:
                 citations.append({
                     'file_id': getattr(citation, 'file_id', None),
                     'chunk_index': getattr(citation, 'chunk_index', None),
                     'score': getattr(citation, 'score', None)
                 })
+        elif hasattr(self.last_grounding_metadata, 'grounding_chunks'):
+            # New format with grounding_chunks
+            for i, chunk in enumerate(self.last_grounding_metadata.grounding_chunks):
+                if hasattr(chunk, 'retrieved_context'):
+                    context = chunk.retrieved_context
+                    citations.append({
+                        'index': i,
+                        'title': getattr(context, 'title', 'Unknown'),
+                        'text': getattr(context, 'text', ''),
+                        'uri': getattr(context, 'uri', None)
+                    })
 
         return citations
 
@@ -209,10 +320,62 @@ if __name__ == "__main__":
     # Show citations if available
     citations = rag_manager.get_citations()
     if citations:
-        print("\nCITATIONS:")
+        print("\n" + "="*80)
+        print("SOURCES & CITATIONS:")
         print("="*80)
+
         for i, citation in enumerate(citations, 1):
-            print(f"{i}. File: {citation.get('file_id', 'N/A')}, "
-                  f"Chunk: {citation.get('chunk_index', 'N/A')}, "
-                  f"Score: {citation.get('score', 'N/A'):.3f}")
-        print("="*80)
+            # Handle both old and new citation formats
+            if 'title' in citation:
+                # New format with grounding chunks
+                title = citation.get('title', 'Unknown')
+                text = citation.get('text', '')
+
+                # Fetch document metadata
+                doc_info = rag_manager.file_search_manager.get_document_by_name(title)
+
+                print(f"\n[{i}]", end='')
+
+                # Display metadata if available
+                if doc_info and doc_info.get('metadata'):
+                    metadata = doc_info['metadata']
+
+                    # Format: Podcast - Episode (Year) - Host
+                    parts = []
+                    if metadata.get('podcast'):
+                        parts.append(metadata['podcast'])
+                    if metadata.get('episode'):
+                        parts.append(metadata['episode'])
+
+                    if parts:
+                        print(f" {' - '.join(parts)}", end='')
+
+                    if metadata.get('release_date'):
+                        print(f" ({metadata['release_date']})", end='')
+
+                    if metadata.get('hosts'):
+                        print(f" - Host: {metadata['hosts']}", end='')
+
+                    print()  # Newline after metadata
+                else:
+                    # Fallback to filename if no metadata
+                    print(f" {title}")
+
+                print("-" * 80)
+
+                # Show text excerpt (truncate if too long)
+                if text:
+                    excerpt = text.strip()
+                    if len(excerpt) > RagManager.MAX_EXCERPT_LENGTH:
+                        excerpt = excerpt[:RagManager.MAX_EXCERPT_LENGTH - 3] + "..."
+                    print(excerpt)
+                else:
+                    print("(No text preview available)")
+
+            else:
+                # Old format
+                print(f"\n[{i}] File: {citation.get('file_id', 'N/A')}, "
+                      f"Chunk: {citation.get('chunk_index', 'N/A')}, "
+                      f"Score: {citation.get('score', 'N/A'):.3f}")
+
+        print("\n" + "="*80)
