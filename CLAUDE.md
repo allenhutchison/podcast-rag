@@ -7,13 +7,12 @@ This document provides context for AI assistants working with this codebase.
 **Podcast RAG System** is a Python-based Retrieval-Augmented Generation (RAG) application that enables intelligent search and question-answering over podcast libraries.
 
 **Core Functionality:**
-- Downloads podcast episodes from RSS feeds
 - Transcribes audio using OpenAI Whisper
 - Extracts structured metadata using AI (Gemini)
 - Stores transcriptions in vector databases for semantic search
-- Answers natural language queries with source citations via web UI or CLI
+- Answers natural language queries with source citations via CLI
 
-**Tech Stack:** Python 3.11, Flask, PostgreSQL + pgvector, ChromaDB, Whisper, Gemini
+**Tech Stack:** Python 3.11, PostgreSQL + pgvector, ChromaDB, Whisper, Gemini
 
 ## Architecture
 
@@ -25,41 +24,36 @@ User Query → Vector Search → Context Retrieval → Prompt Formatting → AI 
 
 ### Key Components
 
-1. **Web Interface** (`src/app.py`) - Flask application on port 8080
-2. **RAG Manager** (`src/rag.py`) - Orchestrates query processing pipeline
-3. **File Manager** (`src/file_manager.py`) - Central processor for transcription → metadata → indexing
-4. **Background Services:**
-   - `src/podcast_download_service.py` - Polls RSS feeds periodically
+1. **RAG Manager** (`src/rag.py`) - Orchestrates query processing pipeline
+2. **File Manager** (`src/file_manager.py`) - Central processor for transcription → metadata → indexing
+3. **Background Services:**
    - `src/transcription_service.py` - Processes audio files with Whisper
-5. **Database Layer:**
+   - `src/scheduler.py` - Scheduled transcription processing
+4. **Database Layer:**
    - PostgreSQL (primary) - Episodes, transcripts, embeddings (pgvector)
    - ChromaDB - Vector similarity search
    - SQLite (legacy) - Metadata fallback
-6. **MCP Server** (`src/mcp_server.py`) - Claude integration protocol
+5. **MCP Server** (`src/mcp_server.py`) - Claude integration protocol
 
 ### Project Structure
 
 ```
 /home/user/podcast-rag/
 ├── src/                    # Core application code
-│   ├── app.py              # Flask web UI (main entry point)
 │   ├── rag.py              # RAG pipeline orchestrator
 │   ├── config.py           # Configuration management
 │   ├── schemas.py          # Pydantic models for validation
 │   ├── file_manager.py     # Processing orchestrator
-│   ├── download_and_transcribe.py  # CLI entry point
+│   ├── scheduler.py        # Scheduled processing
+│   ├── transcription_service.py  # Background transcription
 │   │
 │   ├── db/
 │   │   ├── models.py       # SQLAlchemy ORM (PostgreSQL)
 │   │   ├── database.py     # DB connection management
-│   │   └── chroma_vectordb.py  # Vector DB interface
-│   │
-│   ├── templates/          # Jinja2 HTML templates
-│   └── static/             # CSS/JS assets
+│   │   └── gemini_file_search.py  # Gemini File Search interface
 │
 ├── scripts/
-│   ├── init_db.py          # Database initialization
-│   └── import_opml.py      # OPML batch import
+│   └── init_db.py          # Database initialization
 │
 ├── prompts/                # AI prompt templates
 │   ├── archive_question.txt      # RAG answer generation
@@ -67,8 +61,6 @@ User Query → Vector Search → Context Retrieval → Prompt Formatting → AI 
 │   └── metadata_extraction.txt   # Metadata extraction
 │
 ├── tests/                  # pytest test suite
-├── docker-compose.yml      # Multi-service orchestration
-├── Dockerfile              # Python 3.11 container
 └── requirements.txt        # Python dependencies
 ```
 
@@ -77,7 +69,6 @@ User Query → Vector Search → Context Retrieval → Prompt Formatting → AI 
 | File | Purpose | When to Modify |
 |------|---------|----------------|
 | `src/config.py` | Environment variables, paths, settings | Adding new config options |
-| `src/app.py` | Flask routes, web UI endpoints | Adding web features |
 | `src/rag.py` | Query processing, AI inference | Changing RAG logic |
 | `src/db/models.py` | Database schema (SQLAlchemy) | Modifying data structure |
 | `src/file_manager.py` | Transcription + metadata pipeline | Processing workflow changes |
@@ -85,7 +76,6 @@ User Query → Vector Search → Context Retrieval → Prompt Formatting → AI 
 | `src/metadata_extractor.py` | AI-powered metadata parsing | Changing metadata fields |
 | `prompts/archive_question.txt` | RAG system prompt | Improving answer quality |
 | `requirements.txt` | Python dependencies | Adding/updating packages |
-| `docker-compose.yml` | Service definitions | Infrastructure changes |
 
 ## Development Workflow
 
@@ -104,35 +94,18 @@ cp .env.example .env
 # Edit .env with database credentials, API keys
 
 # 4. System dependencies
-# Requires: ffmpeg, PostgreSQL (or use Docker)
-
-# 5. Docker (recommended)
-docker-compose up -d
-```
-
-### Running Services
-
-```bash
-# Development - Web UI only
-python app.py
-# Access at http://localhost:8080
-
-# Production - All services
-docker-compose up  # Web + Downloader + Transcriber + PostgreSQL
+# Requires: ffmpeg, PostgreSQL
 ```
 
 ### Common Tasks
 
-**Download & Process Podcasts:**
+**Process Existing Podcasts:**
 ```bash
-# From RSS feed
-python src/download_and_transcribe.py --feed https://feeds.example.com/podcast --limit 5
+# Process all podcasts in media directory
+python src/file_manager.py
 
-# From OPML file
-python src/download_and_transcribe.py --feed-file podcasts.opml
-
-# Dry-run (preview only)
-python src/download_and_transcribe.py --feed-file podcasts.opml --dry-run
+# Scheduled processing (runs every hour)
+python src/scheduler.py
 ```
 
 **Search & Query:**
@@ -148,9 +121,6 @@ python src/rag.py --query "your question" --ai-system gemini
 ```bash
 # Initialize database
 python scripts/init_db.py --yes
-
-# Import OPML
-python scripts/import_opml.py podcasts.opml
 ```
 
 **Testing:**
@@ -220,11 +190,10 @@ pytest --cov=src tests/
 **Required:**
 - `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` - Database credentials
 - `POSTGRES_HOST`, `POSTGRES_PORT` - Database connection
-- `MEDIA_EMBED_BASE_DIRECTORY` - Base path for downloads
+- `MEDIA_EMBED_BASE_DIRECTORY` - Base path for podcast audio files
 
 **Optional:**
 - `GEMINI_API_KEY` - For Gemini-based RAG
-- `DOWNLOAD_POLL_INTERVAL_MINUTES` - RSS polling frequency (default: 60)
 
 ## Testing Guidelines
 
@@ -234,7 +203,6 @@ pytest --cov=src tests/
 - Test files mirror source structure (`test_*.py`)
 
 ### Coverage Areas
-- OPML parsing (`test_opml_importer.py`)
 - File processing pipeline (`test_file_manager.py`)
 - Database operations (`test_metadatadb.py`)
 - Transcription workflow (`test_transcribe_podcasts.py`)
@@ -256,24 +224,6 @@ def test_feature(temp_db):
     # Test implementation
     pass
 ```
-
-## Docker & Deployment
-
-### Services in docker-compose.yml
-- **web-query-service:** Flask app (port 8080)
-- **podcast-downloader:** Background RSS poller
-- **transcription-service:** Audio transcriber
-- **db-init:** PostgreSQL + pgvector initialization
-- **postgres:** PostgreSQL 16 database
-
-### Health Checks
-- Web service: HTTP GET to `/` should return 200
-- Database: Connection test via `psycopg2`
-- Services wait for `db-init` before starting
-
-### Volumes
-- `postgres_data:/var/lib/postgresql/data` - Database persistence
-- `./media:/app/media` - Audio files and transcripts
 
 ## Git Workflow
 
@@ -306,7 +256,7 @@ Working on: `claude/generate-claude-md-011CV2TtD4R9Z11NP64p6u5F`
 - Confirm `MEDIA_EMBED_BASE_DIRECTORY` is correct
 
 ### Database Connection Errors
-- Ensure PostgreSQL is running: `docker-compose ps`
+- Ensure PostgreSQL is running
 - Check credentials in `.env` match database
 - Verify pgvector extension: `python scripts/init_db.py --yes`
 

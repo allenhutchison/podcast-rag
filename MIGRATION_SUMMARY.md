@@ -48,11 +48,6 @@ The project has been successfully migrated from a self-hosted ChromaDB vector da
   - Updated upload logic to use `upload_transcript()` method
   - Added transcript upload statistics
 
-- **`src/app.py`**
-  - Removed dependency on old `google.generativeai.types`
-  - Updated `GenerateContentResponseConverter` to handle string responses
-  - Modified citation display to use grounding metadata
-  - Shows file IDs and chunk indices instead of full text snippets
 
 - **`src/mcp_server.py`**
   - Updated imports from `chroma_search` to `gemini_search`
@@ -85,16 +80,16 @@ The project has been successfully migrated from a self-hosted ChromaDB vector da
 
 ### Before (ChromaDB)
 ```
-Download → Transcribe → Extract Metadata → Chunk & Embed → ChromaDB
-                                                              ↓
+Audio Files → Transcribe → Extract Metadata → Chunk & Embed → ChromaDB
+                                                                   ↓
 Query → ChromaDB Search → Manual Prompt Construction → Gemini → Response
 ```
 
 ### After (File Search)
 ```
-Download → Transcribe → Extract Metadata → Upload to File Search
-                                             (Auto-chunk & embed)
-                                                    ↓
+Audio Files → Transcribe → Extract Metadata → Upload to File Search
+                                                (Auto-chunk & embed)
+                                                       ↓
 Query → Gemini with File Search Tool → Automatic Retrieval & Citations
 ```
 
@@ -138,12 +133,14 @@ Query → Gemini with File Search Tool → Automatic Retrieval & Citations
    GEMINI_FILE_SEARCH_STORE_NAME=podcast-transcripts
    ```
 
-2. Run the download and transcription pipeline:
+2. Place podcast MP3 files in your configured media directory
+
+3. Run the file processing pipeline:
    ```bash
-   python src/download_and_transcribe.py --feed https://example.com/feed.rss
+   python src/file_manager.py
    ```
 
-3. Transcripts are automatically uploaded to File Search during processing
+4. Transcripts are automatically uploaded to File Search during processing
 
 ### For Existing Installations
 
