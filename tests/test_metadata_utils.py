@@ -12,10 +12,34 @@ import tempfile
 sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
 
 from utils.metadata_utils import (
+    deduplicate_preserving_order,
     flatten_episode_metadata,
     load_metadata_from_file,
     load_and_flatten_metadata
 )
+
+
+def test_deduplicate_preserving_order():
+    """Test deduplication helper function."""
+    # Test with duplicates
+    result = deduplicate_preserving_order(['A', 'B', 'A', 'C', 'B'])
+    assert result == ['A', 'B', 'C']
+
+    # Test with no duplicates
+    result = deduplicate_preserving_order(['A', 'B', 'C'])
+    assert result == ['A', 'B', 'C']
+
+    # Test with empty list
+    result = deduplicate_preserving_order([])
+    assert result == []
+
+    # Test with all duplicates
+    result = deduplicate_preserving_order(['A', 'A', 'A'])
+    assert result == ['A']
+
+    # Test order preservation
+    result = deduplicate_preserving_order(['C', 'A', 'B', 'A', 'C'])
+    assert result == ['C', 'A', 'B']
 
 
 def test_flatten_nested_metadata():

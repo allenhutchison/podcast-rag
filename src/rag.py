@@ -7,7 +7,7 @@ hosted File Search solution for automatic semantic search with citations.
 
 import logging
 import json
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, TypedDict
 
 from google import genai
 from google.genai import types
@@ -20,6 +20,26 @@ from src.argparse_shared import (
 )
 from src.config import Config
 from src.db.gemini_file_search import GeminiFileSearchManager
+
+
+# Citation type definitions
+class LegacyCitation(TypedDict):
+    """Legacy citation format from file_search_citations."""
+    file_id: Optional[str]
+    chunk_index: Optional[int]
+    score: Optional[float]
+
+
+class GroundingCitation(TypedDict):
+    """Modern citation format from grounding_chunks."""
+    index: int
+    title: str
+    text: str
+    uri: Optional[str]
+
+
+# Union type for citations (can be either format)
+Citation = LegacyCitation | GroundingCitation
 
 
 class RagManager:
@@ -183,12 +203,32 @@ class RagManager:
 
         return result
 
-    def get_citations(self) -> List[Dict]:
+    def get_citations(self) -> List[Citation]:
         """
         Get citations from the last query's grounding metadata.
 
         Returns:
-            List of citation dictionaries with file and chunk information
+            List of citation dictionaries with file and chunk information.
+            Can be either LegacyCitation or GroundingCitation format depending
+            on the API response structure.
+
+        Examples:
+            >>> rag = RagManager(config=Config(), dry_run=True)
+            >>> response = rag.query("What is discussed in episode 5?")
+            >>> citations = rag.get_citations()
+            >>> len(citations)  # Number of source chunks
+            3
+            >>> citations[0].keys()
+            dict_keys(['index', 'title', 'text', 'uri'])
+            >>> citations[0]['title']
+            'episode5_transcription.txt'
+            >>> citations[0]['text'][:50]  # Preview of source text
+            'In this episode, we discuss the fundamentals of...'
+
+            >>> # Citations are empty before first query
+            >>> rag = RagManager(config=Config(), dry_run=True)
+            >>> rag.get_citations()
+            []
         """
         if not self.last_grounding_metadata:
             return []

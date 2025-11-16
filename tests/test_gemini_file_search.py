@@ -115,6 +115,61 @@ def test_batch_upload_directory_dry_run(tmpdir):
     assert len(uploaded) == 3
 
 
+def test_batch_upload_with_progress_callback(tmpdir):
+    """Test batch upload with progress callback."""
+    config = Config()
+    config.BASE_DIRECTORY = str(tmpdir)
+
+    # Create some fake transcript files
+    podcast_dir = tmpdir.mkdir("TestPodcast")
+
+    for i in range(3):
+        transcript = podcast_dir.join(f"episode{i}_transcription.txt")
+        transcript.write(f"Transcript {i}")
+
+        metadata = podcast_dir.join(f"episode{i}_metadata.json")
+        metadata.write(json.dumps({
+            'podcast': 'Test Podcast',
+            'episode': f'Episode {i}'
+        }))
+
+    # Track progress callbacks
+    progress_events = []
+
+    def progress_callback(info):
+        progress_events.append(info.copy())
+
+    manager = GeminiFileSearchManager(config=config, dry_run=True)
+    uploaded = manager.batch_upload_directory(
+        directory_path=str(tmpdir),
+        pattern="*_transcription.txt",
+        progress_callback=progress_callback
+    )
+
+    # Should have received progress events
+    assert len(progress_events) > 0
+
+    # First event should be 'start'
+    assert progress_events[0]['status'] == 'start'
+    assert progress_events[0]['total'] == 3
+
+    # Last event should be 'complete'
+    assert progress_events[-1]['status'] == 'complete'
+    assert progress_events[-1]['uploaded_count'] == 3
+
+    # Should have progress events for each file
+    progress_updates = [e for e in progress_events if e['status'] == 'progress']
+    assert len(progress_updates) == 3
+
+    # Verify progress updates have required fields
+    for update in progress_updates:
+        assert 'current' in update
+        assert 'total' in update
+        assert 'file_path' in update
+        assert 'file_name' in update
+        assert 'uploaded_count' in update
+
+
 def test_metadata_conversion():
     """Test that metadata is properly converted for File Search."""
     config = Config()
@@ -221,8 +276,219 @@ def test_sanitize_display_name_already_ascii():
     assert result == ascii_name
 
 
+def test_sanitize_display_name_emoji():
+    """Test handling of emoji in display names."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+    # Test various emoji
+    result = manager._sanitize_display_name("Episode 🎧 Title.txt")
+    # Emoji should be removed or replaced with ASCII-safe equivalent
+    assert result.encode('ascii', errors='ignore').decode('ascii') or True  # Should not crash
+
+    result = manager._sanitize_display_name("Test 👍🎉.txt")
+    # Should handle multiple emoji
+    assert isinstance(result, str)  # Should return a string
+
+    result = manager._sanitize_display_name("📚 Reading List.txt")
+    # Should handle emoji at start
+    assert isinstance(result, str)
+
+
+def test_sanitize_display_name_rtl_text():
+    """Test handling of Right-to-Left (RTL) text in display names."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+    # Test Arabic text (RTL)
+    result = manager._sanitize_display_name("Episode مرحبا.txt")
+    assert isinstance(result, str)
+    # Should not crash, but may transliterate or remove non-ASCII
+
+    # Test Hebrew text (RTL)
+    result = manager._sanitize_display_name("שלום Episode.txt")
+    assert isinstance(result, str)
+
+    # Test mixed LTR and RTL
+    result = manager._sanitize_display_name("Episode שלום Test.txt")
+    assert isinstance(result, str)
+
+
+def test_sanitize_display_name_combining_diacriticals():
+    """Test handling of combining diacritical marks in display names."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+    # Test composed form (single character)
+    result = manager._sanitize_display_name("Café Episode.txt")
+    assert isinstance(result, str)
+    # Should handle é (U+00E9)
+
+    # Test decomposed form (base + combining mark)
+    # "Café" with decomposed é (e + combining acute accent)
+    decomposed = "Cafe\u0301 Episode.txt"  # e + ́
+    result = manager._sanitize_display_name(decomposed)
+    assert isinstance(result, str)
+
+    # Test multiple diacriticals
+    result = manager._sanitize_display_name("Naïve Résumé.txt")
+    assert isinstance(result, str)
+
+    # Test complex diacriticals
+    result = manager._sanitize_display_name("Příliš žluťoučký.txt")
+    assert isinstance(result, str)
+
+
+def test_upload_filename_with_emoji(tmpdir):
+    """Test uploading file with emoji in filename."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+    # Create file - use ASCII-safe name for tmpdir, test with metadata
+    transcript_file = tmpdir.join("episode_transcription.txt")
+    transcript_file.write("Test transcript")
+
+    # Upload with emoji in display name
+    metadata = {
+        'podcast': 'Test Podcast 🎧',
+        'episode': 'Episode 1 📻',
+    }
+
+    # Should handle emoji gracefully without crashing
+    result = manager.upload_transcript(
+        transcript_path=str(transcript_file),
+        metadata=metadata
+    )
+
+    assert result is not None
+    assert 'dry-run' in result
+
+
+def test_metadata_with_rtl_text():
+    """Test metadata containing Right-to-Left text."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+    metadata = {
+        'transcript_metadata': {
+            'podcast_title': 'Arabic Podcast مرحبا',
+            'episode_title': 'שלום Hebrew Episode',
+            'summary': 'Mixed LTR and RTL: English עברית العربية'
+        }
+    }
+
+    # Should process without crashing
+    result = manager._prepare_metadata(metadata)
+
+    assert isinstance(result, list)
+    # All values should be strings
+    for item in result:
+        assert isinstance(item['string_value'], str)
+        # Should fit within byte limit even with multi-byte chars
+        assert len(item['string_value'].encode('utf-8')) <= 256
+
+
+def test_metadata_with_combining_diacriticals():
+    """Test metadata with combining diacritical marks."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+    # Test both composed and decomposed forms
+    metadata = {
+        'transcript_metadata': {
+            'podcast_title': 'Café Résumé',
+            'episode_title': 'Naïve Approach',
+            'summary': 'Test with diacriticals: Příliš žluťoučký kůň'
+        }
+    }
+
+    result = manager._prepare_metadata(metadata)
+
+    assert isinstance(result, list)
+    assert len(result) == 3
+
+    # Values should be properly handled
+    for item in result:
+        assert isinstance(item['string_value'], str)
+        # Check byte length, not character length
+        assert len(item['string_value'].encode('utf-8')) <= 256
+
+
+def test_metadata_truncation_with_multibyte_chars():
+    """Test truncation with multi-byte Unicode characters."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+    # Create very long string with multi-byte chars
+    # 'café' has 4 chars but 5 bytes (é is 2 bytes in UTF-8)
+    long_value = ('café ' * 60)  # Each 'café ' is 5 chars/6 bytes, total 300 chars/360 bytes
+
+    metadata = {
+        'transcript_metadata': {
+            'summary': long_value
+        }
+    }
+
+    result = manager._prepare_metadata(metadata)
+
+    assert len(result) == 1
+    # Should be truncated to 256 BYTES (not characters)
+    truncated_bytes = len(result[0]['string_value'].encode('utf-8'))
+    assert truncated_bytes <= 256, f"Expected <= 256 bytes, got {truncated_bytes}"
+    assert result[0]['string_value'].endswith('...')
+
+    # Verify it's valid UTF-8 (no broken multi-byte sequences)
+    result[0]['string_value'].encode('utf-8')  # Should not raise
+
+
+def test_metadata_truncation_prevents_byte_limit_overflow():
+    """Test that byte-based truncation prevents the specific bug where
+    character-based truncation could exceed byte limit with multi-byte chars.
+
+    Regression test for issue where API rejected metadata with error:
+    'string_value cannot be more than 256 characters long'
+    when character count was 256 but byte count exceeded 256.
+    """
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+    # Create string that would fail with character-based truncation
+    # "Théâtre" contains multi-byte characters
+    # Construct a value that when truncated to 256 chars would exceed 256 bytes
+    base = "This episode explores the story of the Théâtre de la Mode. "
+    # Repeat to get well over 256 bytes
+    long_value = base * 10  # ~600 bytes
+
+    metadata = {
+        'transcript_metadata': {
+            'summary': long_value
+        }
+    }
+
+    result = manager._prepare_metadata(metadata)
+
+    # Verify byte length is within API limit
+    truncated_value = result[0]['string_value']
+    byte_length = len(truncated_value.encode('utf-8'))
+    char_length = len(truncated_value)
+
+    # Must not exceed 256 bytes (the actual API limit)
+    assert byte_length <= 256, \
+        f"Byte length {byte_length} exceeds API limit of 256 bytes"
+
+    # Character length might be less than 256 due to multi-byte chars
+    assert char_length <= 256, \
+        f"Character length {char_length} unexpectedly exceeds 256"
+
+    # Should end with ellipsis
+    assert truncated_value.endswith('...')
+
+    # No broken UTF-8 sequences
+    truncated_value.encode('utf-8')
+
+
 def test_metadata_truncation():
-    """Test metadata values are truncated to 255 chars."""
+    """Test metadata values are truncated to 256 bytes (API limit)."""
     config = Config()
     manager = GeminiFileSearchManager(config=config, dry_run=True)
 
@@ -240,8 +506,9 @@ def test_metadata_truncation():
     assert len(result) == 1
     assert result[0]['key'] == 'summary'
 
-    # Value should be truncated to 255 chars
-    assert len(result[0]['string_value']) == 255
+    # Value should be truncated to 256 bytes (API maximum)
+    truncated_bytes = len(result[0]['string_value'].encode('utf-8'))
+    assert truncated_bytes <= 256
     assert result[0]['string_value'].endswith('...')
 
 

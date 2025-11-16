@@ -7,7 +7,38 @@ different formats used throughout the application.
 import json
 import logging
 import os
-from typing import Dict, Optional
+from typing import Dict, List, Optional
+
+
+def deduplicate_preserving_order(items: List) -> List:
+    """
+    Deduplicate a list while preserving the original order.
+
+    Uses a set for O(n) lookup performance while maintaining insertion order.
+    Useful for combining host lists, keywords, etc.
+
+    Args:
+        items: List of items to deduplicate (must be hashable)
+
+    Returns:
+        List with duplicates removed, original order preserved
+
+    Examples:
+        >>> deduplicate_preserving_order(['A', 'B', 'A', 'C', 'B'])
+        ['A', 'B', 'C']
+        >>> deduplicate_preserving_order([])
+        []
+    """
+    if not items:
+        return []
+
+    seen = set()
+    result = []
+    for item in items:
+        if item not in seen:
+            seen.add(item)
+            result.append(item)
+    return result
 
 
 def load_metadata_from_file(metadata_path: str) -> Optional[Dict]:
@@ -57,6 +88,40 @@ def flatten_episode_metadata(metadata: Dict) -> Dict:
         - guests: list
         - keywords: list
         - summary: str
+
+    Examples:
+        >>> nested = {
+        ...     'transcript_metadata': {
+        ...         'podcast_title': 'Tech Talk',
+        ...         'episode_title': 'AI Advances',
+        ...         'hosts': ['Alice'],
+        ...         'date': '2024-01-15'
+        ...     }
+        ... }
+        >>> result = flatten_episode_metadata(nested)
+        >>> result['podcast']
+        'Tech Talk'
+        >>> result['episode']
+        'AI Advances'
+        >>> result['hosts']
+        ['Alice']
+
+        >>> # Already flat metadata passes through
+        >>> flat = {'podcast': 'My Podcast', 'episode': 'Ep 1'}
+        >>> flatten_episode_metadata(flat)
+        {'podcast': 'My Podcast', 'episode': 'Ep 1'}
+
+        >>> # Hosts are combined and deduplicated
+        >>> nested = {
+        ...     'transcript_metadata': {
+        ...         'hosts': ['Alice', 'Bob'],
+        ...         'co_hosts': ['Bob', 'Charlie']
+        ...     },
+        ...     'mp3_metadata': {'hosts': ['Alice', 'David']}
+        ... }
+        >>> result = flatten_episode_metadata(nested)
+        >>> result['hosts']
+        ['Alice', 'Bob', 'Charlie', 'David']
     """
     if not metadata:
         return {}
@@ -99,15 +164,9 @@ def flatten_episode_metadata(metadata: Dict) -> Dict:
     if mp3_meta.get('hosts'):
         all_hosts.extend(mp3_meta['hosts'])
 
-    # Deduplicate while preserving order
+    # Deduplicate while preserving order using helper function
     if all_hosts:
-        seen = set()
-        unique_hosts = []
-        for host in all_hosts:
-            if host not in seen:
-                seen.add(host)
-                unique_hosts.append(host)
-        flattened['hosts'] = unique_hosts
+        flattened['hosts'] = deduplicate_preserving_order(all_hosts)
 
     # Map guests
     if transcript_meta.get('guests'):
