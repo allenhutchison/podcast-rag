@@ -36,7 +36,6 @@ The project includes various command-line scripts for batch processing, schedule
     - `models.py`: SQLAlchemy ORM models for PostgreSQL (primary database).
     - `database.py`: Database connection management for PostgreSQL.
     - `gemini_file_search.py`: Manages File Search store creation, transcript uploads, and batch migrations.
-    - `metadatadb.py`: Legacy SQLite database implementation (test-only, deprecated).
   - `schemas.py`: Defines the Pydantic data models for structured metadata.
   - `prompt_manager.py`: Loads and formats prompts from the `/prompts` directory.
 - `scripts/`:

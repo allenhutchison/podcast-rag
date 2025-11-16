@@ -25,8 +25,7 @@ def main():
         ]
     )
 
-    logging.debug(f"Log level set to {args.log_level.upper()}")
-    logging.info("MCP server logging configured")
+    logging.info(f"MCP server logging configured at {args.log_level.upper()} level")
 
     try:
         env_file_path = None
@@ -36,7 +35,6 @@ def main():
 
         logging.debug("Initializing Config...")
         config = Config(env_file=env_file_path)
-        logging.debug("Config initialized successfully")
         logging.info("Config loaded successfully")
     except Exception as e:
         logging.error(f"Failed to initialize Config: {e}")
@@ -45,8 +43,7 @@ def main():
     # Initialize the MCP server
     logging.debug("Creating MCP server instance...")
     mcp = MCP(port=5002)
-    logging.debug("MCP server instance created on port 5002")
-    logging.info("MCP server instance created")
+    logging.info("MCP server instance created on port 5002")
 
     @mcp.tool()
     def get_rag_context(query: str):
@@ -100,8 +97,7 @@ def main():
         Returns:
             A list of matching podcast episodes with their metadata
         """
-        logging.debug(f"search_podcasts called with query: {query}, limit: {limit}")
-        logging.info(f"search_podcasts tool called with query: {query}, limit: {limit}")
+        logging.info(f"search_podcasts called with query: {query}, limit: {limit}")
 
         try:
             logging.debug("Creating GeminiSearchManager for search_podcasts...")
@@ -147,8 +143,7 @@ def main():
         Returns:
             Information about the podcast database including collection details
         """
-        logging.debug("get_podcast_info called")
-        logging.info("get_podcast_info tool called")
+        logging.info("get_podcast_info called")
 
         try:
             logging.debug("Creating GeminiSearchManager for get_podcast_info...")
@@ -178,10 +173,8 @@ def main():
                 "status": "error"
             }
 
-    logging.debug("All tools registered successfully")
     logging.info("All MCP tools registered successfully")
     logging.info("Starting MCP server with podcast RAG tools...")
-    logging.debug("About to start MCP server...")
 
     try:
         # Run the server with SSE transport
@@ -189,7 +182,6 @@ def main():
         mcp.run(transport='sse')
         logging.debug("mcp.run() completed")
     except KeyboardInterrupt:
-        logging.debug("KeyboardInterrupt received")
         logging.info("MCP server stopped by user")
     except Exception as e:
         logging.error(f"MCP server error: {e}")

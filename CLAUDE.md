@@ -30,9 +30,8 @@ User Query → Vector Search → Context Retrieval → Prompt Formatting → AI 
 4. **Background Services:**
    - `src/scheduler.py` - Scheduled transcription processing
 5. **Database Layer:**
-   - PostgreSQL (primary) - Episodes, transcripts, metadata
+   - PostgreSQL - Episodes, transcripts, metadata
    - Gemini File Search - Vector embeddings and similarity search
-   - SQLite (test-only) - Legacy metadata DB for testing
 6. **MCP Server** (`src/mcp_server.py`) - Claude integration protocol
 
 ### Project Structure
@@ -141,7 +140,7 @@ pytest --cov=src tests/
 ## Coding Conventions
 
 ### Style Guide
-- **Classes:** PascalCase (`TranscriptionManager`, `PodcastDB`)
+- **Classes:** PascalCase (`TranscriptionManager`, `GeminiFileSearchManager`)
 - **Functions/Methods:** snake_case (`handle_transcription`, `search_vector_db`)
 - **Constants:** UPPER_SNAKE_CASE (`TRANSCRIPTION_OUTPUT_SUFFIX`)
 - **Private methods:** Leading underscore (`_parse_response`)
@@ -204,23 +203,25 @@ pytest --cov=src tests/
 
 ### Coverage Areas
 - File processing pipeline (`test_file_manager.py`)
-- Database operations (`test_metadatadb.py`)
+- Gemini File Search integration (`test_gemini_file_search.py`)
+- Metadata utilities (`test_metadata_utils.py`)
+- RAG query processing (`test_rag.py`)
 - Transcription workflow (`test_transcribe_podcasts.py`)
 
 ### Writing New Tests
 ```python
 import pytest
+from unittest.mock import Mock, patch
 
 @pytest.fixture
-def temp_db():
-    """Create temporary database for testing"""
-    db_path = "test_temp.db"
-    db = PodcastDB(db_path)
-    yield db
-    if os.path.exists(db_path):
-        os.remove(db_path)
+def mock_config():
+    """Create mock config for testing"""
+    config = Mock()
+    config.BASE_DIRECTORY = "/tmp/test_podcasts"
+    config.GEMINI_API_KEY = "test_key"
+    return config
 
-def test_feature(temp_db):
+def test_feature(mock_config):
     # Test implementation
     pass
 ```
