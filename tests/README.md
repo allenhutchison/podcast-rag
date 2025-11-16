@@ -11,8 +11,6 @@ This directory contains unit tests for the podcast-rag project.
   - ✅ No changes needed
 - **`test_metadatadb.py`** - Tests PostgreSQL metadata database
   - ✅ No changes needed
-- **`test_opml_importer.py`** - Tests OPML feed import functionality
-  - ✅ No changes needed
 
 ### New Tests (File Search Migration)
 - **`test_gemini_file_search.py`** - Tests Gemini File Search manager
