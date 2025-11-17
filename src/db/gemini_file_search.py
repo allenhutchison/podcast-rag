@@ -615,10 +615,17 @@ class GeminiFileSearchManager:
         Get the path to the local cache file.
 
         Returns:
-            Path to cache file in project root
+            Path to cache file in project root or /app/cache for Docker
         """
         # Get project root (two levels up from this file: src/db/gemini_file_search.py -> root)
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+        # Use /app/cache directory if it exists (Docker environment)
+        cache_dir = os.path.join(project_root, 'cache')
+        if os.path.exists(cache_dir):
+            return os.path.join(cache_dir, '.file_search_cache.json')
+
+        # Otherwise use project root (local development)
         return os.path.join(project_root, '.file_search_cache.json')
 
     def _load_cache(self, store_name: str) -> Optional[Dict[str, str]]:
