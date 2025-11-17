@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  podcast-rag:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: podcast-rag
+    restart: unless-stopped
+
+    # Environment variables
+    env_file:
+      - .env
+    environment:
+      - MEDIA_EMBED_BASE_DIRECTORY=/data/podcasts
+      - PYTHONUNBUFFERED=1
+
+    # Volume mounts
+    volumes:
+      # Podcast files (read-only recommended)
+      - ${PODCAST_DIR:-/opt/podcasts}:/data/podcasts:ro
+
+      # Cache file for metadata (persistent)
+      - ${CACHE_DIR:-.}/.file_search_cache.json:/app/.file_search_cache.json
+
+      # Optional: Mount custom .env if not using env_file
+      # - ./.env:/app/.env:ro
+
+    # Resource limits (adjust based on your needs)
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+
+    # Logging
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Optional: One-off query service
+  podcast-rag-query:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: podcast-rag-query
+    profiles:
+      - manual  # Only start manually with --profile manual
+
+    env_file:
+      - .env
+    environment:
+      - MEDIA_EMBED_BASE_DIRECTORY=/data/podcasts
+
+    volumes:
+      - ${PODCAST_DIR:-/opt/podcasts}:/data/podcasts:ro
+      - ${CACHE_DIR:-.}/.file_search_cache.json:/app/.file_search_cache.json
+
+    # Override entrypoint for interactive queries
+    entrypoint: []
+    command: ["sleep", "infinity"]
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
