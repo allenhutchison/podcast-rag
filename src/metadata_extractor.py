@@ -195,7 +195,13 @@ class MetadataExtractor:
                     'response_schema': PodcastMetadata,
                 }
             )
-            
+
+            # Check if we got a valid parsed response
+            if response.parsed is None:
+                logging.error("AI response.parsed is None - the model did not return structured data")
+                logging.error(f"Raw response text: {response.text if hasattr(response, 'text') else 'No text available'}")
+                return None
+
             # Parse the response
             metadata_dict = response.parsed.model_dump()
             
