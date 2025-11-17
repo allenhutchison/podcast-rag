@@ -30,12 +30,12 @@ if __name__ == "__main__":
     parser.description = "Scheduled podcast transcription."
     args = parser.parse_args()
 
-    # Set up logging
+    # Set up logging - log to stdout for Docker
     logging.basicConfig(
         level=args.log_level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=[
-            logging.FileHandler("scheduler.log"), 
+            logging.StreamHandler(sys.stdout),
         ],
     )
     # Set the log level for the httpx and httpcore libraries
@@ -47,7 +47,12 @@ if __name__ == "__main__":
     # Create config instance once
     config = Config(env_file=args.env_file)
 
+    logging.info("Podcast RAG Scheduler starting...")
+    logging.info(f"Media directory: {config.BASE_DIRECTORY}")
+    logging.info(f"Processing interval: 1 hour")
+
     # Run the file manager once before starting the scheduler
+    logging.info("Running initial podcast processing...")
     run_file_manager(config=config)
 
     scheduler = BlockingScheduler()
@@ -59,8 +64,9 @@ if __name__ == "__main__":
         args=[config]
     )
 
+    logging.info("Scheduler configured. Starting scheduled execution...")
     try:
         scheduler.start()
     except (KeyboardInterrupt, SystemExit):
+        logging.info("Scheduler stopped.")
         scheduler.shutdown()
-        print("Scheduler stopped.")
