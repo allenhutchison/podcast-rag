@@ -1,9 +1,0 @@
-openai-whisper
-pytest
-python-dotenv
-APScheduler
-google-genai
-eyed3
-pydantic
-mcp
-tqdm

@@ -12,12 +12,12 @@ A Python-based Retrieval-Augmented Generation (RAG) system for intelligent searc
 - Dry-run mode and comprehensive logging
 
 ## Installation
-To use this tool, you'll need to set up a Python environment with the required dependencies and install Whisper for transcription.
+
+This project uses [uv](https://docs.astral.sh/uv/) for fast, reliable dependency management. You can also use traditional pip if preferred.
 
 ### Prerequisites
 1. Python 3.11+ (recommended)
-2. [Whisper](https://github.com/openai/whisper)
-3. Install `ffmpeg`:
+2. Install `ffmpeg`:
    - **Linux:**
      ```bash
      sudo apt-get install ffmpeg
@@ -29,27 +29,40 @@ To use this tool, you'll need to set up a Python environment with the required d
    - **Windows:**
      - Download and install `ffmpeg` from [https://ffmpeg.org/download.html](https://ffmpeg.org/download.html).
 
-4. Install dependencies:
+3. Install `uv` (recommended):
+   ```bash
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   # Or on macOS:
+   brew install uv
+   ```
+
+### Install
 
 ```bash
-pip install -r requirements.txt
-```
-
-### Setup
-1. Clone the repository:
-```bash
+# Clone and enter the repository
 git clone https://github.com/allenhutchison/podcast-rag
 cd podcast-rag
+
+# Install all dependencies (creates .venv automatically)
+uv sync
+
+# Optional: Activate the virtual environment
+# (not required if using 'uv run' commands)
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 ```
 
-2. Set up the environment variables by creating a `.env` file from the example:
+## Configuration
+
+The configuration is managed via environment variables loaded from a `.env` file.
+
+1. Create your `.env` file from the example:
 
 ```bash
 cp .env.example .env
 # Edit .env with your configuration
 ```
 
-3. Configure required environment variables (see `.env.example` for all options):
+2. Configure required environment variables (see `.env.example` for all options):
 
 ```bash
 # Media directory
@@ -63,39 +76,42 @@ GEMINI_MODEL=gemini-2.5-flash
 GEMINI_FILE_SEARCH_STORE_NAME=podcast-transcripts
 ```
 
-4. Run the transcription tool in dry-run mode:
+3. Test the installation with a dry run:
 ```bash
-python src/file_manager.py --dry-run
+uv run python src/file_manager.py --dry-run
 ```
 
-## Configuration
-The configuration is managed via environment variables loaded from a `.env` file. See `.env.example` for all available options and `src/config.py` for implementation details.
+See `src/config.py` for implementation details.
 
 ## Usage
 
+All commands can be run with `uv run` or directly if you've activated the virtual environment.
+
 ### Process all podcasts in media directory:
 ```bash
+uv run python src/file_manager.py
+# Or with venv activated:
 python src/file_manager.py
 ```
 
 ### Run scheduled processing (every hour):
 ```bash
-python src/scheduler.py
+uv run python src/scheduler.py
 ```
 
 ### Perform a dry run:
 ```bash
-python src/file_manager.py --dry-run
+uv run python src/file_manager.py --dry-run
 ```
 
 ### Skip vector database operations:
 ```bash
-python src/file_manager.py --skip-vectordb
+uv run python src/file_manager.py --skip-vectordb
 ```
 
 ### Query the RAG system:
 ```bash
-python -m src.rag --query "your question here"
+uv run python -m src.rag --query "your question here"
 ```
 
 ### Manage File Search store:

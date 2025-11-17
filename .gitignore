@@ -114,6 +114,10 @@ ipython_config.py
 #   https://pdm.fming.dev/#use-with-ide
 .pdm.toml
 
+# uv
+#   uv.lock should be committed to version control for reproducibility
+#   .python-version can be committed to specify Python version
+
 # PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
 __pypackages__/
 
