@@ -15,7 +15,7 @@ A Python-based Retrieval-Augmented Generation (RAG) system for intelligent searc
 To use this tool, you'll need to set up a Python environment with the required dependencies and install Whisper for transcription.
 
 ### Prerequisites
-1. Python 3.8+
+1. Python 3.11+ (recommended)
 2. [Whisper](https://github.com/openai/whisper)
 3. Install `ffmpeg`:
    - **Linux:**
@@ -95,11 +95,49 @@ python src/file_manager.py --skip-vectordb
 
 ### Query the RAG system:
 ```bash
-python src/rag.py --query "your question here"
+python -m src.rag --query "your question here"
 ```
 
+### Manage File Search store:
+```bash
+# List all documents in the store
+python scripts/file_search_utils.py --action list
+
+# Find duplicate files
+python scripts/file_search_utils.py --action find-duplicates
+
+# Delete duplicates (keeps oldest by default)
+python scripts/file_search_utils.py --action delete-duplicates
+
+# Delete all files (with confirmation)
+python scripts/file_search_utils.py --action delete-all
+```
+
+### Rebuild metadata cache:
+```bash
+# Rebuild cache from remote File Search store
+python scripts/rebuild_cache.py
+```
+
+This fetches all document metadata from the remote File Search store and saves it to a local cache file for instant lookups during RAG queries.
+
 ## Logging
-The tool uses Python's built-in logging for tracking progress and errors. By default, logs are displayed in the console, but this can be easily modified to output to a file.
+The tool uses Python's built-in logging for tracking progress and errors. By default, logs are displayed in the console at INFO level.
+
+### Set log level:
+```bash
+# Available levels: DEBUG, INFO, WARNING, ERROR
+python src/file_manager.py --log-level DEBUG
+python -m src.rag --query "your question" --log-level ERROR
+```
+
+## Error Reporting
+When processing fails for any files, the file_manager will print a detailed error report at the end showing:
+- Files that failed to transcribe (with file paths)
+- Files that failed metadata extraction (categorized by error type)
+- Recommended actions to resolve each type of error
+
+This makes it easy to identify and fix problematic files.
 
 ## Testing
 Unit tests can be run using `pytest`. To install `pytest`:
