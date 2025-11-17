@@ -5,10 +5,5 @@ APScheduler
 google-genai
 eyed3
 pydantic
-SQLAlchemy
 mcp
-httpx
-python-dateutil
-psycopg2-binary
-pgvector
 tqdm
