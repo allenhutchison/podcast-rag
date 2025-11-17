@@ -331,8 +331,8 @@ if __name__ == "__main__":
                 title = citation.get('title', 'Unknown')
                 text = citation.get('text', '')
 
-                # Fetch document metadata
-                doc_info = rag_manager.file_search_manager.get_document_by_name(title)
+                # Fetch document metadata from cache (instant - no API calls!)
+                doc_info = rag_manager.file_search_manager.get_document_metadata_from_cache(title)
 
                 print(f"\n[{i}]", end='')
 

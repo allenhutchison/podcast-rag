@@ -8,7 +8,6 @@ This script helps manage documents in the File Search store by:
 - Deleting documents (all or duplicates only)
 """
 
-import argparse
 import logging
 import sys
 from pathlib import Path
@@ -17,6 +16,7 @@ from collections import defaultdict
 # Add parent directory to path to import from src
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from src.argparse_shared import add_log_level_argument, get_base_parser
 from src.config import Config
 from src.db.gemini_file_search import GeminiFileSearchManager
 
@@ -199,19 +199,9 @@ def delete_duplicates(file_search_manager: GeminiFileSearchManager, store_name: 
 
 def main():
     """Main entry point for File Search utility script."""
-    parser = argparse.ArgumentParser(
-        description="Utility for managing Gemini File Search store"
-    )
-    parser.add_argument(
-        "-e", "--env-file",
-        help="Path to .env file",
-        default=None
-    )
-    parser.add_argument(
-        "-l", "--log-level",
-        help="Log level (DEBUG, INFO, WARNING, ERROR)",
-        default="INFO"
-    )
+    parser = get_base_parser()
+    parser.description = "Utility for managing Gemini File Search store"
+    add_log_level_argument(parser)
     parser.add_argument(
         "--action",
         choices=['list', 'find-duplicates', 'delete-all', 'delete-duplicates'],

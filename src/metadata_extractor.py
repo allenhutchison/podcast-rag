@@ -80,6 +80,8 @@ class MetadataExtractor:
             "processed": 0,
             "failed": 0,
         }
+        # Track errors with file paths
+        self.errors = []  # List of (file_path, error_type, error_message) tuples
 
         # Initialize AI client only when not in dry run mode
         self.ai_client = None
@@ -247,8 +249,10 @@ class MetadataExtractor:
             transcript_file = self.config.build_transcription_file(episode_path)
             logging.debug(f"Looking for transcript file: {transcript_file}")
             if not os.path.exists(transcript_file):
-                logging.error(f"Transcript file not found: {transcript_file}")
-                self.stats["failed"] += 1  # Add failure stat here
+                error_msg = f"Transcript file not found: {transcript_file}"
+                logging.error(error_msg)
+                self.stats["failed"] += 1
+                self.errors.append((episode_path, "missing_transcript", error_msg))
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
                 return None
@@ -261,8 +265,10 @@ class MetadataExtractor:
             logging.debug(f"Extracting metadata from transcript using AI for {filename}")
             transcript_metadata = self.extract_metadata_from_transcript(transcript, filename)
             if transcript_metadata is None:
-                logging.error("Failed to extract metadata from transcript")
-                self.stats["failed"] += 1  # Add failure stat here
+                error_msg = "Failed to extract metadata from transcript (AI extraction failed)"
+                logging.error(error_msg)
+                self.stats["failed"] += 1
+                self.errors.append((episode_path, "ai_extraction_failed", error_msg))
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
                 return None
@@ -288,9 +294,11 @@ class MetadataExtractor:
             return metadata
             
         except Exception as e:
-            logging.error(f"Error processing metadata for {episode_path}: {e}")
+            error_msg = str(e)
+            logging.error(f"Error processing metadata for {episode_path}: {error_msg}")
             logging.exception("Full traceback:")  # This will log the full stack trace
             self.stats["failed"] += 1
+            self.errors.append((episode_path, "unexpected_error", error_msg))
             if os.path.exists(temp_file):
                 os.remove(temp_file)
             return None

@@ -56,6 +56,7 @@ class GeminiFileSearchManager:
         self.client = genai.Client(api_key=config.GEMINI_API_KEY)
         self.store_name = None
         self._store_cache = None
+        self._document_metadata_cache = {}  # Cache for document metadata lookups
 
         logging.info("Gemini File Search Manager initialized")
 
@@ -280,7 +281,7 @@ class GeminiFileSearchManager:
             Store resource name (e.g., 'fileSearchStores/abc123')
         """
         if self._store_cache:
-            logging.info(f"Using cached store: {self._store_cache}")
+            logging.debug(f"Using cached store: {self._store_cache}")
             return self._store_cache
 
         if display_name is None:
@@ -380,7 +381,7 @@ class GeminiFileSearchManager:
 
         # Check if file already exists (use sanitized name for lookup)
         if skip_existing and existing_files and display_name in existing_files:
-            logging.info(f"Skipping {display_name} - already exists as {existing_files[display_name]}")
+            logging.debug(f"Skipping {display_name} - already exists as {existing_files[display_name]}")
             return None
 
         # Prepare metadata
@@ -434,6 +435,10 @@ class GeminiFileSearchManager:
                     self._poll_operation(operation)
 
                     logging.info(f"Successfully uploaded: {display_name}")
+
+                    # Update cache with new file
+                    self._update_cache_entry(store_name, display_name, operation.name)
+
                     return operation.name
                 except Exception:
                     # Ensure FD is closed even if an error occurred before os.close
@@ -465,6 +470,10 @@ class GeminiFileSearchManager:
                 self._poll_operation(operation)
 
                 logging.info(f"Successfully uploaded: {display_name}")
+
+                # Update cache with new file
+                self._update_cache_entry(store_name, display_name, operation.name)
+
                 return operation.name
 
         except Exception as e:
@@ -601,12 +610,188 @@ class GeminiFileSearchManager:
             logging.error(f"Failed to list documents: {e}")
             raise
 
-    def get_existing_files(self, store_name: Optional[str] = None) -> Dict[str, str]:
+    def _get_cache_path(self) -> str:
+        """
+        Get the path to the local cache file.
+
+        Returns:
+            Path to cache file in project root
+        """
+        # Get project root (two levels up from this file: src/db/gemini_file_search.py -> root)
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        return os.path.join(project_root, '.file_search_cache.json')
+
+    def _load_cache(self, store_name: str) -> Optional[Dict[str, str]]:
+        """
+        Load existing files list from local cache.
+
+        Args:
+            store_name: Store name to verify cache is for correct store
+
+        Returns:
+            Dictionary mapping display_name -> document resource name, or None if cache invalid/missing
+        """
+        cache_path = self._get_cache_path()
+
+        if not os.path.exists(cache_path):
+            logging.info("No local cache found, will fetch from remote")
+            return None
+
+        try:
+            import json
+            from datetime import datetime
+
+            with open(cache_path, 'r') as f:
+                cache_data = json.load(f)
+
+            # Verify cache is for the same store
+            if cache_data.get('store_name') != store_name:
+                logging.warning(
+                    f"Cache store mismatch: cached '{cache_data.get('store_name')}' != current '{store_name}'. "
+                    "Will refresh from remote."
+                )
+                return None
+
+            # Log cache info
+            last_sync = cache_data.get('last_sync', 'unknown')
+            files_data = cache_data.get('files', {})
+
+            # Handle both old format (string) and new format (dict with metadata)
+            # Old format: {"filename.txt": "resource_name"}
+            # New format: {"filename.txt": {"resource_name": "...", "metadata": {...}}}
+            file_count = len(files_data)
+            logging.info(f"Loaded cache with {file_count} files (last synced: {last_sync})")
+
+            # Convert new format to simple mapping for backward compatibility
+            simple_mapping = {}
+            for display_name, value in files_data.items():
+                if isinstance(value, dict):
+                    simple_mapping[display_name] = value.get('resource_name', '')
+                else:
+                    # Old format - just a string
+                    simple_mapping[display_name] = value
+
+            return simple_mapping
+        except Exception as e:
+            logging.warning(f"Failed to load cache: {e}. Will fetch from remote.")
+            return None
+
+    def _save_cache(self, store_name: str, files: Dict[str, str]) -> None:
+        """
+        Save existing files list to local cache (legacy format).
+
+        Args:
+            store_name: Store name for this cache
+            files: Dictionary mapping display_name -> document resource name
+        """
+        if self.dry_run:
+            logging.debug("[DRY RUN] Would save cache to disk")
+            return
+
+        cache_path = self._get_cache_path()
+
+        try:
+            import json
+            from datetime import datetime
+
+            cache_data = {
+                'version': '1.0',
+                'store_name': store_name,
+                'last_sync': datetime.utcnow().isoformat() + 'Z',
+                'file_count': len(files),
+                'files': files
+            }
+
+            with open(cache_path, 'w') as f:
+                json.dump(cache_data, f, indent=2)
+
+            logging.debug(f"Saved cache with {len(files)} files to {cache_path}")
+        except Exception as e:
+            logging.warning(f"Failed to save cache: {e}. Will continue without caching.")
+
+    def _save_cache_with_metadata(self, store_name: str, files_with_metadata: Dict[str, Dict]) -> None:
+        """
+        Save files list with metadata to local cache (enhanced format).
+
+        Args:
+            store_name: Store name for this cache
+            files_with_metadata: Dict mapping display_name -> {resource_name, metadata}
+        """
+        if self.dry_run:
+            logging.debug("[DRY RUN] Would save cache with metadata to disk")
+            return
+
+        cache_path = self._get_cache_path()
+
+        try:
+            import json
+            from datetime import datetime
+
+            cache_data = {
+                'version': '2.0',  # Version 2 with metadata
+                'store_name': store_name,
+                'last_sync': datetime.utcnow().isoformat() + 'Z',
+                'file_count': len(files_with_metadata),
+                'files': files_with_metadata
+            }
+
+            with open(cache_path, 'w') as f:
+                json.dump(cache_data, f, indent=2)
+
+            logging.info(f"Saved cache with {len(files_with_metadata)} files and metadata to {cache_path}")
+        except Exception as e:
+            logging.warning(f"Failed to save cache: {e}. Will continue without caching.")
+
+    def _update_cache_entry(self, store_name: str, display_name: str, file_name: str) -> None:
+        """
+        Add or update a single entry in the cache.
+
+        Args:
+            store_name: Store name for this cache
+            display_name: Display name of the file
+            file_name: Document resource name
+        """
+        if self.dry_run:
+            return
+
+        cache_path = self._get_cache_path()
+
+        try:
+            import json
+            from datetime import datetime
+
+            # Load existing cache or create new
+            if os.path.exists(cache_path):
+                with open(cache_path, 'r') as f:
+                    cache_data = json.load(f)
+            else:
+                cache_data = {
+                    'version': '1.0',
+                    'store_name': store_name,
+                    'files': {}
+                }
+
+            # Update entry
+            cache_data['files'][display_name] = file_name
+            cache_data['file_count'] = len(cache_data['files'])
+            cache_data['last_update'] = datetime.utcnow().isoformat() + 'Z'
+
+            # Save updated cache
+            with open(cache_path, 'w') as f:
+                json.dump(cache_data, f, indent=2)
+
+            logging.debug(f"Updated cache entry: {display_name}")
+        except Exception as e:
+            logging.warning(f"Failed to update cache entry: {e}")
+
+    def get_existing_files(self, store_name: Optional[str] = None, use_cache: bool = True, show_progress: bool = False) -> Dict[str, str]:
         """
         Get a mapping of display names to document resource names for existing files.
 
         Args:
             store_name: Store to query (uses default if None)
+            use_cache: If True, try to load from local cache first (default: True)
+            show_progress: If True, show progress bar during remote fetch (default: False)
 
         Returns:
             Dictionary mapping display_name -> document resource name
@@ -617,17 +802,264 @@ class GeminiFileSearchManager:
         if self.dry_run:
             return {}
 
+        # Try to load from cache if enabled
+        if use_cache:
+            cached_files = self._load_cache(store_name)
+            if cached_files is not None:
+                return cached_files
+
+        # Cache miss or disabled - fetch from remote WITH METADATA
+        logging.info("Fetching file list and metadata from remote File Search store...")
         try:
             # List documents in the store and create mapping
             documents = self.client.file_search_stores.documents.list(parent=store_name)
-            return {doc.display_name: doc.name for doc in documents}
+            files = {}
+            files_with_metadata = {}  # Enhanced structure for cache
+
+            # Show progress if requested
+            if show_progress:
+                try:
+                    from tqdm import tqdm
+                    # We don't know total count upfront (paginated API), so use a counter
+                    print("Syncing files and metadata from remote File Search store...")
+                    with tqdm(desc="Fetching files", unit=" files") as pbar:
+                        for doc in documents:
+                            files[doc.display_name] = doc.name
+
+                            # Extract metadata for cache
+                            metadata = {}
+                            if hasattr(doc, 'custom_metadata') and doc.custom_metadata:
+                                for meta in doc.custom_metadata:
+                                    if hasattr(meta, 'key') and hasattr(meta, 'string_value'):
+                                        metadata[meta.key] = meta.string_value
+
+                            files_with_metadata[doc.display_name] = {
+                                'resource_name': doc.name,
+                                'metadata': metadata
+                            }
+                            pbar.update(1)
+                    print(f"✓ Synced {len(files)} files with metadata from remote")
+                except ImportError:
+                    # Fallback if tqdm not available
+                    logging.info("Fetching files (install tqdm for progress bar)...")
+                    count = 0
+                    for doc in documents:
+                        files[doc.display_name] = doc.name
+
+                        # Extract metadata for cache
+                        metadata = {}
+                        if hasattr(doc, 'custom_metadata') and doc.custom_metadata:
+                            for meta in doc.custom_metadata:
+                                if hasattr(meta, 'key') and hasattr(meta, 'string_value'):
+                                    metadata[meta.key] = meta.string_value
+
+                        files_with_metadata[doc.display_name] = {
+                            'resource_name': doc.name,
+                            'metadata': metadata
+                        }
+                        count += 1
+                        if count % 1000 == 0:
+                            logging.info(f"  Fetched {count} files...")
+                    logging.info(f"Fetched {len(files)} files from remote")
+            else:
+                # No progress, just fetch silently
+                for doc in documents:
+                    files[doc.display_name] = doc.name
+
+                    # Extract metadata for cache
+                    metadata = {}
+                    if hasattr(doc, 'custom_metadata') and doc.custom_metadata:
+                        for meta in doc.custom_metadata:
+                            if hasattr(meta, 'key') and hasattr(meta, 'string_value'):
+                                metadata[meta.key] = meta.string_value
+
+                    files_with_metadata[doc.display_name] = {
+                        'resource_name': doc.name,
+                        'metadata': metadata
+                    }
+                logging.info(f"Fetched {len(files)} files from remote")
+
+            # Save enhanced cache with metadata
+            self._save_cache_with_metadata(store_name, files_with_metadata)
+
+            return files
         except Exception as e:
             logging.error(f"Failed to list documents: {e}")
             raise
 
+    def _prefetch_metadata_for_documents(self, display_names: List[str], store_name: Optional[str] = None) -> None:
+        """
+        Pre-fetch and cache metadata for multiple documents in one API call.
+
+        Args:
+            display_names: List of display names to fetch
+            store_name: Store to query (uses default if None)
+        """
+        if store_name is None:
+            store_name = self.create_or_get_store()
+
+        if self.dry_run:
+            return
+
+        # Filter out already-cached documents
+        cache_keys = [f"{store_name}:{name}" for name in display_names]
+        uncached_names = [
+            name for name, key in zip(display_names, cache_keys)
+            if key not in self._document_metadata_cache
+        ]
+
+        if not uncached_names:
+            logging.debug("All requested documents already cached")
+            return
+
+        logging.info(f"Pre-fetching metadata for {len(uncached_names)} documents...")
+
+        try:
+            # List all documents once
+            documents = self.client.file_search_stores.documents.list(parent=store_name)
+            uncached_set = set(uncached_names)
+
+            for doc in documents:
+                # Only process documents we're looking for
+                if doc.display_name in uncached_set:
+                    # Extract metadata
+                    metadata = {}
+                    if hasattr(doc, 'custom_metadata') and doc.custom_metadata:
+                        for meta in doc.custom_metadata:
+                            if hasattr(meta, 'key') and hasattr(meta, 'string_value'):
+                                metadata[meta.key] = meta.string_value
+
+                    result = {
+                        'name': doc.name,
+                        'display_name': doc.display_name,
+                        'metadata': metadata,
+                        'create_time': getattr(doc, 'create_time', None),
+                        'size_bytes': getattr(doc, 'size_bytes', None)
+                    }
+
+                    # Cache the result
+                    cache_key = f"{store_name}:{doc.display_name}"
+                    self._document_metadata_cache[cache_key] = result
+
+                    # Remove from set for early exit
+                    uncached_set.remove(doc.display_name)
+
+                    # Early exit if we found all requested documents
+                    if not uncached_set:
+                        break
+
+            # Cache None for any documents that weren't found
+            for name in uncached_set:
+                cache_key = f"{store_name}:{name}"
+                self._document_metadata_cache[cache_key] = None
+
+            logging.info(f"Pre-fetched {len(uncached_names) - len(uncached_set)} documents, "
+                        f"{len(uncached_set)} not found")
+
+        except Exception as e:
+            logging.error(f"Failed to pre-fetch document metadata: {e}")
+
+    def get_document_metadata_from_cache(self, display_name: str) -> Optional[Dict]:
+        """
+        Get document metadata directly from cache file (no API calls - instant!).
+
+        Args:
+            display_name: Display name of the document (e.g., 'filename.txt')
+
+        Returns:
+            Dictionary with metadata, or None if not found in cache
+        """
+        cache_path = self._get_cache_path()
+
+        if not os.path.exists(cache_path):
+            return None
+
+        try:
+            import json
+
+            with open(cache_path, 'r') as f:
+                cache_data = json.load(f)
+
+            files_data = cache_data.get('files', {})
+
+            # Check if this file exists in cache
+            if display_name not in files_data:
+                return None
+
+            file_info = files_data[display_name]
+
+            # Handle new format (dict with metadata)
+            if isinstance(file_info, dict):
+                return {
+                    'name': file_info.get('resource_name', ''),
+                    'display_name': display_name,
+                    'metadata': file_info.get('metadata', {}),
+                    'create_time': None,
+                    'size_bytes': None
+                }
+
+            # Old format doesn't have metadata
+            return None
+
+        except Exception as e:
+            logging.debug(f"Failed to get metadata from cache for {display_name}: {e}")
+            return None
+
+    def get_document_by_resource_name(self, resource_name: str) -> Optional[Dict]:
+        """
+        Get document metadata by resource name (direct O(1) lookup).
+
+        Args:
+            resource_name: Full document resource name (e.g., 'fileSearchStores/.../documents/...')
+
+        Returns:
+            Dictionary with document information, or None if not found
+        """
+        if self.dry_run:
+            return None
+
+        # Check cache first
+        cache_key = f"resource:{resource_name}"
+        if cache_key in self._document_metadata_cache:
+            logging.debug(f"Cache hit for resource: {resource_name}")
+            return self._document_metadata_cache[cache_key]
+
+        try:
+            # Direct get by resource name - O(1) lookup!
+            doc = self.client.file_search_stores.documents.get(name=resource_name)
+
+            # Extract metadata
+            metadata = {}
+            if hasattr(doc, 'custom_metadata') and doc.custom_metadata:
+                for meta in doc.custom_metadata:
+                    if hasattr(meta, 'key') and hasattr(meta, 'string_value'):
+                        metadata[meta.key] = meta.string_value
+
+            result = {
+                'name': doc.name,
+                'display_name': doc.display_name,
+                'metadata': metadata,
+                'create_time': getattr(doc, 'create_time', None),
+                'size_bytes': getattr(doc, 'size_bytes', None)
+            }
+
+            # Cache the result
+            self._document_metadata_cache[cache_key] = result
+            logging.debug(f"Cached document metadata for resource: {resource_name}")
+
+            return result
+
+        except Exception as e:
+            logging.debug(f"Failed to get document by resource name {resource_name}: {e}")
+            # Cache the None result to avoid repeated lookups
+            self._document_metadata_cache[cache_key] = None
+            return None
+
     def get_document_by_name(self, display_name: str, store_name: Optional[str] = None) -> Optional[Dict]:
         """
         Get document metadata by display name.
+
+        Uses in-memory cache to avoid expensive API calls for repeated lookups.
 
         Args:
             display_name: Display name of the document (e.g., 'filename.txt')
@@ -649,6 +1081,14 @@ class GeminiFileSearchManager:
         if self.dry_run:
             return None
 
+        # Check cache first
+        cache_key = f"{store_name}:{display_name}"
+        if cache_key in self._document_metadata_cache:
+            logging.debug(f"Cache hit for document: {display_name}")
+            return self._document_metadata_cache[cache_key]
+
+        logging.debug(f"Cache miss for document: {display_name}, fetching from API...")
+
         try:
             # List documents and find the matching one
             documents = self.client.file_search_stores.documents.list(parent=store_name)
@@ -662,7 +1102,7 @@ class GeminiFileSearchManager:
                             if hasattr(meta, 'key') and hasattr(meta, 'string_value'):
                                 metadata[meta.key] = meta.string_value
 
-                    return {
+                    result = {
                         'name': doc.name,
                         'display_name': doc.display_name,
                         'metadata': metadata,
@@ -670,6 +1110,14 @@ class GeminiFileSearchManager:
                         'size_bytes': getattr(doc, 'size_bytes', None)
                     }
 
+                    # Cache the result
+                    self._document_metadata_cache[cache_key] = result
+                    logging.debug(f"Cached document metadata for: {display_name}")
+
+                    return result
+
+            # Document not found - cache the None result to avoid repeated lookups
+            self._document_metadata_cache[cache_key] = None
             return None
         except Exception as e:
             logging.error(f"Failed to get document {display_name}: {e}")

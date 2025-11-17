@@ -9,8 +9,6 @@ This directory contains unit tests for the podcast-rag project.
   - ✅ Updated to use `skip_vectordb=True` for tests that don't need File Search
 - **`test_transcribe_podcasts.py`** - Tests transcription configuration
   - ✅ No changes needed
-- **`test_metadatadb.py`** - Tests PostgreSQL metadata database
-  - ✅ No changes needed
 
 ### New Tests (File Search Migration)
 - **`test_gemini_file_search.py`** - Tests Gemini File Search manager

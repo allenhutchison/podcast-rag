@@ -87,7 +87,7 @@ def migrate_transcripts(
 
     # Get existing files to avoid duplicates
     logging.info("Fetching existing files in store...")
-    existing_files = file_search_manager.get_existing_files(store_name)
+    existing_files = file_search_manager.get_existing_files(store_name, show_progress=True)
     logging.info(f"Found {len(existing_files)} existing files in store")
 
     # Find all transcripts

@@ -16,3 +16,9 @@ def add_episode_path_argument(parser: argparse.ArgumentParser) -> None:
 
 def add_query_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-q", "--query", help="Query to search", required=True)
+
+def add_sync_remote_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--sync-remote", action="store_true", help="Force sync with remote File Search store (rebuilds local cache)")
+
+def add_skip_vectordb_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--skip-vectordb", action="store_true", help="Skip File Search indexing operations (transcription and metadata only)")

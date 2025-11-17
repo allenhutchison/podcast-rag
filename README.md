@@ -7,7 +7,7 @@ A Python-based Retrieval-Augmented Generation (RAG) system for intelligent searc
 - AI-powered metadata extraction (titles, hosts, guests, summaries, keywords)
 - Vector embeddings and semantic search using Gemini File Search
 - Natural language queries with source citations
-- PostgreSQL database for metadata storage
+- Local metadata cache for instant lookups
 - Scheduled batch processing
 - Dry-run mode and comprehensive logging
 
@@ -52,13 +52,6 @@ cp .env.example .env
 3. Configure required environment variables (see `.env.example` for all options):
 
 ```bash
-# PostgreSQL database
-POSTGRES_USER=podcast_rag_user
-POSTGRES_PASSWORD=your_password
-POSTGRES_DB=podcast_rag_db
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5432
-
 # Media directory
 MEDIA_EMBED_BASE_DIRECTORY=/path/to/your/podcasts
 
@@ -70,12 +63,7 @@ GEMINI_MODEL=gemini-2.5-flash
 GEMINI_FILE_SEARCH_STORE_NAME=podcast-transcripts
 ```
 
-4. Initialize the database:
-```bash
-python scripts/init_db.py --yes
-```
-
-5. Run the transcription tool in dry-run mode:
+4. Run the transcription tool in dry-run mode:
 ```bash
 python src/file_manager.py --dry-run
 ```

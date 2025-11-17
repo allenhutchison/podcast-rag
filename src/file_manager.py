@@ -1,7 +1,13 @@
 import logging
 import os
+import sys
+from pathlib import Path
+
+# Add parent directory to path to import from src
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.argparse_shared import (add_dry_run_argument, add_log_level_argument,
+                             add_skip_vectordb_argument, add_sync_remote_argument,
                              get_base_parser)
 from src.db.gemini_file_search import GeminiFileSearchManager
 from src.config import Config
@@ -10,7 +16,7 @@ from src.transcribe_podcasts import TranscriptionManager
 
 
 class FileManager:
-    def __init__(self, config: Config, dry_run=False, skip_vectordb=False):
+    def __init__(self, config: Config, dry_run=False, skip_vectordb=False, sync_remote=False):
         self.config = config
         self.dry_run = dry_run
         self.skip_vectordb = skip_vectordb
@@ -24,8 +30,11 @@ class FileManager:
                 self.file_search_manager = GeminiFileSearchManager(config=config, dry_run=dry_run)
                 # Ensure store is created
                 store_name = self.file_search_manager.create_or_get_store()
-                # Cache existing files for idempotency
-                self.existing_files_cache = self.file_search_manager.get_existing_files(store_name)
+                # Cache existing files for idempotency (use_cache=False if sync_remote is True)
+                use_cache = not sync_remote
+                self.existing_files_cache = self.file_search_manager.get_existing_files(
+                    store_name, use_cache=use_cache, show_progress=sync_remote
+                )
                 logging.info(f"Found {len(self.existing_files_cache)} existing documents in File Search store")
             except (ValueError, KeyError) as e:
                 # Configuration errors (missing API key, etc.) should fail loudly
@@ -96,10 +105,92 @@ class FileManager:
         self.transcription_manager.log_stats()
         self.metadata_extractor.log_stats()
 
+        # Print error report if there were any errors
+        self.print_error_report()
+
+    def print_error_report(self):
+        '''Print a detailed error report with file paths.'''
+        transcription_errors = self.transcription_manager.errors
+        metadata_errors = self.metadata_extractor.errors
+
+        if not transcription_errors and not metadata_errors:
+            return
+
+        print("\n" + "=" * 80)
+        print("ERROR REPORT")
+        print("=" * 80)
+
+        # Transcription errors
+        if transcription_errors:
+            print(f"\n{len(transcription_errors)} Transcription Error(s):")
+            print("-" * 80)
+            for file_path, error_msg in transcription_errors:
+                # Extract just the first line of error for cleaner output
+                error_summary = error_msg.split('\n')[0][:100]
+                print(f"\n  File: {file_path}")
+                print(f"  Error: {error_summary}")
+                # Check if it looks like an ffmpeg error (common for corrupt files)
+                if "ffmpeg" in error_msg.lower() or "failed to load audio" in error_msg.lower():
+                    print(f"  Action: Check if file is corrupt. May need to re-download.")
+
+        # Metadata errors
+        if metadata_errors:
+            # Group by error type
+            errors_by_type = {}
+            for file_path, error_type, error_msg in metadata_errors:
+                if error_type not in errors_by_type:
+                    errors_by_type[error_type] = []
+                errors_by_type[error_type].append((file_path, error_msg))
+
+            print(f"\n{len(metadata_errors)} Metadata Extraction Error(s):")
+            print("-" * 80)
+
+            # Missing transcript errors (usually caused by transcription failures)
+            if "missing_transcript" in errors_by_type:
+                errors = errors_by_type["missing_transcript"]
+                print(f"\n  Missing Transcript ({len(errors)} file(s)):")
+                print("  These files failed to transcribe (see transcription errors above)")
+                for file_path, _ in errors:
+                    print(f"    - {file_path}")
+
+            # AI extraction failures
+            if "ai_extraction_failed" in errors_by_type:
+                errors = errors_by_type["ai_extraction_failed"]
+                print(f"\n  AI Metadata Extraction Failed ({len(errors)} file(s)):")
+                print("  The transcript exists but metadata extraction failed")
+                for file_path, error_msg in errors:
+                    print(f"    - {file_path}")
+
+            # Unexpected errors
+            if "unexpected_error" in errors_by_type:
+                errors = errors_by_type["unexpected_error"]
+                print(f"\n  Unexpected Errors ({len(errors)} file(s)):")
+                for file_path, error_msg in errors:
+                    error_summary = error_msg.split('\n')[0][:100]
+                    print(f"    - {file_path}")
+                    print(f"      {error_summary}")
+
+        print("\n" + "=" * 80)
+        print("RECOMMENDED ACTIONS:")
+        print("=" * 80)
+        if transcription_errors:
+            print("\nFor transcription errors:")
+            print("  1. Check if the MP3 files are corrupt (use ffmpeg or media player)")
+            print("  2. If corrupt, re-download the files from the source")
+            print("  3. If files are valid, this may be an ffmpeg compatibility issue")
+        if metadata_errors:
+            print("\nFor metadata errors:")
+            print("  1. Missing transcript: Fix transcription errors first")
+            print("  2. AI extraction failed: Check Gemini API connectivity and quota")
+            print("  3. For persistent issues, inspect individual files manually")
+        print("=" * 80 + "\n")
+
 if __name__ == "__main__":
     parser = get_base_parser()
     add_dry_run_argument(parser)
     add_log_level_argument(parser)
+    add_skip_vectordb_argument(parser)
+    add_sync_remote_argument(parser)
     parser.description = "Process podcast files with transcription, metadata extraction, and indexing"
     args = parser.parse_args()
 
@@ -114,11 +205,17 @@ if __name__ == "__main__":
     console_handler.setLevel(log_level)
     console_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     console_handler.setFormatter(console_formatter)
+    logger.addHandler(console_handler)
 
     # Load configuration, passing the env file if provided
     config = Config(env_file=args.env_file)
 
     # Instantiate the FileManager with the loaded configuration
-    file_manager = FileManager(config=config, dry_run=args.dry_run)
+    file_manager = FileManager(
+        config=config,
+        dry_run=args.dry_run,
+        skip_vectordb=args.skip_vectordb,
+        sync_remote=args.sync_remote
+    )
 
     file_manager.process_directory()

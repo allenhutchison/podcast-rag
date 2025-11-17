@@ -10,15 +10,6 @@ class Config:
         else:
             load_dotenv()
 
-        # PostgreSQL Configuration
-        db_user = os.getenv("POSTGRES_USER", "podcast_rag_user")
-        db_password = os.getenv("POSTGRES_PASSWORD", "insecure_password_change_me")
-        db_host = os.getenv("POSTGRES_HOST", "postgres")
-        db_port = os.getenv("POSTGRES_PORT", "5432")
-        db_name = os.getenv("POSTGRES_DB", "podcast_rag_db")
-        self.DATABASE_URL = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
-        os.environ['DATABASE_URL'] = self.DATABASE_URL # Set it for other modules
-
         # Environment-based configuration
         self.BASE_DIRECTORY = os.getenv("MEDIA_EMBED_BASE_DIRECTORY", "/opt/podcasts")
         
@@ -32,8 +23,6 @@ class Config:
 
         # Gemini File Search configuration
         self.GEMINI_FILE_SEARCH_STORE_NAME = os.getenv("GEMINI_FILE_SEARCH_STORE_NAME", "podcast-transcripts")
-        self.GEMINI_CHUNK_SIZE = int(os.getenv("GEMINI_CHUNK_SIZE", "1000"))
-        self.GEMINI_CHUNK_OVERLAP = int(os.getenv("GEMINI_CHUNK_OVERLAP", "100"))
 
         # File Search compatible models
         self.FILE_SEARCH_COMPATIBLE_MODELS = [

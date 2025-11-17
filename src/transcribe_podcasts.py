@@ -16,6 +16,8 @@ class TranscriptionManager:
             "waiting_for_transcription": 0,
             "transcribed_now": 0,
         }
+        # Track errors with file paths
+        self.errors = []  # List of (file_path, error_message) tuples
         # Load the whisper model once during initialization
         self.model = None
 
@@ -67,7 +69,9 @@ class TranscriptionManager:
             logging.debug(f"Transcription complete for {episode_path}")
             self.stats["transcribed_now"] += 1
         except Exception as e:
-            logging.error(f"Unexpected error during transcription for {episode_path}: {e}")
+            error_msg = str(e)
+            logging.error(f"Unexpected error during transcription for {episode_path}: {error_msg}")
+            self.errors.append((episode_path, error_msg))
         finally:
             if os.path.exists(temp_file):
                 os.remove(temp_file)

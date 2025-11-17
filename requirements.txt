@@ -11,3 +11,4 @@ httpx
 python-dateutil
 psycopg2-binary
 pgvector
+tqdm
