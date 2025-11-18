@@ -2,9 +2,7 @@ version: '3.8'
 
 services:
   podcast-rag:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: allenhutchison/podcast-rag:latest
     container_name: podcast-rag
     restart: unless-stopped
 
@@ -50,6 +48,56 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+  podcast-rag-web:
+    image: allenhutchison/podcast-rag-web:latest
+    container_name: podcast-rag-web
+    restart: unless-stopped
+
+    # Port mapping
+    ports:
+      - "8080:8080"
+
+    # Environment variables
+    env_file:
+      - .env
+    environment:
+      - MEDIA_EMBED_BASE_DIRECTORY=/data/podcasts
+      - PYTHONUNBUFFERED=1
+      - PORT=8080
+
+    # Volume mounts (shared with encoding backend)
+    volumes:
+      # Podcast files (read-only)
+      - ${PODCAST_DIR:-/opt/podcasts}:/data/podcasts:ro
+
+      # Cache file for metadata (shared, read-write)
+      - ${CACHE_DIR:-.}/.file_search_cache.json:/app/.file_search_cache.json
+
+    # Resource limits (web service needs less than encoding)
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+
+    # Logging
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   # Optional: One-off query service
   podcast-rag-query:

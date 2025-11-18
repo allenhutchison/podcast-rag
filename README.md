@@ -83,6 +83,115 @@ uv run python src/file_manager.py --dry-run
 
 See `src/config.py` for implementation details.
 
+## Docker Deployment
+
+Pre-built Docker images are available on Docker Hub for easy deployment:
+- **`allenhutchison/podcast-rag`** - Encoding backend (transcription + metadata extraction)
+- **`allenhutchison/podcast-rag-web`** - Web interface for querying podcasts
+
+### Homelab Deployment (Recommended)
+
+Run both the encoding backend and web service together using docker-compose:
+
+1. **Create `.env` file** with required environment variables:
+   ```bash
+   cp .env.example .env
+   # Edit .env with your API keys and paths
+   ```
+
+2. **Configure environment** (in your shell or `.env` file):
+   ```bash
+   export PODCAST_DIR=/path/to/your/podcasts  # Local podcast directory
+   export CACHE_DIR=.                         # Directory for cache file
+   ```
+
+3. **Start services**:
+   ```bash
+   # Pull latest images
+   docker-compose pull
+
+   # Start both services in background
+   docker-compose up -d
+
+   # View logs
+   docker-compose logs -f
+
+   # Stop services
+   docker-compose down
+   ```
+
+4. **Access web interface**:
+   - Open http://localhost:8080 in your browser
+   - Start querying your podcast library!
+
+**What's running:**
+- **podcast-rag**: Processes new podcasts every hour, updates metadata cache
+- **podcast-rag-web**: Serves web UI for real-time queries with streaming responses
+
+**Shared resources:**
+- `.file_search_cache.json`: Metadata cache (both services read/write)
+- Podcast directory: Source audio files (read-only)
+
+### Cloud Run Deployment (Web Service Only)
+
+Deploy the web interface to Google Cloud Run for public access:
+
+1. **Build and push web image** (or use pre-built from Docker Hub):
+   ```bash
+   gcloud builds submit --tag gcr.io/YOUR_PROJECT/podcast-rag-web
+   ```
+
+2. **Deploy to Cloud Run**:
+   ```bash
+   gcloud run deploy podcast-rag-web \
+     --image gcr.io/YOUR_PROJECT/podcast-rag-web \
+     --platform managed \
+     --region us-central1 \
+     --allow-unauthenticated \
+     --set-env-vars GEMINI_API_KEY=your_key,GEMINI_FILE_SEARCH_STORE_NAME=podcast-transcripts
+   ```
+
+3. **Access your deployment**:
+   - Cloud Run provides a public URL
+   - Web service connects to your Gemini File Search store
+
+**Note**: Cloud Run deployment uses `Dockerfile.web` which excludes ffmpeg (~100MB) for faster startup. The homelab encoding backend must run separately to process podcasts.
+
+### Building Images Yourself
+
+Images are automatically built via GitHub Actions when you create a release:
+
+```bash
+# Create and push a tag
+git tag v1.0.0
+git push origin v1.0.0
+
+# Or create release via GitHub UI
+# This triggers builds for both images
+```
+
+**Manual build**:
+```bash
+# Build encoding backend
+docker build -t podcast-rag -f Dockerfile .
+
+# Build web service
+docker build -t podcast-rag-web -f Dockerfile.web .
+```
+
+### Image Details
+
+| Image | Base | Size | Contains | Use Case |
+|-------|------|------|----------|----------|
+| `podcast-rag` | python:3.12-slim | ~1.5GB | ffmpeg, whisper, all dependencies | Homelab encoding backend |
+| `podcast-rag-web` | python:3.12-slim | ~500MB | Web server, no ffmpeg | Cloud Run or homelab web UI |
+
+Both images:
+- Use multi-stage builds for smaller size
+- Run as non-root user (UID 1000)
+- Include health checks
+- Support automatic cache rebuilding
+
 ## Usage
 
 All commands can be run with `uv run` or directly if you've activated the virtual environment.

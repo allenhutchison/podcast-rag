@@ -1,4 +1,4 @@
-name: Build and Push Docker Image
+name: Build and Push Docker Images
 
 on:
   release:
@@ -6,7 +6,6 @@ on:
 
 env:
   REGISTRY: docker.io
-  IMAGE_NAME: allenhutchison/podcast-rag
 
 jobs:
   build-and-push:
@@ -16,6 +15,16 @@ jobs:
       packages: write
       attestations: write
       id-token: write
+
+    strategy:
+      matrix:
+        include:
+          - image: allenhutchison/podcast-rag
+            dockerfile: Dockerfile
+            description: "Encoding backend"
+          - image: allenhutchison/podcast-rag-web
+            dockerfile: Dockerfile.web
+            description: "Web service"
 
     steps:
       - name: Checkout repository
@@ -41,21 +50,22 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.IMAGE_NAME }}
+          images: ${{ matrix.image }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Build and push Docker image
+      - name: Build and push Docker image (${{ matrix.description }})
         id: push
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: ${{ matrix.dockerfile }}
           platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
