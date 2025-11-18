@@ -72,31 +72,46 @@ except Exception as e:
 @app.on_event("startup")
 async def startup_event():
     """
-    Build cache on startup if it doesn't exist.
-    This ensures citations have metadata even on first deployment.
+    Refresh cache on startup to sync with any new files from encoding service.
+    This ensures citations have metadata for all files in the store.
     """
     import os
+    import json
 
-    # Check if cache exists
     cache_path = rag_manager.file_search_manager._get_cache_path()
+    store_name = config.GEMINI_FILE_SEARCH_STORE_NAME
 
-    if not os.path.exists(cache_path):
-        logger.info("Cache file not found, building cache from Gemini File Search...")
-        try:
-            # This will fetch all files and their metadata from Gemini API
-            # and save to the cache file
-            store_name = config.GEMINI_FILE_SEARCH_STORE_NAME
-            files = rag_manager.file_search_manager.get_existing_files(
-                store_name=store_name,
-                use_cache=False,
-                show_progress=False
-            )
-            logger.info(f"Cache built successfully with {len(files)} files")
-        except Exception as e:
-            logger.error(f"Failed to build cache on startup: {e}")
-            # App continues to work, just without citation metadata
-    else:
-        logger.info(f"Cache file found at {cache_path}")
+    logger.info("Refreshing cache from Gemini File Search...")
+
+    try:
+        # Load existing cache if it exists
+        existing_cache = {}
+        if os.path.exists(cache_path):
+            try:
+                with open(cache_path, 'r') as f:
+                    cache_data = json.load(f)
+                    existing_cache = cache_data.get('files', {})
+                logger.info(f"Loaded existing cache with {len(existing_cache)} files")
+            except Exception as e:
+                logger.warning(f"Failed to load existing cache: {e}")
+
+        # Fetch current files from remote (this gets metadata too)
+        files = rag_manager.file_search_manager.get_existing_files(
+            store_name=store_name,
+            use_cache=False,
+            show_progress=False
+        )
+
+        # Count new files
+        new_files = set(files.keys()) - set(existing_cache.keys())
+        if new_files:
+            logger.info(f"Cache refreshed: {len(new_files)} new files added, {len(files)} total")
+        else:
+            logger.info(f"Cache refreshed: {len(files)} files (no new files)")
+
+    except Exception as e:
+        logger.error(f"Failed to refresh cache on startup: {e}")
+        # App continues to work with existing cache or no cache
 
 logger.info("RAG Manager initialized for web application")
 
