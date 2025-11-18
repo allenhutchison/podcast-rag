@@ -200,27 +200,27 @@ Do not include <html>, <body>, or <head> tags - just the content HTML.
 
 @app.post("/api/chat")
 @limiter.limit(config.WEB_RATE_LIMIT)
-async def chat(request: ChatRequest, http_request: Request):
+async def chat(request: Request, chat_request: ChatRequest):
     """
     Chat endpoint with Server-Sent Events streaming.
 
     Args:
-        request: ChatRequest with query and optional conversation history
-        http_request: FastAPI Request object (for rate limiting)
+        request: Starlette Request object (for rate limiting)
+        chat_request: ChatRequest with query and optional conversation history
 
     Returns:
         StreamingResponse with SSE formatted tokens and citations
     """
-    if not request.query or not request.query.strip():
+    if not chat_request.query or not chat_request.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
     # Convert Pydantic models to dicts for the generator
     history_dicts = None
-    if request.history:
-        history_dicts = [{"role": msg.role, "content": msg.content} for msg in request.history]
+    if chat_request.history:
+        history_dicts = [{"role": msg.role, "content": msg.content} for msg in chat_request.history]
 
     return StreamingResponse(
-        generate_streaming_response(request.query, history_dicts),
+        generate_streaming_response(chat_request.query, history_dicts),
         media_type="text/event-stream"
     )
 
