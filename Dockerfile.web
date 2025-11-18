@@ -41,8 +41,9 @@ COPY --chown=podcast:podcast src/ ./src/
 COPY --chown=podcast:podcast prompts/ ./prompts/
 COPY --chown=podcast:podcast pyproject.toml ./
 
-# Copy File Search cache (baked into image for fast startup)
-COPY --chown=podcast:podcast .file_search_cache.json ./.file_search_cache.json
+# Note: .file_search_cache.json is NOT included in the image
+# The web app will use a shared cache volume in homelab deployments
+# or build the cache on first query if not available
 
 # Install the project itself
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/
