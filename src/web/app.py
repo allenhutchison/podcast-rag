@@ -68,6 +68,36 @@ except Exception as e:
     logger.warning(f"Failed to initialize tiktoken: {e}, falling back to character estimation")
     tokenizer = None
 
+
+@app.on_event("startup")
+async def startup_event():
+    """
+    Build cache on startup if it doesn't exist.
+    This ensures citations have metadata even on first deployment.
+    """
+    import os
+
+    # Check if cache exists
+    cache_path = rag_manager.file_search_manager._get_cache_path()
+
+    if not os.path.exists(cache_path):
+        logger.info("Cache file not found, building cache from Gemini File Search...")
+        try:
+            # This will fetch all files and their metadata from Gemini API
+            # and save to the cache file
+            store_name = config.GEMINI_FILE_SEARCH_STORE_NAME
+            files = rag_manager.file_search_manager.get_existing_files(
+                store_name=store_name,
+                use_cache=False,
+                show_progress=False
+            )
+            logger.info(f"Cache built successfully with {len(files)} files")
+        except Exception as e:
+            logger.error(f"Failed to build cache on startup: {e}")
+            # App continues to work, just without citation metadata
+    else:
+        logger.info(f"Cache file found at {cache_path}")
+
 logger.info("RAG Manager initialized for web application")
 
 
