@@ -79,7 +79,6 @@ async def startup_event():
     import json
 
     cache_path = rag_manager.file_search_manager._get_cache_path()
-    store_name = config.GEMINI_FILE_SEARCH_STORE_NAME
 
     logger.info("Refreshing cache from Gemini File Search...")
 
@@ -96,8 +95,9 @@ async def startup_event():
                 logger.warning(f"Failed to load existing cache: {e}")
 
         # Fetch current files from remote (this gets metadata too)
+        # Pass store_name=None to let it resolve the full resource name
         files = rag_manager.file_search_manager.get_existing_files(
-            store_name=store_name,
+            store_name=None,
             use_cache=False,
             show_progress=False
         )
