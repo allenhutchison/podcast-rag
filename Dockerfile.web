@@ -45,9 +45,8 @@ COPY --chown=podcast:podcast pyproject.toml uv.lock ./
 # The web app will use a shared cache volume in homelab deployments
 # or build the cache on first query if not available
 
-# Install the project itself
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/
-RUN /bin/uv sync --frozen --no-dev
+# Note: No need to run uv sync here - dependencies are already in .venv from builder
+# The src/ directory is imported directly by uvicorn
 
 # Switch to non-root user
 USER podcast
