@@ -20,26 +20,38 @@ classifiers = [
     "Topic :: Multimedia :: Sound/Audio :: Speech",
 ]
 
+# Core dependencies shared by all services
 dependencies = [
-    "openai-whisper>=20231117",
     "python-dotenv>=1.0.0",
-    "APScheduler>=3.10.0",
-    "google-genai>=0.2.0",
-    "eyed3>=0.9.0",
     "pydantic>=2.0.0",
+    "google-genai>=0.2.0",
+]
+
+[project.optional-dependencies]
+# Encoding/transcription service dependencies
+encoding = [
+    "openai-whisper>=20231117",
+    "APScheduler>=3.10.0",
+    "eyed3>=0.9.0",
     "mcp>=1.0.0",
     "tqdm>=4.66.0",
+]
+# Web service dependencies
+web = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
     "sse-starlette>=2.0.0",
     "tiktoken>=0.5.0",
     "slowapi>=0.1.9",
 ]
-
-[project.optional-dependencies]
+# Development dependencies
 dev = [
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
+]
+# All dependencies (for local development)
+all = [
+    "podcast-rag[encoding,web]",
 ]
 
 [project.urls]

@@ -1,5 +1,6 @@
 # Multi-stage build for smaller final image
 # Optimized for Cloud Run deployment (web application only)
+# Uses minimal dependencies (no Whisper/encoding packages)
 
 FROM python:3.12-slim AS builder
 
@@ -12,8 +13,9 @@ WORKDIR /app
 # Copy dependency files
 COPY pyproject.toml uv.lock ./
 
-# Install dependencies (no dev dependencies in production)
-RUN uv sync --frozen --no-dev --no-install-project
+# Install only core + web dependencies (no encoding/Whisper)
+# This results in a much smaller image (~200MB vs ~2GB+)
+RUN uv sync --frozen --no-dev --extra web --no-install-project
 
 # Final stage
 FROM python:3.12-slim
@@ -36,17 +38,13 @@ WORKDIR /app
 # Copy virtual environment from builder
 COPY --from=builder --chown=podcast:podcast /app/.venv /app/.venv
 
-# Copy application code
+# Copy application code (only what's needed for web service)
 COPY --chown=podcast:podcast src/ ./src/
 COPY --chown=podcast:podcast prompts/ ./prompts/
-COPY --chown=podcast:podcast pyproject.toml uv.lock ./
 
 # Note: .file_search_cache.json is NOT included in the image
 # The web app will use a shared cache volume in homelab deployments
 # or build the cache on first query if not available
-
-# Note: No need to run uv sync here - dependencies are already in .venv from builder
-# The src/ directory is imported directly by uvicorn
 
 # Switch to non-root user
 USER podcast

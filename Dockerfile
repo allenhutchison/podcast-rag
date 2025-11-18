@@ -10,8 +10,8 @@ WORKDIR /app
 # Copy dependency files
 COPY pyproject.toml uv.lock ./
 
-# Install dependencies (no dev dependencies in production)
-RUN uv sync --frozen --no-dev --no-install-project
+# Install all dependencies (encoding + web, no dev)
+RUN uv sync --frozen --no-dev --extra encoding --extra web --no-install-project
 
 # Final stage
 FROM python:3.12-slim
@@ -41,7 +41,7 @@ COPY --chown=podcast:podcast . .
 
 # Install the project itself
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/
-RUN /bin/uv sync --frozen --no-dev
+RUN /bin/uv sync --frozen --no-dev --extra encoding --extra web
 
 # Switch to non-root user
 USER podcast
