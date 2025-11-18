@@ -128,34 +128,23 @@ Do not include <html>, <body>, or <head> tags - just the content HTML.
         tokens = re.split(r'(\s+)', answer)
         for token in tokens:
             if token:  # Skip empty strings
-                yield {
-                    "event": "token",
-                    "data": json.dumps({"token": token})
-                }
+                # Format SSE manually to ensure correct format
+                yield f"event: token\ndata: {json.dumps({'token': token})}\n\n"
                 # Small delay for streaming effect (only for words, not whitespace)
                 if not token.isspace():
                     await asyncio.sleep(0.05)
 
         # Send citations after answer completes
-        yield {
-            "event": "citations",
-            "data": json.dumps({"citations": enriched_citations})
-        }
+        yield f"event: citations\ndata: {json.dumps({'citations': enriched_citations})}\n\n"
 
         # Signal completion
-        yield {
-            "event": "done",
-            "data": json.dumps({"status": "complete"})
-        }
+        yield f"event: done\ndata: {json.dumps({'status': 'complete'})}\n\n"
 
         logger.info(f"Query completed with {len(enriched_citations)} citations")
 
     except Exception as e:
         logger.error(f"Error processing query: {e}", exc_info=True)
-        yield {
-            "event": "error",
-            "data": json.dumps({"error": str(e)})
-        }
+        yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
 
 
 @app.post("/api/chat")
@@ -167,7 +156,7 @@ async def chat(request: ChatRequest):
         request: ChatRequest with query and optional conversation history
 
     Returns:
-        EventSourceResponse with streaming tokens and citations
+        StreamingResponse with SSE formatted tokens and citations
     """
     if not request.query or not request.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
@@ -177,7 +166,10 @@ async def chat(request: ChatRequest):
     if request.history:
         history_dicts = [{"role": msg.role, "content": msg.content} for msg in request.history]
 
-    return EventSourceResponse(generate_streaming_response(request.query, history_dicts))
+    return StreamingResponse(
+        generate_streaming_response(request.query, history_dicts),
+        media_type="text/event-stream"
+    )
 
 
 @app.get("/health")

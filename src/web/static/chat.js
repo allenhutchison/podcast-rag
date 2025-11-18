@@ -195,8 +195,6 @@ chatForm.addEventListener('submit', async (e) => {
         let fullText = '';
 
         // Use fetch for POST with SSE streaming
-        console.log('Sending request with history:', conversationHistory.slice(0, -1));
-
         const response = await fetch('/api/chat', {
             method: 'POST',
             headers: {
@@ -207,8 +205,6 @@ chatForm.addEventListener('submit', async (e) => {
                 history: conversationHistory.slice(0, -1) // All messages except current query
             })
         });
-
-        console.log('Response status:', response.status);
 
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
@@ -224,7 +220,6 @@ chatForm.addEventListener('submit', async (e) => {
             const { done, value } = await reader.read();
 
             if (done) {
-                console.log('Stream done');
                 break;
             }
 
