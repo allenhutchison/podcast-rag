@@ -1,0 +1,76 @@
+# Google Cloud Build configuration for automated deployment to Cloud Run
+#
+# This file is used by Cloud Build to automatically build and deploy the web application
+# when changes are pushed to the repository.
+#
+# Setup:
+# 1. Connect your GitHub repository to Cloud Build
+# 2. Create a trigger that runs this build on push to main branch
+# 3. Set the substitution variables in the trigger settings:
+#    - _GEMINI_API_KEY: Your Gemini API key (stored in Secret Manager)
+#    - _GEMINI_MODEL: Gemini model to use (e.g., gemini-2.5-flash)
+#    - _REGION: Cloud Run region (e.g., us-central1)
+#    - _SERVICE_NAME: Name for the Cloud Run service (e.g., podcast-rag-web)
+
+steps:
+  # Build the Docker image using Dockerfile.web
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-f'
+      - 'Dockerfile.web'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}:$COMMIT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}:latest'
+      - '.'
+    id: 'build-image'
+
+  # Push the Docker image to Google Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}:$COMMIT_SHA'
+    id: 'push-image'
+    waitFor: ['build-image']
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - '${_SERVICE_NAME}'
+      - '--image=gcr.io/$PROJECT_ID/${_SERVICE_NAME}:$COMMIT_SHA'
+      - '--platform=managed'
+      - '--region=${_REGION}'
+      - '--allow-unauthenticated'
+      - '--memory=512Mi'
+      - '--cpu=1'
+      - '--max-instances=10'
+      - '--min-instances=0'
+      - '--timeout=300'
+      - '--set-env-vars=GEMINI_API_KEY=${_GEMINI_API_KEY},GEMINI_MODEL=${_GEMINI_MODEL},GEMINI_FILE_SEARCH_STORE_NAME=${_FILE_SEARCH_STORE_NAME}'
+    id: 'deploy-cloud-run'
+    waitFor: ['push-image']
+
+# Substitution variables (set these in Cloud Build trigger)
+substitutions:
+  _SERVICE_NAME: 'podcast-rag-web'
+  _REGION: 'us-central1'
+  _GEMINI_MODEL: 'gemini-2.5-flash'
+  _FILE_SEARCH_STORE_NAME: 'podcast-transcripts'
+  # _GEMINI_API_KEY should be set from Secret Manager in the trigger
+
+# Store images in Container Registry
+images:
+  - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}:latest'
+
+# Build options
+options:
+  machineType: 'N1_HIGHCPU_8'
+  logging: 'CLOUD_LOGGING_ONLY'
+
+# Build timeout (10 minutes)
+timeout: '600s'

@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Podcast RAG Chat</title>
+
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Marked.js for Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+
+    <!-- Custom configuration for Tailwind -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#2563eb',
+                        secondary: '#64748b',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Custom scrollbar styling */
+        .chat-messages::-webkit-scrollbar {
+            width: 6px;
+        }
+        .chat-messages::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        .chat-messages::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        .chat-messages::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        /* Fade-in animation for messages */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .message {
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        /* Typing indicator animation */
+        @keyframes pulse {
+            0%, 100% { opacity: 0.4; }
+            50% { opacity: 1; }
+        }
+        .typing-indicator span {
+            animation: pulse 1.4s ease-in-out infinite;
+        }
+        .typing-indicator span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+        .typing-indicator span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        /* Markdown styling */
+        .markdown-content {
+            line-height: 1.6;
+        }
+        .markdown-content h1, .markdown-content h2, .markdown-content h3 {
+            font-weight: 600;
+            margin-top: 1em;
+            margin-bottom: 0.5em;
+        }
+        .markdown-content h1 { font-size: 1.5em; }
+        .markdown-content h2 { font-size: 1.3em; }
+        .markdown-content h3 { font-size: 1.1em; }
+        .markdown-content p {
+            margin-bottom: 0.75em;
+        }
+        .markdown-content ul, .markdown-content ol {
+            margin-left: 1.5em;
+            margin-bottom: 0.75em;
+            padding-left: 0.5em;
+        }
+        .markdown-content ul {
+            list-style-type: disc;
+        }
+        .markdown-content ol {
+            list-style-type: decimal;
+        }
+        .markdown-content li {
+            margin-bottom: 0.25em;
+            display: list-item;
+        }
+        .markdown-content code {
+            background-color: #f1f5f9;
+            padding: 0.125rem 0.25rem;
+            border-radius: 0.25rem;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+        .markdown-content pre {
+            background-color: #f1f5f9;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+            margin-bottom: 0.75em;
+        }
+        .markdown-content pre code {
+            background-color: transparent;
+            padding: 0;
+        }
+        .markdown-content blockquote {
+            border-left: 4px solid #cbd5e1;
+            padding-left: 1rem;
+            margin-left: 0;
+            margin-bottom: 0.75em;
+            color: #64748b;
+        }
+        .markdown-content a {
+            color: #2563eb;
+            text-decoration: underline;
+        }
+        .markdown-content strong {
+            font-weight: 600;
+        }
+        .markdown-content em {
+            font-style: italic;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-gray-200 px-6 py-4 shadow-sm">
+        <div class="max-w-4xl mx-auto">
+            <h1 class="text-2xl font-bold text-gray-900">Podcast RAG Chat</h1>
+            <p class="text-sm text-gray-600 mt-1">Ask questions about podcast episodes and get answers with citations</p>
+        </div>
+    </header>
+
+    <!-- Main Chat Container -->
+    <main class="flex-1 overflow-hidden flex flex-col max-w-4xl w-full mx-auto px-4 py-6">
+
+        <!-- Messages Area -->
+        <div id="chatMessages" class="chat-messages flex-1 overflow-y-auto space-y-4 mb-4 pr-2">
+            <!-- Welcome Message -->
+            <div class="message bg-white rounded-lg p-4 shadow-sm border border-gray-200">
+                <p class="text-gray-700">👋 <strong>Welcome!</strong> Ask me anything about the podcast episodes in the archive.</p>
+                <p class="text-sm text-gray-500 mt-2">Examples:</p>
+                <ul class="text-sm text-gray-600 list-disc list-inside mt-1 space-y-1">
+                    <li>What topics are discussed in recent episodes?</li>
+                    <li>Tell me about machine learning episodes</li>
+                    <li>What guests have talked about AI?</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Input Form -->
+        <form id="chatForm" class="bg-white rounded-lg shadow-md border border-gray-200 p-4">
+            <div class="flex gap-2">
+                <input
+                    type="text"
+                    id="queryInput"
+                    placeholder="Ask a question about the podcasts..."
+                    class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    autocomplete="off"
+                    required
+                />
+                <button
+                    type="submit"
+                    id="submitBtn"
+                    class="px-6 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                >
+                    Send
+                </button>
+            </div>
+            <p class="text-xs text-gray-500 mt-2">Press Enter to send</p>
+        </form>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-gray-200 px-6 py-3">
+        <div class="max-w-4xl mx-auto text-center text-sm text-gray-600">
+            Powered by Gemini File Search • <a href="https://github.com" class="text-primary hover:underline">View on GitHub</a>
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="/chat.js"></script>
+
+</body>
+</html>
