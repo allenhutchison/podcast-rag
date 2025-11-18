@@ -37,6 +37,13 @@ class Config:
         default_prompts_dir = os.path.join(base_dir, "../prompts")
         self.PROMPTS_DIR = os.getenv("PROMPTS_DIR", default_prompts_dir)
 
+        # Web application configuration
+        self.WEB_ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*")
+        self.WEB_MAX_CONVERSATION_TOKENS = int(os.getenv("MAX_CONVERSATION_TOKENS", "200000"))
+        self.WEB_STREAMING_DELAY = float(os.getenv("STREAMING_DELAY", "0.05"))
+        self.WEB_RATE_LIMIT = os.getenv("RATE_LIMIT", "10/minute")
+        self.WEB_PORT = int(os.getenv("PORT", "8080"))
+
     def load_config(self):
         '''Logs or prints the configuration for debugging purposes.'''
         print(f"Base Directory: {self.BASE_DIRECTORY}")

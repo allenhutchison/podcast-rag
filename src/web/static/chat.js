@@ -7,9 +7,11 @@ const chatMessages = document.getElementById('chatMessages');
 const chatForm = document.getElementById('chatForm');
 const queryInput = document.getElementById('queryInput');
 const submitBtn = document.getElementById('submitBtn');
+const newChatBtn = document.getElementById('newChatBtn');
 
 let isProcessing = false;
 let conversationHistory = []; // Store conversation history
+let abortController = null; // For request cancellation
 
 /**
  * Add a user message to the chat
@@ -151,6 +153,37 @@ function scrollToBottom() {
 }
 
 /**
+ * Clear conversation and reset UI
+ */
+function clearConversation() {
+    if (isProcessing) {
+        // Cancel ongoing request
+        if (abortController) {
+            abortController.abort();
+            abortController = null;
+        }
+        isProcessing = false;
+        submitBtn.disabled = false;
+        queryInput.disabled = false;
+        submitBtn.textContent = 'Send';
+        removeTypingIndicator();
+    }
+
+    // Clear conversation history
+    conversationHistory = [];
+
+    // Clear chat messages except welcome message
+    const welcomeMessage = chatMessages.querySelector('.message');
+    chatMessages.innerHTML = '';
+    if (welcomeMessage) {
+        chatMessages.appendChild(welcomeMessage);
+    }
+
+    // Focus input
+    queryInput.focus();
+}
+
+/**
  * Handle form submission
  */
 chatForm.addEventListener('submit', async (e) => {
@@ -186,6 +219,9 @@ chatForm.addEventListener('submit', async (e) => {
     addTypingIndicator();
 
     try {
+        // Create abort controller for request cancellation
+        abortController = new AbortController();
+
         // Create assistant message container
         removeTypingIndicator();
         const assistantMessageDiv = addAssistantMessage();
@@ -203,7 +239,8 @@ chatForm.addEventListener('submit', async (e) => {
             body: JSON.stringify({
                 query: query,
                 history: conversationHistory.slice(0, -1) // All messages except current query
-            })
+            }),
+            signal: abortController.signal
         });
 
         if (!response.ok) {
@@ -286,13 +323,28 @@ chatForm.addEventListener('submit', async (e) => {
     } catch (error) {
         console.error('Error:', error);
         removeTypingIndicator();
-        showError(error.message || 'An unexpected error occurred.');
+
+        // Don't show error for aborted requests
+        if (error.name !== 'AbortError') {
+            showError(error.message || 'An unexpected error occurred.');
+        }
+
         isProcessing = false;
         submitBtn.disabled = false;
         queryInput.disabled = false;
         submitBtn.textContent = 'Send';
+        abortController = null;
     }
 });
+
+// Handle new chat button
+if (newChatBtn) {
+    newChatBtn.addEventListener('click', () => {
+        if (confirm('Start a new conversation? This will clear the current chat.')) {
+            clearConversation();
+        }
+    });
+}
 
 // Focus input on page load
 queryInput.focus();

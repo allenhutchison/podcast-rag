@@ -7,13 +7,17 @@ Provides streaming chat responses with citations using Server-Sent Events (SSE).
 import asyncio
 import json
 import logging
+import os
 from typing import AsyncGenerator, List, Optional
 
-from fastapi import FastAPI, HTTPException
+import tiktoken
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from sse_starlette.sse import EventSourceResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from src.config import Config
 from src.rag import RagManager
@@ -26,6 +30,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Initialize configuration
+config = Config()
+
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
+
 # Initialize FastAPI app
 app = FastAPI(
     title="Podcast RAG Chat",
@@ -33,20 +43,49 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS middleware for development (can be restricted for production)
+# Add rate limiter to app state
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# CORS middleware (configurable via environment variable)
+allowed_origins = config.WEB_ALLOWED_ORIGINS.split(",") if config.WEB_ALLOWED_ORIGINS != "*" else ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Initialize RAG manager (singleton)
-config = Config()
 rag_manager = RagManager(config=config, print_results=False)
 
+# Initialize tiktoken encoder for accurate token counting
+try:
+    tokenizer = tiktoken.encoding_for_model("gpt-4")
+    logger.info("Initialized tiktoken with gpt-4 encoding")
+except Exception as e:
+    logger.warning(f"Failed to initialize tiktoken: {e}, falling back to character estimation")
+    tokenizer = None
+
 logger.info("RAG Manager initialized for web application")
+
+
+def count_tokens(text: str) -> int:
+    """
+    Count tokens in text using tiktoken if available, otherwise estimate.
+
+    Args:
+        text: Text to count tokens for
+
+    Returns:
+        Estimated token count
+    """
+    if tokenizer:
+        return len(tokenizer.encode(text))
+    else:
+        # Fallback: rough estimation (4 chars per token)
+        return len(text) // 4
 
 
 async def generate_streaming_response(query: str, history: Optional[List] = None) -> AsyncGenerator[str, None]:
@@ -57,6 +96,7 @@ async def generate_streaming_response(query: str, history: Optional[List] = None
     - event: token -> word-by-word streaming
     - event: citations -> final citations data
     - event: done -> completion signal
+    - event: error -> error message (followed by done with status: error)
     """
     try:
         # Get response from RAG manager
@@ -78,20 +118,30 @@ Do not include <html>, <body>, or <head> tags - just the content HTML.
         # Add conversation history if present
         if history:
             conversation_context += "Previous conversation:\n"
-            # Simple token estimation: ~4 characters per token
-            total_chars = len(conversation_context)
-            MAX_TOKENS = 200000
-            MAX_CHARS = MAX_TOKENS * 4
 
-            for msg in history:
+            # Use accurate token counting
+            max_tokens = config.WEB_MAX_CONVERSATION_TOKENS
+            current_tokens = count_tokens(conversation_context)
+
+            # Build history from most recent to oldest, keeping recent context
+            history_messages = []
+            for msg in reversed(history):
                 msg_text = f"{msg['role'].upper()}: {msg['content']}\n"
-                # Check if adding this message would exceed limit
-                if total_chars + len(msg_text) > MAX_CHARS:
-                    logger.warning("Conversation history truncated to stay within token limit")
-                    break
-                conversation_context += msg_text
-                total_chars += len(msg_text)
+                msg_tokens = count_tokens(msg_text)
 
+                # Check if adding this message would exceed limit
+                if current_tokens + msg_tokens > max_tokens:
+                    logger.warning(
+                        f"Conversation history truncated: keeping {len(history_messages)} "
+                        f"recent messages out of {len(history)} total"
+                    )
+                    break
+
+                history_messages.insert(0, msg_text)
+                current_tokens += msg_tokens
+
+            # Add messages to context
+            conversation_context += "".join(history_messages)
             conversation_context += "\n"
 
         conversation_context += f"Current question: {query}"
@@ -132,7 +182,7 @@ Do not include <html>, <body>, or <head> tags - just the content HTML.
                 yield f"event: token\ndata: {json.dumps({'token': token})}\n\n"
                 # Small delay for streaming effect (only for words, not whitespace)
                 if not token.isspace():
-                    await asyncio.sleep(0.05)
+                    await asyncio.sleep(config.WEB_STREAMING_DELAY)
 
         # Send citations after answer completes
         yield f"event: citations\ndata: {json.dumps({'citations': enriched_citations})}\n\n"
@@ -145,15 +195,18 @@ Do not include <html>, <body>, or <head> tags - just the content HTML.
     except Exception as e:
         logger.error(f"Error processing query: {e}", exc_info=True)
         yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+        yield f"event: done\ndata: {json.dumps({'status': 'error'})}\n\n"
 
 
 @app.post("/api/chat")
-async def chat(request: ChatRequest):
+@limiter.limit(config.WEB_RATE_LIMIT)
+async def chat(request: ChatRequest, http_request: Request):
     """
     Chat endpoint with Server-Sent Events streaming.
 
     Args:
         request: ChatRequest with query and optional conversation history
+        http_request: FastAPI Request object (for rate limiting)
 
     Returns:
         StreamingResponse with SSE formatted tokens and citations

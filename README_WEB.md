@@ -226,6 +226,10 @@ The `.file_search_cache.json` is baked into the Docker image. To update:
 | `GEMINI_MODEL` | No | `gemini-2.5-flash` | Gemini model to use |
 | `GEMINI_FILE_SEARCH_STORE_NAME` | No | `podcast-transcripts` | File Search store name |
 | `PORT` | No | `8080` | Server port (auto-set in Cloud Run) |
+| `ALLOWED_ORIGINS` | No | `*` | CORS allowed origins (comma-separated) |
+| `MAX_CONVERSATION_TOKENS` | No | `200000` | Max tokens for conversation history |
+| `STREAMING_DELAY` | No | `0.05` | Delay between streamed tokens (seconds) |
+| `RATE_LIMIT` | No | `10/minute` | Rate limit for API endpoints |
 
 ### Cloud Run Settings
 
