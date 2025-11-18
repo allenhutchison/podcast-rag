@@ -1,0 +1,68 @@
+# Multi-stage build for smaller final image
+# Optimized for Cloud Run deployment (web application only)
+
+FROM python:3.12-slim AS builder
+
+# Install uv for fast dependency management
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Set working directory
+WORKDIR /app
+
+# Copy dependency files
+COPY pyproject.toml uv.lock ./
+
+# Install dependencies (no dev dependencies in production)
+RUN uv sync --frozen --no-dev --no-install-project
+
+# Final stage
+FROM python:3.12-slim
+
+# Install only curl for health checks
+# Note: ffmpeg removed (not needed for web queries, saves ~100MB)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd -m -u 1000 -s /bin/bash podcast && \
+    mkdir -p /app && \
+    chown -R podcast:podcast /app
+
+# Set working directory
+WORKDIR /app
+
+# Copy virtual environment from builder
+COPY --from=builder --chown=podcast:podcast /app/.venv /app/.venv
+
+# Copy application code
+COPY --chown=podcast:podcast src/ ./src/
+COPY --chown=podcast:podcast prompts/ ./prompts/
+COPY --chown=podcast:podcast pyproject.toml ./
+
+# Copy File Search cache (baked into image for fast startup)
+COPY --chown=podcast:podcast .file_search_cache.json ./.file_search_cache.json
+
+# Install the project itself
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/
+RUN /bin/uv sync --frozen --no-dev
+
+# Switch to non-root user
+USER podcast
+
+# Set environment variables
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PORT=8080
+
+# Expose port (Cloud Run uses 8080 by default)
+EXPOSE 8080
+
+# Health check for Cloud Run
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Start web server
+CMD ["uvicorn", "src.web.app:app", "--host", "0.0.0.0", "--port", "8080"]

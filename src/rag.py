@@ -166,11 +166,15 @@ class RagManager:
         if not hasattr(self.last_grounding_metadata, 'grounding_supports'):
             return text
 
+        grounding_supports = self.last_grounding_metadata.grounding_supports
+        if grounding_supports is None:
+            return text
+
         # Build a map of text positions to citation indices
         # We'll insert citations after segments they support
         citation_inserts = []
 
-        for support in self.last_grounding_metadata.grounding_supports:
+        for support in grounding_supports:
             if hasattr(support, 'segment') and hasattr(support, 'grounding_chunk_indices'):
                 segment = support.segment
                 chunk_indices = support.grounding_chunk_indices
@@ -238,23 +242,27 @@ class RagManager:
         # Parse grounding metadata structure - try both old and new formats
         if hasattr(self.last_grounding_metadata, 'file_search_citations'):
             # Old format
-            for citation in self.last_grounding_metadata.file_search_citations:
-                citations.append({
-                    'file_id': getattr(citation, 'file_id', None),
-                    'chunk_index': getattr(citation, 'chunk_index', None),
-                    'score': getattr(citation, 'score', None)
-                })
+            file_search_citations = self.last_grounding_metadata.file_search_citations
+            if file_search_citations is not None:
+                for citation in file_search_citations:
+                    citations.append({
+                        'file_id': getattr(citation, 'file_id', None),
+                        'chunk_index': getattr(citation, 'chunk_index', None),
+                        'score': getattr(citation, 'score', None)
+                    })
         elif hasattr(self.last_grounding_metadata, 'grounding_chunks'):
             # New format with grounding_chunks
-            for i, chunk in enumerate(self.last_grounding_metadata.grounding_chunks):
-                if hasattr(chunk, 'retrieved_context'):
-                    context = chunk.retrieved_context
-                    citations.append({
-                        'index': i,
-                        'title': getattr(context, 'title', 'Unknown'),
-                        'text': getattr(context, 'text', ''),
-                        'uri': getattr(context, 'uri', None)
-                    })
+            grounding_chunks = self.last_grounding_metadata.grounding_chunks
+            if grounding_chunks is not None:
+                for i, chunk in enumerate(grounding_chunks):
+                    if hasattr(chunk, 'retrieved_context'):
+                        context = chunk.retrieved_context
+                        citations.append({
+                            'index': i,
+                            'title': getattr(context, 'title', 'Unknown'),
+                            'text': getattr(context, 'text', ''),
+                            'uri': getattr(context, 'uri', None)
+                        })
 
         return citations
 
