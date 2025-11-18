@@ -39,7 +39,7 @@ COPY --from=builder --chown=podcast:podcast /app/.venv /app/.venv
 # Copy application code
 COPY --chown=podcast:podcast src/ ./src/
 COPY --chown=podcast:podcast prompts/ ./prompts/
-COPY --chown=podcast:podcast pyproject.toml ./
+COPY --chown=podcast:podcast pyproject.toml uv.lock ./
 
 # Note: .file_search_cache.json is NOT included in the image
 # The web app will use a shared cache volume in homelab deployments
