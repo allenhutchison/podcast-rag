@@ -69,18 +69,17 @@ except Exception as e:
     tokenizer = None
 
 
-@app.on_event("startup")
-async def startup_event():
+async def refresh_cache_background():
     """
-    Refresh cache on startup to sync with any new files from encoding service.
-    This ensures citations have metadata for all files in the store.
+    Background task to refresh cache from Gemini File Search.
+    Runs async so it doesn't block health checks.
     """
     import os
     import json
 
     cache_path = rag_manager.file_search_manager._get_cache_path()
 
-    logger.info("Refreshing cache from Gemini File Search...")
+    logger.info("Refreshing cache from Gemini File Search (background task)...")
 
     try:
         # Load existing cache if it exists
@@ -96,10 +95,16 @@ async def startup_event():
 
         # Fetch current files from remote (this gets metadata too)
         # Pass store_name=None to let it resolve the full resource name
-        files = rag_manager.file_search_manager.get_existing_files(
-            store_name=None,
-            use_cache=False,
-            show_progress=False
+        # Run in executor to avoid blocking the event loop
+        import asyncio
+        loop = asyncio.get_event_loop()
+        files = await loop.run_in_executor(
+            None,
+            lambda: rag_manager.file_search_manager.get_existing_files(
+                store_name=None,
+                use_cache=False,
+                show_progress=False
+            )
         )
 
         # Count new files
@@ -110,8 +115,17 @@ async def startup_event():
             logger.info(f"Cache refreshed: {len(files)} files (no new files)")
 
     except Exception as e:
-        logger.error(f"Failed to refresh cache on startup: {e}")
+        logger.error(f"Failed to refresh cache: {e}")
         # App continues to work with existing cache or no cache
+
+
+@app.on_event("startup")
+async def startup_event():
+    """
+    Start cache refresh as background task so health checks pass immediately.
+    """
+    import asyncio
+    asyncio.create_task(refresh_cache_background())
 
 logger.info("RAG Manager initialized for web application")
 
