@@ -73,25 +73,85 @@ async def refresh_cache_background():
     """
     Background task to refresh cache from Gemini File Search.
     Runs async so it doesn't block health checks.
+    
+    Update strategy:
+    - If cache is empty (0 files): Update immediately
+    - If cache is stale (> 24 hours): Update immediately
+    - If cache is fresh (< 24 hours) and has files: Skip update
     """
     import os
     import json
+    from datetime import datetime, timedelta
 
     cache_path = rag_manager.file_search_manager._get_cache_path()
 
-    logger.info("Refreshing cache from Gemini File Search (background task)...")
+    logger.info("Checking cache status for background refresh...")
 
     try:
         # Load existing cache if it exists
         existing_cache = {}
+        last_sync_time = None
+        file_count = 0
+        
+        should_update = False
+        update_reason = "unknown"
+
         if os.path.exists(cache_path):
             try:
                 with open(cache_path, 'r') as f:
                     cache_data = json.load(f)
-                    existing_cache = cache_data.get('files', {})
-                logger.info(f"Loaded existing cache with {len(existing_cache)} files")
+                    
+                    # Handle both old and new cache formats
+                    if 'files' in cache_data:
+                        existing_cache = cache_data.get('files', {})
+                        file_count = len(existing_cache)
+                    
+                    # Get last sync time
+                    last_sync_str = cache_data.get('last_sync')
+                    if last_sync_str:
+                        # Parse ISO format (removing Z if present for simple parsing)
+                        last_sync_str = last_sync_str.replace('Z', '')
+                        try:
+                            last_sync_time = datetime.fromisoformat(last_sync_str)
+                        except ValueError:
+                            logger.warning(f"Could not parse last_sync time: {last_sync_str}")
+                
+                logger.info(f"Loaded existing cache: {file_count} files, last synced {last_sync_str}")
+                
+                # Check conditions
+                if file_count == 0:
+                    should_update = True
+                    update_reason = "cache is empty"
+                elif not last_sync_time:
+                    should_update = True
+                    update_reason = "missing last_sync timestamp"
+                else:
+                    # Check if stale (> 24 hours)
+                    time_since_sync = datetime.utcnow() - last_sync_time
+                    if time_since_sync > timedelta(hours=24):
+                        should_update = True
+                        update_reason = f"cache is stale ({time_since_sync.total_seconds() / 3600:.1f} hours old)"
+                    else:
+                        should_update = False
+                        update_reason = "cache is fresh"
+                        
+                # Special check for large file counts (logging only for now, still following 24h rule)
+                if file_count > 17000:
+                    logger.info(f"Large cache detected ({file_count} files). Update strategy: {update_reason}")
+                    
             except Exception as e:
-                logger.warning(f"Failed to load existing cache: {e}")
+                logger.warning(f"Failed to load existing cache: {e}. Will force update.")
+                should_update = True
+                update_reason = "cache load error"
+        else:
+            should_update = True
+            update_reason = "no cache file found"
+
+        if not should_update:
+            logger.info(f"Skipping cache refresh: {update_reason}")
+            return
+
+        logger.info(f"Starting cache refresh: {update_reason}...")
 
         # Fetch current files from remote (this gets metadata too)
         # Pass store_name=None to let it resolve the full resource name

@@ -700,6 +700,7 @@ class GeminiFileSearchManager:
         try:
             import json
             from datetime import datetime
+            import tempfile
 
             cache_data = {
                 'version': '1.0',
@@ -709,12 +710,25 @@ class GeminiFileSearchManager:
                 'files': files
             }
 
-            with open(cache_path, 'w') as f:
-                json.dump(cache_data, f, indent=2)
+            # Atomic write: write to temp file then rename
+            # Create temp file in the same directory to ensure atomic rename works
+            cache_dir = os.path.dirname(cache_path)
+            with tempfile.NamedTemporaryFile(mode='w', dir=cache_dir, delete=False) as tmp_file:
+                json.dump(cache_data, tmp_file, indent=2)
+                tmp_path = tmp_file.name
+
+            # Atomic rename
+            os.replace(tmp_path, cache_path)
 
             logging.debug(f"Saved cache with {len(files)} files to {cache_path}")
         except Exception as e:
             logging.warning(f"Failed to save cache: {e}. Will continue without caching.")
+            # Try to clean up temp file if it exists
+            if 'tmp_path' in locals() and os.path.exists(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
 
     def _save_cache_with_metadata(self, store_name: str, files_with_metadata: Dict[str, Dict]) -> None:
         """
@@ -733,6 +747,7 @@ class GeminiFileSearchManager:
         try:
             import json
             from datetime import datetime
+            import tempfile
 
             cache_data = {
                 'version': '2.0',  # Version 2 with metadata
@@ -742,12 +757,25 @@ class GeminiFileSearchManager:
                 'files': files_with_metadata
             }
 
-            with open(cache_path, 'w') as f:
-                json.dump(cache_data, f, indent=2)
+            # Atomic write: write to temp file then rename
+            # Create temp file in the same directory to ensure atomic rename works
+            cache_dir = os.path.dirname(cache_path)
+            with tempfile.NamedTemporaryFile(mode='w', dir=cache_dir, delete=False) as tmp_file:
+                json.dump(cache_data, tmp_file, indent=2)
+                tmp_path = tmp_file.name
+
+            # Atomic rename
+            os.replace(tmp_path, cache_path)
 
             logging.info(f"Saved cache with {len(files_with_metadata)} files and metadata to {cache_path}")
         except Exception as e:
             logging.warning(f"Failed to save cache: {e}. Will continue without caching.")
+            # Try to clean up temp file if it exists
+            if 'tmp_path' in locals() and os.path.exists(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
 
     def _update_cache_entry(self, store_name: str, display_name: str, file_name: str) -> None:
         """
