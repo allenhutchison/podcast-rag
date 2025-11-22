@@ -7,11 +7,10 @@ them to Google's File Search store, making them searchable via the new RAG syste
 """
 
 import argparse
-import json
+import asyncio
 import logging
 import os
 import sys
-import time
 from pathlib import Path
 
 # Add parent directory to path to import from src
@@ -58,48 +57,31 @@ def load_metadata(transcript_path: str, config: Config):
     )
 
 
-def migrate_transcripts(
+async def _migrate_transcripts_async(
     config: Config,
     dry_run: bool = False,
-    limit: int = None,
-    delay: float = 0.5
+    limit: int | None = None,
+    max_concurrency: int = 10
 ):
-    """
-    Migrate all transcripts to File Search store.
-
-    Args:
-        config: Configuration object
-        dry_run: If True, only show what would be done
-        limit: Maximum number of files to upload (None for all)
-        delay: Delay in seconds between uploads to respect rate limits
-
-    Returns:
-        Dictionary with migration statistics
-    """
+    """Async helper to migrate transcripts with bounded concurrency."""
     logging.info("Starting migration to Gemini File Search...")
 
-    # Initialize File Search manager
     file_search_manager = GeminiFileSearchManager(config=config, dry_run=dry_run)
 
-    # Create or get store
     store_name = file_search_manager.create_or_get_store()
     logging.info(f"Using File Search store: {store_name}")
 
-    # Get existing files to avoid duplicates
     logging.info("Fetching existing files in store...")
     existing_files = file_search_manager.get_existing_files(store_name, show_progress=True)
     logging.info(f"Found {len(existing_files)} existing files in store")
 
-    # Find all transcripts
     transcripts = find_transcripts(config.BASE_DIRECTORY, config)
     logging.info(f"Found {len(transcripts)} transcript files")
 
-    # Apply limit if specified
     if limit:
         transcripts = transcripts[:limit]
         logging.info(f"Limited to first {limit} files")
 
-    # Migration stats
     stats = {
         'total_found': len(transcripts),
         'uploaded': 0,
@@ -108,55 +90,93 @@ def migrate_transcripts(
         'errors': []
     }
 
-    # Upload each transcript
-    for i, transcript_path in enumerate(transcripts, 1):
-        logging.info(f"[{i}/{len(transcripts)}] Processing: {transcript_path}")
+    semaphore = asyncio.Semaphore(max(1, max_concurrency))
+    stats_lock = asyncio.Lock()
 
-        try:
-            # Load metadata
-            metadata = load_metadata(transcript_path, config)
-            if metadata:
-                podcast = metadata.get('podcast', 'N/A')
-                episode = metadata.get('episode', 'N/A')
-                logging.info(f"  Metadata: {podcast} - {episode}")
-                logging.debug(f"  Full metadata: {metadata}")
-            else:
-                logging.debug(f"  No metadata file found")
+    async def _process_transcript(index: int, transcript_path: str) -> None:
+        async with semaphore:
+            logging.info(f"[{index}/{len(transcripts)}] Processing: {transcript_path}")
+            try:
+                metadata = load_metadata(transcript_path, config)
+                if metadata:
+                    podcast = metadata.get('podcast', 'N/A')
+                    episode = metadata.get('episode', 'N/A')
+                    logging.info(f"  Metadata: {podcast} - {episode}")
+                    logging.debug(f"  Full metadata: {metadata}")
+                else:
+                    logging.debug("  No metadata file found")
 
-            # Upload transcript
-            if not dry_run:
-                file_name = file_search_manager.upload_transcript(
-                    transcript_path=transcript_path,
-                    metadata=metadata,
-                    store_name=store_name,
-                    existing_files=existing_files
+                if dry_run:
+                    logging.info(f"  [DRY RUN] Would upload to {store_name}")
+                    async with stats_lock:
+                        stats['skipped'] += 1
+                    return
+
+                file_name = await asyncio.to_thread(
+                    file_search_manager.upload_transcript,
+                    transcript_path,
+                    metadata,
+                    store_name,
+                    existing_files
                 )
+
                 if file_name:
                     logging.info(f"  ✓ Uploaded as: {file_name}")
-                    stats['uploaded'] += 1
-
-                    # Rate limiting delay
-                    if delay > 0 and i < len(transcripts):
-                        time.sleep(delay)
+                    async with stats_lock:
+                        stats['uploaded'] += 1
                 else:
-                    stats['skipped'] += 1
-            else:
-                # In dry-run mode, count as skipped since nothing is actually uploaded
-                logging.info(f"  [DRY RUN] Would upload to {store_name}")
-                stats['skipped'] += 1
+                    async with stats_lock:
+                        stats['skipped'] += 1
 
-        except FileNotFoundError as e:
-            logging.error(f"  ✗ File not found: {e}")
-            stats['skipped'] += 1
-        except Exception as e:
-            logging.error(f"  ✗ Failed to upload: {e}")
-            stats['failed'] += 1
-            stats['errors'].append({
-                'file': transcript_path,
-                'error': str(e)
-            })
+            except FileNotFoundError as e:
+                logging.error(f"  ✗ File not found: {e}")
+                async with stats_lock:
+                    stats['skipped'] += 1
+            except Exception as e:
+                logging.error(f"  ✗ Failed to upload: {e}")
+                async with stats_lock:
+                    stats['failed'] += 1
+                    stats['errors'].append({
+                        'file': transcript_path,
+                        'error': str(e)
+                    })
+
+    await asyncio.gather(
+        *[
+            asyncio.create_task(_process_transcript(i, path))
+            for i, path in enumerate(transcripts, 1)
+        ]
+    )
 
     return stats
+
+
+def migrate_transcripts(
+    config: Config,
+    dry_run: bool = False,
+    limit: int | None = None,
+    max_concurrency: int = 10
+):
+    """
+    Migrate transcripts to File Search with a configurable level of concurrency.
+
+    Args:
+        config: Configuration object
+        dry_run: If True, only show what would be done
+        limit: Maximum number of files to upload (None for all)
+        max_concurrency: Maximum number of simultaneous uploads
+
+    Returns:
+        Dictionary with migration statistics
+    """
+    return asyncio.run(
+        _migrate_transcripts_async(
+            config=config,
+            dry_run=dry_run,
+            limit=limit,
+            max_concurrency=max_concurrency
+        )
+    )
 
 
 def main():
@@ -186,10 +206,10 @@ def main():
         default=None
     )
     parser.add_argument(
-        "--delay",
-        type=float,
-        help="Delay between uploads in seconds (default: 0.5)",
-        default=0.5
+        "--max-concurrency",
+        type=int,
+        help="Maximum number of simultaneous uploads (default: 10)",
+        default=10
     )
 
     args = parser.parse_args()
@@ -213,7 +233,7 @@ def main():
             config=config,
             dry_run=args.dry_run,
             limit=args.limit,
-            delay=args.delay
+            max_concurrency=args.max_concurrency
         )
 
         # Print summary
