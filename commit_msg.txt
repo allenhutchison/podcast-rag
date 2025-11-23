@@ -1,0 +1,7 @@
+Migrate metadata cache to Google Cloud Storage
+
+- Add `google-cloud-storage` dependency
+- Add `GCS_METADATA_BUCKET` configuration
+- Update `GeminiFileSearchManager` to support GCS backend for cache
+- Update `rebuild_cache.py` to verify and use GCS bucket
+- Remove auto-rebuild logic from web app to rely on GCS cache

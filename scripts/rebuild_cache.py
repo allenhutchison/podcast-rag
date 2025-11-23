@@ -39,6 +39,22 @@ def main():
     # Initialize File Search manager
     manager = GeminiFileSearchManager(config=config)
 
+    # Verify GCS bucket if configured
+    if config.GCS_METADATA_BUCKET:
+        print(f"Verifying access to GCS bucket: {config.GCS_METADATA_BUCKET}...")
+        try:
+            from google.cloud import storage
+            storage_client = storage.Client()
+            bucket = storage_client.bucket(config.GCS_METADATA_BUCKET)
+            if not bucket.exists():
+                logging.error(f"GCS bucket '{config.GCS_METADATA_BUCKET}' does not exist or is not accessible.")
+                sys.exit(1)
+            print("✓ GCS bucket is accessible")
+        except Exception as e:
+            logging.error(f"Failed to verify GCS bucket: {e}")
+            logging.error("Please check your credentials and bucket name.")
+            sys.exit(1)
+
     # Get or create store
     store_name = manager.create_or_get_store()
     logging.info(f"Using store: {store_name}")
@@ -48,7 +64,12 @@ def main():
     files = manager.get_existing_files(store_name, use_cache=False, show_progress=True)
 
     print(f"\n✓ Cache rebuilt with {len(files)} files and metadata!")
-    print(f"Cache file: {manager._get_cache_path()}")
+    
+    if config.GCS_METADATA_BUCKET:
+        print(f"Cache saved to GCS bucket: {config.GCS_METADATA_BUCKET}")
+    else:
+        print(f"Cache file: {manager._get_cache_path()}")
+        
     print("\nAll future RAG queries will now use instant metadata lookups!")
 
 
