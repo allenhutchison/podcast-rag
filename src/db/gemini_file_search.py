@@ -6,6 +6,7 @@ enabling semantic search over podcast transcripts with automatic embedding,
 chunking, and citation support.
 """
 
+import json
 import logging
 import os
 import time
@@ -43,6 +44,9 @@ class GeminiFileSearchManager:
     - Batch upload existing transcripts
     """
 
+    # Cache file name used for both local and GCS storage
+    CACHE_FILE_NAME = '.file_search_cache.json'
+
     def __init__(self, config, dry_run=False):
         """
         Initialize the File Search manager.
@@ -57,8 +61,21 @@ class GeminiFileSearchManager:
         self.store_name = None
         self._store_cache = None
         self._document_metadata_cache = {}  # Cache for document metadata lookups
+        self._gcs_client = None  # Cached GCS storage client
 
         logging.info("Gemini File Search Manager initialized")
+
+    def _get_gcs_client(self):
+        """
+        Get or create a cached GCS storage client.
+
+        Returns:
+            Google Cloud Storage client instance
+        """
+        if self._gcs_client is None:
+            from google.cloud import storage
+            self._gcs_client = storage.Client()
+        return self._gcs_client
 
     def _retry_with_backoff(
         self,
@@ -623,10 +640,55 @@ class GeminiFileSearchManager:
         # Use /app/cache directory if it exists (Docker environment)
         cache_dir = os.path.join(project_root, 'cache')
         if os.path.exists(cache_dir):
-            return os.path.join(cache_dir, '.file_search_cache.json')
+            return os.path.join(cache_dir, self.CACHE_FILE_NAME)
 
         # Otherwise use project root (local development)
-        return os.path.join(project_root, '.file_search_cache.json')
+        return os.path.join(project_root, self.CACHE_FILE_NAME)
+
+    def _read_from_gcs(self, bucket_name: str, blob_name: str) -> Optional[str]:
+        """Read content from GCS bucket."""
+        try:
+            storage_client = self._get_gcs_client()
+            bucket = storage_client.bucket(bucket_name)
+            blob = bucket.blob(blob_name)
+            if not blob.exists():
+                return None
+            return blob.download_as_text()
+        except ImportError as e:
+            logging.error(f"google-cloud-storage not installed: {e}")
+            return None
+        except Exception as e:
+            # Check for common GCS exceptions
+            error_type = type(e).__name__
+            if 'NotFound' in error_type:
+                logging.debug(f"GCS blob not found: '{blob_name}' in bucket '{bucket_name}'")
+            elif 'Forbidden' in error_type or 'PermissionDenied' in error_type:
+                logging.error(f"Permission denied accessing GCS bucket '{bucket_name}': {e}")
+            else:
+                logging.error(f"Failed to read from GCS bucket '{bucket_name}', blob '{blob_name}': {e}")
+            return None
+
+    def _write_to_gcs(self, bucket_name: str, blob_name: str, content: str) -> bool:
+        """Write content to GCS bucket."""
+        try:
+            storage_client = self._get_gcs_client()
+            bucket = storage_client.bucket(bucket_name)
+            blob = bucket.blob(blob_name)
+            blob.upload_from_string(content)
+            return True
+        except ImportError as e:
+            logging.error(f"google-cloud-storage not installed: {e}")
+            return False
+        except Exception as e:
+            # Check for common GCS exceptions
+            error_type = type(e).__name__
+            if 'NotFound' in error_type:
+                logging.error(f"GCS bucket not found: '{bucket_name}'")
+            elif 'Forbidden' in error_type or 'PermissionDenied' in error_type:
+                logging.error(f"Permission denied writing to GCS bucket '{bucket_name}': {e}")
+            else:
+                logging.error(f"Failed to write to GCS bucket '{bucket_name}', blob '{blob_name}': {e}")
+            return False
 
     def _load_cache(self, store_name: str) -> Optional[Dict[str, str]]:
         """
@@ -640,16 +702,32 @@ class GeminiFileSearchManager:
         """
         cache_path = self._get_cache_path()
 
-        if not os.path.exists(cache_path):
+        # Handle GCS path
+        if self.config.GCS_METADATA_BUCKET:
+            logging.info(f"Loading cache from GCS bucket: {self.config.GCS_METADATA_BUCKET}")
+            content = self._read_from_gcs(self.config.GCS_METADATA_BUCKET, self.CACHE_FILE_NAME)
+            if not content:
+                logging.info("No cache found in GCS, will fetch from remote")
+                return None
+            try:
+                cache_data = json.loads(content)
+            except json.JSONDecodeError:
+                logging.warning("Failed to parse GCS cache JSON")
+                return None
+        elif not os.path.exists(cache_path):
             logging.info("No local cache found, will fetch from remote")
             return None
+        else:
+            try:
+                with open(cache_path, 'r') as f:
+                    cache_data = json.load(f)
+            except Exception as e:
+                logging.warning(f"Failed to load local cache: {e}")
+                return None
 
         try:
-            import json
             from datetime import datetime
-
-            with open(cache_path, 'r') as f:
-                cache_data = json.load(f)
+            # cache_data is already loaded above
 
             # Verify cache is for the same store
             if cache_data.get('store_name') != store_name:
@@ -683,6 +761,33 @@ class GeminiFileSearchManager:
             logging.warning(f"Failed to load cache: {e}. Will fetch from remote.")
             return None
 
+    def get_cache_data(self) -> Optional[Dict]:
+        """
+        Get the full cache data including metadata.
+
+        Returns:
+            Dictionary with cache data (files, last_sync, etc.) or None if not found/invalid
+        """
+        cache_path = self._get_cache_path()
+        cache_data = None
+
+        # Handle GCS path
+        if self.config.GCS_METADATA_BUCKET:
+            content = self._read_from_gcs(self.config.GCS_METADATA_BUCKET, self.CACHE_FILE_NAME)
+            if content:
+                try:
+                    cache_data = json.loads(content)
+                except json.JSONDecodeError:
+                    pass
+        elif os.path.exists(cache_path):
+            try:
+                with open(cache_path, 'r') as f:
+                    cache_data = json.load(f)
+            except Exception:
+                pass
+        
+        return cache_data
+
     def _save_cache(self, store_name: str, files: Dict[str, str]) -> None:
         """
         Save existing files list to local cache (legacy format).
@@ -698,7 +803,6 @@ class GeminiFileSearchManager:
         cache_path = self._get_cache_path()
 
         try:
-            import json
             from datetime import datetime
             import tempfile
 
@@ -712,15 +816,24 @@ class GeminiFileSearchManager:
 
             # Atomic write: write to temp file then rename
             # Create temp file in the same directory to ensure atomic rename works
-            cache_dir = os.path.dirname(cache_path)
-            with tempfile.NamedTemporaryFile(mode='w', dir=cache_dir, delete=False) as tmp_file:
-                json.dump(cache_data, tmp_file, indent=2)
-                tmp_path = tmp_file.name
+            
+            if self.config.GCS_METADATA_BUCKET:
+                logging.info(f"Saving cache to GCS bucket: {self.config.GCS_METADATA_BUCKET}")
+                self._write_to_gcs(
+                    self.config.GCS_METADATA_BUCKET,
+                    self.CACHE_FILE_NAME,
+                    json.dumps(cache_data, indent=2)
+                )
+            else:
+                cache_dir = os.path.dirname(cache_path)
+                with tempfile.NamedTemporaryFile(mode='w', dir=cache_dir, delete=False) as tmp_file:
+                    json.dump(cache_data, tmp_file, indent=2)
+                    tmp_path = tmp_file.name
 
-            # Atomic rename
-            os.replace(tmp_path, cache_path)
+                # Atomic rename
+                os.replace(tmp_path, cache_path)
 
-            logging.debug(f"Saved cache with {len(files)} files to {cache_path}")
+            logging.debug(f"Saved cache with {len(files)} files")
         except Exception as e:
             logging.warning(f"Failed to save cache: {e}. Will continue without caching.")
             # Try to clean up temp file if it exists
@@ -745,7 +858,6 @@ class GeminiFileSearchManager:
         cache_path = self._get_cache_path()
 
         try:
-            import json
             from datetime import datetime
             import tempfile
 
@@ -759,15 +871,24 @@ class GeminiFileSearchManager:
 
             # Atomic write: write to temp file then rename
             # Create temp file in the same directory to ensure atomic rename works
-            cache_dir = os.path.dirname(cache_path)
-            with tempfile.NamedTemporaryFile(mode='w', dir=cache_dir, delete=False) as tmp_file:
-                json.dump(cache_data, tmp_file, indent=2)
-                tmp_path = tmp_file.name
+            
+            if self.config.GCS_METADATA_BUCKET:
+                logging.info(f"Saving cache with metadata to GCS bucket: {self.config.GCS_METADATA_BUCKET}")
+                self._write_to_gcs(
+                    self.config.GCS_METADATA_BUCKET,
+                    self.CACHE_FILE_NAME,
+                    json.dumps(cache_data, indent=2)
+                )
+            else:
+                cache_dir = os.path.dirname(cache_path)
+                with tempfile.NamedTemporaryFile(mode='w', dir=cache_dir, delete=False) as tmp_file:
+                    json.dump(cache_data, tmp_file, indent=2)
+                    tmp_path = tmp_file.name
 
-            # Atomic rename
-            os.replace(tmp_path, cache_path)
+                # Atomic rename
+                os.replace(tmp_path, cache_path)
 
-            logging.info(f"Saved cache with {len(files_with_metadata)} files and metadata to {cache_path}")
+            logging.info(f"Saved cache with {len(files_with_metadata)} files and metadata")
         except Exception as e:
             logging.warning(f"Failed to save cache: {e}. Will continue without caching.")
             # Try to clean up temp file if it exists
@@ -792,11 +913,18 @@ class GeminiFileSearchManager:
         cache_path = self._get_cache_path()
 
         try:
-            import json
             from datetime import datetime
 
             # Load existing cache or create new
-            if os.path.exists(cache_path):
+            cache_data = {}
+            if self.config.GCS_METADATA_BUCKET:
+                content = self._read_from_gcs(self.config.GCS_METADATA_BUCKET, self.CACHE_FILE_NAME)
+                if content:
+                    try:
+                        cache_data = json.loads(content)
+                    except json.JSONDecodeError:
+                        pass
+            elif os.path.exists(cache_path):
                 with open(cache_path, 'r') as f:
                     cache_data = json.load(f)
             else:
@@ -812,8 +940,15 @@ class GeminiFileSearchManager:
             cache_data['last_update'] = datetime.utcnow().isoformat() + 'Z'
 
             # Save updated cache
-            with open(cache_path, 'w') as f:
-                json.dump(cache_data, f, indent=2)
+            if self.config.GCS_METADATA_BUCKET:
+                self._write_to_gcs(
+                    self.config.GCS_METADATA_BUCKET,
+                    self.CACHE_FILE_NAME,
+                    json.dumps(cache_data, indent=2)
+                )
+            else:
+                with open(cache_path, 'w') as f:
+                    json.dump(cache_data, f, indent=2)
 
             logging.debug(f"Updated cache entry: {display_name}")
         except Exception as e:
@@ -996,7 +1131,7 @@ class GeminiFileSearchManager:
 
     def get_document_metadata_from_cache(self, display_name: str) -> Optional[Dict]:
         """
-        Get document metadata directly from cache file (no API calls - instant!).
+        Get document metadata directly from cache (no API calls - instant!).
 
         Args:
             display_name: Display name of the document (e.g., 'filename.txt')
@@ -1004,16 +1139,10 @@ class GeminiFileSearchManager:
         Returns:
             Dictionary with metadata, or None if not found in cache
         """
-        cache_path = self._get_cache_path()
-
-        if not os.path.exists(cache_path):
-            return None
-
         try:
-            import json
-
-            with open(cache_path, 'r') as f:
-                cache_data = json.load(f)
+            cache_data = self.get_cache_data()
+            if not cache_data:
+                return None
 
             files_data = cache_data.get('files', {})
 
@@ -1202,7 +1331,6 @@ class GeminiFileSearchManager:
             Dictionary mapping file paths to uploaded file names
         """
         import glob
-        import json
 
         store_name = self.create_or_get_store()
         uploaded_files = {}
