@@ -155,10 +155,21 @@ Do not include <html>, <body>, or <head> tags - just the content HTML.
         enriched_citations = []
         for i, citation in enumerate(citations, 1):
             if 'title' in citation:
-                # Get metadata from cache (instant lookup)
-                doc_info = rag_manager.file_search_manager.get_document_metadata_from_cache(
-                    citation['title']
-                )
+                title = citation['title']
+
+                # Try exact match first
+                doc_info = rag_manager.file_search_manager.get_document_metadata_from_cache(title)
+
+                # If not found, try with _transcription.txt suffix
+                if not doc_info and not title.endswith('_transcription.txt'):
+                    logger.debug(f"Exact match failed for '{title}', trying with suffix")
+                    doc_info = rag_manager.file_search_manager.get_document_metadata_from_cache(
+                        f"{title}_transcription.txt"
+                    )
+
+                # If still not found, log the issue
+                if not doc_info:
+                    logger.warning(f"Metadata not found for citation title: '{title}'")
 
                 metadata = {}
                 if doc_info and doc_info.get('metadata'):
@@ -168,6 +179,7 @@ Do not include <html>, <body>, or <head> tags - just the content HTML.
                         'episode': meta.get('episode', ''),
                         'release_date': meta.get('release_date', '')
                     }
+                    logger.debug(f"Found metadata for '{title}': {metadata}")
 
                 enriched_citations.append({
                     'index': i,
@@ -231,6 +243,95 @@ async def chat(request: Request, chat_request: ChatRequest):
 async def health():
     """Health check endpoint for Cloud Run."""
     return {"status": "healthy", "service": "podcast-rag-web"}
+
+
+@app.get("/api/cache-debug")
+async def cache_debug():
+    """
+    Debug endpoint to inspect cache status and metadata coverage.
+
+    Returns cache configuration, stats, and sample entries.
+    """
+    try:
+        cache_data = rag_manager.file_search_manager.get_cache_data()
+
+        if not cache_data:
+            return {
+                "status": "error",
+                "message": "Cache not loaded",
+                "gcs_bucket": config.GCS_METADATA_BUCKET or "None (using local file)",
+                "cache_path": rag_manager.file_search_manager._get_cache_path()
+            }
+
+        # Analyze metadata coverage
+        files = cache_data.get('files', {})
+        total = len(files)
+
+        field_counts = {
+            'podcast': 0,
+            'episode': 0,
+            'release_date': 0,
+            'hosts': 0,
+            'guests': 0,
+            'keywords': 0,
+            'summary': 0
+        }
+        files_with_metadata = 0
+        files_without_metadata = []
+
+        for display_name, value in files.items():
+            if isinstance(value, dict) and value.get('metadata'):
+                files_with_metadata += 1
+                meta = value['metadata']
+                for field in field_counts.keys():
+                    if meta.get(field):
+                        field_counts[field] += 1
+            else:
+                files_without_metadata.append(display_name)
+
+        # Get sample entries
+        sample_entries = []
+        for display_name, value in list(files.items())[:3]:
+            if isinstance(value, dict):
+                sample_entries.append({
+                    'display_name': display_name,
+                    'has_metadata': bool(value.get('metadata')),
+                    'metadata_keys': list(value.get('metadata', {}).keys()) if value.get('metadata') else []
+                })
+
+        return {
+            "status": "success",
+            "cache_info": {
+                "version": cache_data.get('version', 'unknown'),
+                "store_name": cache_data.get('store_name', 'unknown'),
+                "last_sync": cache_data.get('last_sync', 'unknown'),
+                "total_files": total,
+                "files_with_metadata": files_with_metadata,
+                "files_without_metadata": len(files_without_metadata)
+            },
+            "config": {
+                "gcs_bucket": config.GCS_METADATA_BUCKET or "None (using local file)",
+                "cache_path": rag_manager.file_search_manager._get_cache_path(),
+                "store_name": config.GEMINI_FILE_SEARCH_STORE_NAME
+            },
+            "field_coverage": {
+                field: {
+                    "count": count,
+                    "percentage": round((count / files_with_metadata * 100), 1) if files_with_metadata > 0 else 0
+                }
+                for field, count in field_counts.items()
+            },
+            "sample_entries": sample_entries,
+            "missing_metadata_examples": files_without_metadata[:5]
+        }
+
+    except Exception as e:
+        logger.error(f"Error in cache debug endpoint: {e}", exc_info=True)
+        return {
+            "status": "error",
+            "message": str(e),
+            "error_type": type(e).__name__
+        }
 
 
 # Mount static files (must be last to avoid route conflicts)

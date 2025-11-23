@@ -652,8 +652,12 @@ class GeminiFileSearchManager:
             bucket = storage_client.bucket(bucket_name)
             blob = bucket.blob(blob_name)
             if not blob.exists():
+                logging.warning(f"GCS blob not found: '{blob_name}' in bucket '{bucket_name}'")
                 return None
-            return blob.download_as_text()
+
+            content = blob.download_as_text()
+            logging.info(f"Successfully read {len(content)} bytes from GCS: {bucket_name}/{blob_name}")
+            return content
         except ImportError as e:
             logging.error(f"google-cloud-storage not installed: {e}")
             return None
@@ -661,7 +665,7 @@ class GeminiFileSearchManager:
             # Check for common GCS exceptions
             error_type = type(e).__name__
             if 'NotFound' in error_type:
-                logging.debug(f"GCS blob not found: '{blob_name}' in bucket '{bucket_name}'")
+                logging.warning(f"GCS blob not found: '{blob_name}' in bucket '{bucket_name}'")
             elif 'Forbidden' in error_type or 'PermissionDenied' in error_type:
                 logging.error(f"Permission denied accessing GCS bucket '{bucket_name}': {e}")
             else:
@@ -1142,31 +1146,36 @@ class GeminiFileSearchManager:
         try:
             cache_data = self.get_cache_data()
             if not cache_data:
+                logging.warning(f"Cache not available when looking up metadata for: {display_name}")
                 return None
 
             files_data = cache_data.get('files', {})
 
             # Check if this file exists in cache
             if display_name not in files_data:
+                logging.debug(f"Document not found in cache: {display_name}")
                 return None
 
             file_info = files_data[display_name]
 
             # Handle new format (dict with metadata)
             if isinstance(file_info, dict):
+                metadata = file_info.get('metadata', {})
+                logging.debug(f"Retrieved metadata for {display_name}: {list(metadata.keys()) if metadata else 'empty'}")
                 return {
                     'name': file_info.get('resource_name', ''),
                     'display_name': display_name,
-                    'metadata': file_info.get('metadata', {}),
+                    'metadata': metadata,
                     'create_time': None,
                     'size_bytes': None
                 }
 
             # Old format doesn't have metadata
+            logging.debug(f"Document {display_name} is in old cache format (no metadata)")
             return None
 
         except Exception as e:
-            logging.debug(f"Failed to get metadata from cache for {display_name}: {e}")
+            logging.error(f"Failed to get metadata from cache for {display_name}: {e}", exc_info=True)
             return None
 
     def get_document_by_resource_name(self, resource_name: str) -> Optional[Dict]:
