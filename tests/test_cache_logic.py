@@ -17,6 +17,7 @@ class TestCacheLogic(unittest.TestCase):
         # Mock config
         self.config = MagicMock()
         self.config.GEMINI_API_KEY = "fake_key"
+        self.config.GCS_METADATA_BUCKET = None
         
         # Initialize manager with mocked get_cache_path
         self.manager = GeminiFileSearchManager(self.config)
