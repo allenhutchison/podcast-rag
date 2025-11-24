@@ -68,7 +68,9 @@ except Exception as e:
     logger.warning(f"Failed to initialize tiktoken: {e}, falling back to character estimation")
     tokenizer = None
 
-
+# Cache for /api/cache-debug endpoint (5 minute TTL)
+cache_debug_stats = {"data": None, "timestamp": 0}
+CACHE_DEBUG_TTL = 300  # 5 minutes
 
 logger.info("RAG Manager initialized for web application")
 
@@ -157,17 +159,11 @@ Do not include <html>, <body>, or <head> tags - just the content HTML.
             if 'title' in citation:
                 title = citation['title']
 
-                # Try exact match first
+                # Get metadata from cache (instant lookup)
+                # Citation titles from Gemini API already include _transcription.txt suffix
                 doc_info = rag_manager.file_search_manager.get_document_metadata_from_cache(title)
 
-                # If not found, try with _transcription.txt suffix
-                if not doc_info and not title.endswith('_transcription.txt'):
-                    logger.debug(f"Exact match failed for '{title}', trying with suffix")
-                    doc_info = rag_manager.file_search_manager.get_document_metadata_from_cache(
-                        f"{title}_transcription.txt"
-                    )
-
-                # If still not found, log the issue
+                # Log if metadata not found (indicates missing/incomplete extraction)
                 if not doc_info:
                     logger.warning(f"Metadata not found for citation title: '{title}'")
 
@@ -246,22 +242,43 @@ async def health():
 
 
 @app.get("/api/cache-debug")
-async def cache_debug():
+@limiter.limit("5/minute")
+async def cache_debug(request: Request):
     """
     Debug endpoint to inspect cache status and metadata coverage.
 
     Returns cache configuration, stats, and sample entries.
+
+    Note: This endpoint is for debugging only. Access may be restricted in production.
     """
+    # Only allow in non-production environments for security
+    import os
+    import time
+
+    env = os.getenv("ENV", "production").lower()
+    if env == "production":
+        raise HTTPException(
+            status_code=404,
+            detail="Not found"
+        )
+
+    # Check cache first (5 minute TTL)
+    now = time.time()
+    if cache_debug_stats["data"] and (now - cache_debug_stats["timestamp"]) < CACHE_DEBUG_TTL:
+        logger.debug("Returning cached debug stats")
+        return cache_debug_stats["data"]
+
     try:
         cache_data = rag_manager.file_search_manager.get_cache_data()
 
         if not cache_data:
-            return {
+            error_response = {
                 "status": "error",
                 "message": "Cache not loaded",
-                "gcs_bucket": config.GCS_METADATA_BUCKET or "None (using local file)",
-                "cache_path": rag_manager.file_search_manager._get_cache_path()
+                "gcs_bucket": config.GCS_METADATA_BUCKET or "None (using local file)"
             }
+            # Don't cache error responses
+            return error_response
 
         # Analyze metadata coverage
         files = cache_data.get('files', {})
@@ -299,7 +316,7 @@ async def cache_debug():
                     'metadata_keys': list(value.get('metadata', {}).keys()) if value.get('metadata') else []
                 })
 
-        return {
+        result = {
             "status": "success",
             "cache_info": {
                 "version": cache_data.get('version', 'unknown'),
@@ -311,7 +328,6 @@ async def cache_debug():
             },
             "config": {
                 "gcs_bucket": config.GCS_METADATA_BUCKET or "None (using local file)",
-                "cache_path": rag_manager.file_search_manager._get_cache_path(),
                 "store_name": config.GEMINI_FILE_SEARCH_STORE_NAME
             },
             "field_coverage": {
@@ -325,8 +341,15 @@ async def cache_debug():
             "missing_metadata_examples": files_without_metadata[:5]
         }
 
+        # Cache the result for 5 minutes
+        cache_debug_stats["data"] = result
+        cache_debug_stats["timestamp"] = now
+
+        return result
+
     except Exception as e:
         logger.error(f"Error in cache debug endpoint: {e}", exc_info=True)
+        # Don't cache error responses
         return {
             "status": "error",
             "message": str(e),
