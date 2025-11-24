@@ -257,9 +257,11 @@ class RagManager:
                 for i, chunk in enumerate(grounding_chunks):
                     if hasattr(chunk, 'retrieved_context'):
                         context = chunk.retrieved_context
+                        title = getattr(context, 'title', 'Unknown')
+                        logging.debug(f"Citation {i}: title='{title}'")
                         citations.append({
                             'index': i,
-                            'title': getattr(context, 'title', 'Unknown'),
+                            'title': title,
                             'text': getattr(context, 'text', ''),
                             'uri': getattr(context, 'uri', None)
                         })
