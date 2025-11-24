@@ -1,6 +1,6 @@
 [project]
 name = "podcast-rag"
-version = "1.0.0"
+version = "1.0.14"
 description = "A Python-based RAG system for intelligent search and question-answering over podcast libraries"
 readme = "README.md"
 requires-python = ">=3.11"
