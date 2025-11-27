@@ -7,7 +7,7 @@ and saves them to the local cache file with full metadata.
 
 Supports both sync and async modes:
 - Async mode (default): Uses native async SDK for faster fetching
-- Sync mode: Uses concurrent thread pool processing
+- Sync mode: Uses standard synchronous iteration (for compatibility)
 """
 
 import logging
@@ -30,21 +30,7 @@ def main():
     parser.add_argument(
         '--sync',
         action='store_true',
-        help='Use synchronous mode with thread pool (default: async mode)'
-    )
-    parser.add_argument(
-        '--page-size',
-        type=int,
-        default=20,
-        choices=range(1, 21),
-        metavar='N',
-        help='Number of documents per API page (1-20, default: 20)'
-    )
-    parser.add_argument(
-        '--workers',
-        type=int,
-        default=4,
-        help='Number of worker threads for sync mode (default: 4)'
+        help='Use synchronous mode (default: async mode which is faster)'
     )
     args = parser.parse_args()
 
@@ -54,9 +40,8 @@ def main():
         handlers=[logging.StreamHandler()]
     )
 
-    mode = "sync (threaded)" if args.sync else "async"
-    print(f"Rebuilding File Search cache with metadata ({mode} mode)...")
-    print(f"Page size: {args.page_size}\n")
+    mode = "sync" if args.sync else "async"
+    print(f"Rebuilding File Search cache with metadata ({mode} mode)...\n")
 
     # Load config
     config = Config(env_file=args.env_file)
@@ -85,24 +70,22 @@ def main():
     logging.info(f"Using store: {store_name}")
 
     # Fetch all files with metadata (show progress)
-    print("\nFetching files and metadata from remote...")
+    print("Fetching files and metadata from remote...")
     start_time = time.time()
 
     if args.sync:
-        # Use sync mode with thread pool
+        # Use sync mode
         files = manager.get_existing_files(
             store_name,
             use_cache=False,
-            show_progress=True,
-            max_workers=args.workers
+            show_progress=True
         )
     else:
         # Use async mode (faster)
         files = manager.get_existing_files_async(
             store_name,
             use_cache=False,
-            show_progress=True,
-            page_size=args.page_size
+            show_progress=True
         )
 
     elapsed = time.time() - start_time
