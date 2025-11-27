@@ -89,7 +89,7 @@ def main():
         )
 
     elapsed = time.time() - start_time
-    throughput = len(files) / elapsed if elapsed > 0 else 0
+    throughput = len(files) / elapsed if elapsed > 0 else 0  # Prevent division by zero
     print(f"\n✓ Cache rebuilt with {len(files)} files and metadata!")
     print(f"  Time elapsed: {elapsed:.1f} seconds ({throughput:.0f} files/sec)")
 

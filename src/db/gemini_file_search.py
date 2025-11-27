@@ -1076,8 +1076,7 @@ class GeminiFileSearchManager:
     async def _fetch_files_async(
         self,
         store_name: str,
-        show_progress: bool = False,
-        page_size: int = 20
+        show_progress: bool = False
     ) -> Dict[str, str]:
         """
         Fetch files from remote store using async API.
@@ -1088,7 +1087,6 @@ class GeminiFileSearchManager:
         Args:
             store_name: Store to fetch from
             show_progress: Show progress bar
-            page_size: Number of documents to fetch per API page (default: 20, max: 20)
 
         Returns:
             Dictionary mapping display_name -> document resource name
@@ -1096,10 +1094,10 @@ class GeminiFileSearchManager:
         files = {}
         files_with_metadata = {}
 
-        # Use async client
+        # Use async client with max page size (API limit is 20)
         documents = await self.client.aio.file_search_stores.documents.list(
             parent=store_name,
-            config={'page_size': page_size}
+            config={'page_size': 20}
         )
 
         if show_progress:
@@ -1152,8 +1150,7 @@ class GeminiFileSearchManager:
         self,
         store_name: Optional[str] = None,
         use_cache: bool = True,
-        show_progress: bool = False,
-        page_size: int = 20
+        show_progress: bool = False
     ) -> Dict[str, str]:
         """
         Get existing files using async API for faster fetching.
@@ -1169,7 +1166,6 @@ class GeminiFileSearchManager:
             store_name: Store to query (uses default if None)
             use_cache: If True, try to load from local cache first (default: True)
             show_progress: If True, show progress bar during remote fetch (default: False)
-            page_size: Number of documents per API page (default: 20, max: 20)
 
         Returns:
             Dictionary mapping display_name -> document resource name
@@ -1201,14 +1197,16 @@ class GeminiFileSearchManager:
                 "get_existing_files_async() cannot be called from within an async context. "
                 "Use get_existing_files() (sync) instead, or await _fetch_files_async() directly."
             )
-        except RuntimeError:
-            # No running loop - this is what we want, proceed with asyncio.run()
-            pass
+        except RuntimeError as e:
+            # Only proceed if it's the "no running loop" error
+            if "cannot be called from within an async context" in str(e):
+                raise  # Re-raise our custom error
+            # Otherwise it's the expected "no running loop" case, proceed
 
         # Cache miss - fetch from remote using async
         logging.info("Fetching file list using async API...")
         try:
-            return asyncio.run(self._fetch_files_async(store_name, show_progress, page_size))
+            return asyncio.run(self._fetch_files_async(store_name, show_progress))
         except Exception as e:
             logging.error(f"Failed to list documents: {e}")
             raise
