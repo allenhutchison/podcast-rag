@@ -45,6 +45,9 @@ class Config:
         self.WEB_RATE_LIMIT = os.getenv("RATE_LIMIT", "10/minute")
         self.WEB_PORT = int(os.getenv("PORT", "8080"))
 
+        # ADK (Agent Development Kit) configuration
+        self.ADK_PARALLEL_TIMEOUT = int(os.getenv("ADK_PARALLEL_TIMEOUT", "30"))
+
     def load_config(self):
         '''Logs or prints the configuration for debugging purposes.'''
         print(f"Base Directory: {self.BASE_DIRECTORY}")

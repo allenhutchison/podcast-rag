@@ -1,6 +1,7 @@
 """
 FastAPI web application for podcast RAG chat interface.
 
+Uses Google ADK multi-agent architecture for parallel podcast and web search.
 Provides streaming chat responses with citations using Server-Sent Events (SSE).
 """
 
@@ -8,9 +9,9 @@ import asyncio
 import json
 import logging
 import os
+import uuid
 from typing import AsyncGenerator, List, Optional
 
-import tiktoken
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -19,9 +20,9 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
+from src.agents import create_orchestrator, get_latest_podcast_citations, clear_podcast_citations
 from src.config import Config
-from src.rag import RagManager
-from src.web.models import ChatRequest, ChatResponse, CitationMetadata, ConversationHistory
+from src.web.models import ChatRequest
 
 # Configure logging
 logging.basicConfig(
@@ -39,8 +40,8 @@ limiter = Limiter(key_func=get_remote_address)
 # Initialize FastAPI app
 app = FastAPI(
     title="Podcast RAG Chat",
-    description="Chat interface for querying podcast transcripts",
-    version="1.0.0"
+    description="Chat interface for querying podcast transcripts with web search",
+    version="2.0.0"
 )
 
 # Add rate limiter to app state
@@ -57,153 +58,276 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize RAG manager (singleton)
-rag_manager = RagManager(config=config, print_results=False)
-
-# Initialize tiktoken encoder for accurate token counting
-try:
-    tokenizer = tiktoken.encoding_for_model("gpt-4")
-    logger.info("Initialized tiktoken with gpt-4 encoding")
-except Exception as e:
-    logger.warning(f"Failed to initialize tiktoken: {e}, falling back to character estimation")
-    tokenizer = None
-
-# Cache for /api/cache-debug endpoint (5 minute TTL)
-cache_debug_stats = {"data": None, "timestamp": 0}
-CACHE_DEBUG_TTL = 300  # 5 minutes
-
-logger.info("RAG Manager initialized for web application")
+# Lazy initialization of ADK components
+_orchestrator = None
+_runner = None
+_session_service = None
 
 
-def count_tokens(text: str) -> int:
+def _get_adk_components():
     """
-    Count tokens in text using tiktoken if available, otherwise estimate.
-
-    Args:
-        text: Text to count tokens for
+    Lazily initialize ADK components.
 
     Returns:
-        Estimated token count
+        Tuple of (orchestrator, runner, session_service)
     """
-    if tokenizer:
-        return len(tokenizer.encode(text))
-    else:
-        # Fallback: rough estimation (4 chars per token)
-        return len(text) // 4
+    global _orchestrator, _runner, _session_service
+
+    if _orchestrator is None:
+        from google.adk.runners import Runner
+        from google.adk.sessions import InMemorySessionService
+
+        logger.info("Initializing ADK components...")
+        _orchestrator = create_orchestrator(config)
+        _session_service = InMemorySessionService()
+        _runner = Runner(
+            agent=_orchestrator,
+            session_service=_session_service,
+            app_name="podcast-rag"
+        )
+        logger.info("ADK components initialized successfully")
+
+    return _orchestrator, _runner, _session_service
 
 
-async def generate_streaming_response(query: str, history: Optional[List] = None) -> AsyncGenerator[str, None]:
+def _combine_citations(podcast_results: dict, web_results: dict) -> List[dict]:
     """
-    Generate streaming chat response with citations.
+    Combine citations from podcast and web search results.
 
-    Yields SSE events:
-    - event: token -> word-by-word streaming
-    - event: citations -> final citations data
-    - event: done -> completion signal
-    - event: error -> error message (followed by done with status: error)
+    Args:
+        podcast_results: Results from PodcastSearchAgent
+        web_results: Results from WebSearchAgent
+
+    Returns:
+        List of unified citations with P/W prefixes
     """
-    try:
-        # Get response from RAG manager
-        logger.info(f"Processing query: {query}")
+    combined = []
 
-        # Get current date
-        from datetime import datetime
-        current_date = datetime.now().strftime("%Y-%m-%d")
+    # Add podcast citations with P prefix
+    if podcast_results and 'citations' in podcast_results:
+        for citation in podcast_results['citations']:
+            combined.append({
+                'ref_id': f"P{citation.get('index', len(combined) + 1)}",
+                'source_type': 'podcast',
+                'title': citation.get('title', ''),
+                'text': citation.get('text', ''),
+                'metadata': citation.get('metadata', {})
+            })
 
-        # Build conversation context with history
-        conversation_context = f"""Today's date is {current_date}.
-
-Please answer the following question using proper HTML formatting.
-Use <p> tags for paragraphs, <strong> for bold, <em> for emphasis, <ul>/<ol> and <li> for lists, and <h3> for section headings if needed.
-Do not include <html>, <body>, or <head> tags - just the content HTML.
-
-"""
-
-        # Add conversation history if present
-        if history:
-            conversation_context += "Previous conversation:\n"
-
-            # Use accurate token counting
-            max_tokens = config.WEB_MAX_CONVERSATION_TOKENS
-            current_tokens = count_tokens(conversation_context)
-
-            # Build history from most recent to oldest, keeping recent context
-            history_messages = []
-            for msg in reversed(history):
-                msg_text = f"{msg['role'].upper()}: {msg['content']}\n"
-                msg_tokens = count_tokens(msg_text)
-
-                # Check if adding this message would exceed limit
-                if current_tokens + msg_tokens > max_tokens:
-                    logger.warning(
-                        f"Conversation history truncated: keeping {len(history_messages)} "
-                        f"recent messages out of {len(history)} total"
-                    )
-                    break
-
-                history_messages.insert(0, msg_text)
-                current_tokens += msg_tokens
-
-            # Add messages to context
-            conversation_context += "".join(history_messages)
-            conversation_context += "\n"
-
-        conversation_context += f"Current question: {query}"
-
-        answer = rag_manager.query(conversation_context)
-        citations = rag_manager.get_citations()
-
-        # Enrich citations with metadata from cache
-        enriched_citations = []
-        for i, citation in enumerate(citations, 1):
-            if 'title' in citation:
-                title = citation['title']
-
-                # Get metadata from cache (instant lookup)
-                # Citation titles from Gemini API already include _transcription.txt suffix
-                doc_info = rag_manager.file_search_manager.get_document_metadata_from_cache(title)
-
-                # Log if metadata not found (indicates missing/incomplete extraction)
-                if not doc_info:
-                    logger.warning(f"Metadata not found for citation title: '{title}'")
-
-                metadata = {}
-                if doc_info and doc_info.get('metadata'):
-                    meta = doc_info['metadata']
-                    metadata = {
-                        'podcast': meta.get('podcast', ''),
-                        'episode': meta.get('episode', ''),
-                        'release_date': meta.get('release_date', '')
-                    }
-                    logger.debug(f"Found metadata for '{title}': {metadata}")
-
-                enriched_citations.append({
-                    'index': i,
-                    'metadata': metadata
+    # Add web citations with W prefix
+    if web_results and isinstance(web_results, dict):
+        # Handle grounding metadata from google_search
+        if 'grounding_chunks' in web_results:
+            for i, chunk in enumerate(web_results['grounding_chunks'], 1):
+                combined.append({
+                    'ref_id': f"W{i}",
+                    'source_type': 'web',
+                    'title': chunk.get('title', ''),
+                    'url': chunk.get('uri', chunk.get('url', '')),
+                    'text': chunk.get('text', '')
                 })
 
-        # Stream answer word-by-word while preserving line breaks
-        import re
-        # Split on whitespace but keep newlines
-        tokens = re.split(r'(\s+)', answer)
-        for token in tokens:
-            if token:  # Skip empty strings
-                # Format SSE manually to ensure correct format
-                yield f"event: token\ndata: {json.dumps({'token': token})}\n\n"
-                # Small delay for streaming effect (only for words, not whitespace)
-                if not token.isspace():
-                    await asyncio.sleep(config.WEB_STREAMING_DELAY)
+    return combined
 
-        # Send citations after answer completes
-        yield f"event: citations\ndata: {json.dumps({'citations': enriched_citations})}\n\n"
+
+async def generate_streaming_response(
+    query: str,
+    session_id: str,
+    history: Optional[List[dict]] = None
+) -> AsyncGenerator[str, None]:
+    """
+    Generate streaming response from ADK multi-agent pipeline.
+
+    Yields SSE events:
+    - event: status -> Agent execution status
+    - event: token -> Streaming text chunks
+    - event: citations -> Consolidated citations
+    - event: done -> Completion signal
+    - event: error -> Error information
+
+    Args:
+        query: User's question
+        session_id: Session identifier
+        history: Optional conversation history
+
+    Yields:
+        SSE formatted events
+    """
+    from google.genai import types
+
+    try:
+        _, runner, session_service = _get_adk_components()
+
+        # Get or create session
+        session = await session_service.get_session(
+            app_name="podcast-rag",
+            user_id="default",
+            session_id=session_id
+        )
+        if not session:
+            session = await session_service.create_session(
+                app_name="podcast-rag",
+                user_id="default",
+                session_id=session_id
+            )
+
+        # Signal search phase
+        yield f"event: status\ndata: {json.dumps({'phase': 'searching', 'message': 'Searching podcasts and web...'})}\n\n"
+
+        # Clear any previous podcast citations before new search
+        clear_podcast_citations()
+
+        # Build message content
+        content = types.Content(
+            role='user',
+            parts=[types.Part(text=query)]
+        )
+
+        # Track search completion for status updates
+        podcast_complete = False
+        web_complete = False
+        final_text = ""
+        web_results = {}
+        grounding_chunks = []
+
+        # Track which agents we've seen
+        seen_agents = set()
+
+        # Run the orchestrator
+        async for event in runner.run_async(
+            user_id="default",
+            session_id=session_id,
+            new_message=content
+        ):
+            # Get agent/author info
+            author = getattr(event, 'author', None)
+            author_str = str(author) if author else ''
+
+            # Track agent starts
+            if author and author_str not in seen_agents:
+                seen_agents.add(author_str)
+                if 'PodcastSearch' in author_str:
+                    yield f"event: status\ndata: {json.dumps({'agent': 'podcast', 'status': 'started', 'message': 'Searching podcast transcripts...'})}\n\n"
+                elif 'WebSearch' in author_str:
+                    yield f"event: status\ndata: {json.dumps({'agent': 'web', 'status': 'started', 'message': 'Searching the web...'})}\n\n"
+                elif 'Synthesizer' in author_str:
+                    yield f"event: status\ndata: {json.dumps({'agent': 'synthesizer', 'status': 'started', 'message': 'Synthesizing results...'})}\n\n"
+
+            # Check for function/tool calls
+            if hasattr(event, 'content') and event.content:
+                if hasattr(event.content, 'parts'):
+                    for part in event.content.parts:
+                        # Check for function calls
+                        if hasattr(part, 'function_call') and part.function_call:
+                            fc = part.function_call
+                            func_name = getattr(fc, 'name', '')
+                            if func_name == 'search_podcasts':
+                                args = getattr(fc, 'args', {})
+                                query_arg = args.get('query', '') if isinstance(args, dict) else ''
+                                yield f"event: status\ndata: {json.dumps({'tool': 'search_podcasts', 'message': f'Searching podcasts for: {query_arg}'})}\n\n"
+                            elif func_name == 'google_search':
+                                yield f"event: status\ndata: {json.dumps({'tool': 'google_search', 'message': 'Performing web search...'})}\n\n"
+                            elif func_name == 'url_context':
+                                yield f"event: status\ndata: {json.dumps({'tool': 'url_context', 'message': 'Fetching page content...'})}\n\n"
+
+                        # Check for intermediate text (agent thoughts)
+                        if hasattr(part, 'text') and part.text:
+                            text = part.text.strip()
+                            # Only show non-final thoughts from search agents
+                            if text and not (hasattr(event, 'is_final_response') and event.is_final_response()):
+                                if 'PodcastSearch' in author_str or 'WebSearch' in author_str:
+                                    # Truncate long thoughts
+                                    preview = text[:200] + '...' if len(text) > 200 else text
+                                    yield f"event: status\ndata: {json.dumps({'agent': author_str.split('/')[-1], 'thought': preview})}\n\n"
+
+            # Track agent completions
+            if author:
+                if 'PodcastSearch' in author_str and not podcast_complete:
+                    if hasattr(event, 'is_final_response') and event.is_final_response():
+                        podcast_complete = True
+                        yield f"event: status\ndata: {json.dumps({'agent': 'podcast', 'status': 'complete', 'message': 'Podcast search complete'})}\n\n"
+
+                elif 'WebSearch' in author_str and not web_complete:
+                    if hasattr(event, 'is_final_response') and event.is_final_response():
+                        web_complete = True
+                        yield f"event: status\ndata: {json.dumps({'agent': 'web', 'status': 'complete', 'message': 'Web search complete'})}\n\n"
+
+            # Extract grounding metadata from google_search tool
+            if hasattr(event, 'grounding_metadata') and event.grounding_metadata:
+                gm = event.grounding_metadata
+                if hasattr(gm, 'grounding_chunks') and gm.grounding_chunks:
+                    for chunk in gm.grounding_chunks:
+                        chunk_data = {}
+                        if hasattr(chunk, 'web') and chunk.web:
+                            chunk_data['uri'] = getattr(chunk.web, 'uri', '')
+                            chunk_data['title'] = getattr(chunk.web, 'title', '')
+                        grounding_chunks.append(chunk_data)
+                    logger.debug(f"Extracted {len(grounding_chunks)} grounding chunks")
+
+            # Check for final response
+            if hasattr(event, 'is_final_response') and event.is_final_response():
+                if hasattr(event, 'content') and event.content:
+                    if hasattr(event.content, 'parts'):
+                        for part in event.content.parts:
+                            if hasattr(part, 'text'):
+                                final_text = part.text
+                    # Also check for grounding metadata in the final response
+                    if hasattr(event.content, 'grounding_metadata'):
+                        gm = event.content.grounding_metadata
+                        if hasattr(gm, 'grounding_chunks') and gm.grounding_chunks:
+                            for chunk in gm.grounding_chunks:
+                                chunk_data = {}
+                                if hasattr(chunk, 'web') and chunk.web:
+                                    chunk_data['uri'] = getattr(chunk.web, 'uri', '')
+                                    chunk_data['title'] = getattr(chunk.web, 'title', '')
+                                if chunk_data and chunk_data not in grounding_chunks:
+                                    grounding_chunks.append(chunk_data)
+
+        # Stream the final response word by word
+        if final_text:
+            yield f"event: status\ndata: {json.dumps({'phase': 'responding'})}\n\n"
+
+            words = final_text.split()
+            for word in words:
+                yield f"event: token\ndata: {json.dumps({'token': word + ' '})}\n\n"
+                await asyncio.sleep(config.WEB_STREAMING_DELAY)
+
+        # Combine and send citations
+        # Get podcast citations from module-level storage (set by the tool)
+        podcast_citations = get_latest_podcast_citations()
+        podcast_results = {'citations': podcast_citations} if podcast_citations else {}
+        logger.info(f"Retrieved {len(podcast_citations)} podcast citations from storage")
+
+        # Include grounding_chunks if we captured them from google_search
+        if grounding_chunks:
+            web_results = web_results or {}
+            web_results['grounding_chunks'] = grounding_chunks
+            logger.info(f"Adding {len(grounding_chunks)} grounding chunks to web results")
+
+        citations = _combine_citations(podcast_results, web_results)
+
+        # Log citation details for debugging
+        podcast_count = len([c for c in citations if c.get('source_type') == 'podcast'])
+        web_count = len([c for c in citations if c.get('source_type') == 'web'])
+        logger.info(f"Citations: {podcast_count} podcast, {web_count} web")
+        if web_count > 0:
+            for c in citations:
+                if c.get('source_type') == 'web':
+                    logger.debug(f"Web citation: {c.get('ref_id')} - {c.get('title', 'no title')} - {c.get('url', 'no url')}")
+
+        yield f"event: citations\ndata: {json.dumps({'citations': citations})}\n\n"
 
         # Signal completion
         yield f"event: done\ndata: {json.dumps({'status': 'complete'})}\n\n"
 
-        logger.info(f"Query completed with {len(enriched_citations)} citations")
+        logger.info(f"Query completed with {len(citations)} citations")
 
+    except asyncio.TimeoutError:
+        logger.error("ADK orchestration timed out")
+        yield f"event: error\ndata: {json.dumps({'error': 'Search timed out'})}\n\n"
+        yield f"event: done\ndata: {json.dumps({'status': 'error'})}\n\n"
     except Exception as e:
-        logger.error(f"Error processing query: {e}", exc_info=True)
+        logger.error(f"Streaming error: {e}", exc_info=True)
         yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
         yield f"event: done\ndata: {json.dumps({'status': 'error'})}\n\n"
 
@@ -214,8 +338,10 @@ async def chat(request: Request, chat_request: ChatRequest):
     """
     Chat endpoint with Server-Sent Events streaming.
 
+    Uses ADK multi-agent architecture for parallel podcast and web search.
+
     Args:
-        request: Starlette Request object (for rate limiting)
+        request: FastAPI Request object (for rate limiting)
         chat_request: ChatRequest with query and optional conversation history
 
     Returns:
@@ -224,13 +350,16 @@ async def chat(request: Request, chat_request: ChatRequest):
     if not chat_request.query or not chat_request.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
+    # Generate session ID
+    session_id = request.headers.get('X-Session-ID', str(uuid.uuid4()))
+
     # Convert Pydantic models to dicts for the generator
     history_dicts = None
     if chat_request.history:
         history_dicts = [{"role": msg.role, "content": msg.content} for msg in chat_request.history]
 
     return StreamingResponse(
-        generate_streaming_response(chat_request.query, history_dicts),
+        generate_streaming_response(chat_request.query, session_id, history_dicts),
         media_type="text/event-stream"
     )
 
@@ -238,127 +367,10 @@ async def chat(request: Request, chat_request: ChatRequest):
 @app.get("/health")
 async def health():
     """Health check endpoint for Cloud Run."""
-    return {"status": "healthy", "service": "podcast-rag-web"}
-
-
-@app.get("/api/cache-debug")
-@limiter.limit("5/minute")
-async def cache_debug(request: Request):
-    """
-    Debug endpoint to inspect cache status and metadata coverage.
-
-    Returns cache configuration, stats, and sample entries.
-
-    Note: This endpoint is for debugging only. Access may be restricted in production.
-    """
-    # Only allow in non-production environments for security
-    import os
-    import time
-
-    env = os.getenv("ENV", "production").lower()
-    if env == "production":
-        raise HTTPException(
-            status_code=404,
-            detail="Not found"
-        )
-
-    # Check cache first (5 minute TTL)
-    now = time.time()
-    if cache_debug_stats["data"] and (now - cache_debug_stats["timestamp"]) < CACHE_DEBUG_TTL:
-        logger.debug("Returning cached debug stats")
-        return cache_debug_stats["data"]
-
-    try:
-        cache_data = rag_manager.file_search_manager.get_cache_data()
-
-        if not cache_data:
-            error_response = {
-                "status": "error",
-                "message": "Cache not loaded",
-                "gcs_bucket": config.GCS_METADATA_BUCKET or "None (using local file)"
-            }
-            # Don't cache error responses
-            return error_response
-
-        # Analyze metadata coverage
-        files = cache_data.get('files', {})
-        total = len(files)
-
-        field_counts = {
-            'podcast': 0,
-            'episode': 0,
-            'release_date': 0,
-            'hosts': 0,
-            'guests': 0,
-            'keywords': 0,
-            'summary': 0
-        }
-        files_with_metadata = 0
-        files_without_metadata = []
-
-        for display_name, value in files.items():
-            if isinstance(value, dict) and value.get('metadata'):
-                files_with_metadata += 1
-                meta = value['metadata']
-                for field in field_counts.keys():
-                    if meta.get(field):
-                        field_counts[field] += 1
-            else:
-                files_without_metadata.append(display_name)
-
-        # Get sample entries
-        sample_entries = []
-        for display_name, value in list(files.items())[:3]:
-            if isinstance(value, dict):
-                sample_entries.append({
-                    'display_name': display_name,
-                    'has_metadata': bool(value.get('metadata')),
-                    'metadata_keys': list(value.get('metadata', {}).keys()) if value.get('metadata') else []
-                })
-
-        result = {
-            "status": "success",
-            "cache_info": {
-                "version": cache_data.get('version', 'unknown'),
-                "store_name": cache_data.get('store_name', 'unknown'),
-                "last_sync": cache_data.get('last_sync', 'unknown'),
-                "total_files": total,
-                "files_with_metadata": files_with_metadata,
-                "files_without_metadata": len(files_without_metadata)
-            },
-            "config": {
-                "gcs_bucket": config.GCS_METADATA_BUCKET or "None (using local file)",
-                "store_name": config.GEMINI_FILE_SEARCH_STORE_NAME
-            },
-            "field_coverage": {
-                field: {
-                    "count": count,
-                    "percentage": round((count / files_with_metadata * 100), 1) if files_with_metadata > 0 else 0
-                }
-                for field, count in field_counts.items()
-            },
-            "sample_entries": sample_entries,
-            "missing_metadata_examples": files_without_metadata[:5]
-        }
-
-        # Cache the result for 5 minutes
-        cache_debug_stats["data"] = result
-        cache_debug_stats["timestamp"] = now
-
-        return result
-
-    except Exception as e:
-        logger.error(f"Error in cache debug endpoint: {e}", exc_info=True)
-        # Don't cache error responses
-        return {
-            "status": "error",
-            "message": str(e),
-            "error_type": type(e).__name__
-        }
+    return {"status": "healthy", "service": "podcast-rag"}
 
 
 # Mount static files (must be last to avoid route conflicts)
-import os
 static_path = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_path):
     app.mount("/", StaticFiles(directory=static_path, html=True), name="static")
