@@ -18,7 +18,7 @@ from src.config import Config
 logger = logging.getLogger(__name__)
 
 
-def create_orchestrator(config: Config) -> SequentialAgent:
+def create_orchestrator(config: Config, session_id: str = "_default") -> SequentialAgent:
     """
     Create the main orchestrator for podcast RAG with parallel search.
 
@@ -31,14 +31,15 @@ def create_orchestrator(config: Config) -> SequentialAgent:
 
     Args:
         config: Application configuration
+        session_id: Session identifier for thread-safe citation storage
 
     Returns:
         Configured SequentialAgent orchestrator
     """
-    logger.info("Creating podcast RAG orchestrator with parallel search")
+    logger.info(f"Creating podcast RAG orchestrator with parallel search (session: {session_id})")
 
     # Create individual search agents
-    podcast_agent = create_podcast_search_agent(config)
+    podcast_agent = create_podcast_search_agent(config, session_id)
     web_agent = create_web_search_agent(config.GEMINI_MODEL)
 
     logger.debug(f"Created PodcastSearchAgent with model: {config.GEMINI_MODEL}")

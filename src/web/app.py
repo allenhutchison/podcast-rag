@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import uuid
 from typing import AsyncGenerator, List, Optional
 
@@ -20,7 +21,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from src.agents import create_orchestrator, get_latest_podcast_citations, clear_podcast_citations
+from src.agents import create_orchestrator, get_podcast_citations, clear_podcast_citations
 from src.config import Config
 from src.web.models import ChatRequest
 
@@ -58,36 +59,159 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Lazy initialization of ADK components
-_orchestrator = None
-_runner = None
+# Session service (shared across all sessions)
 _session_service = None
 
+# Per-session runners cache (keyed by session_id)
+# Each session needs its own runner with its own orchestrator for thread-safe citations
+import threading
+_session_runners: dict = {}
+_runners_lock = threading.Lock()
 
-def _get_adk_components():
+
+def _get_session_service():
+    """Get or create the shared session service."""
+    global _session_service
+    if _session_service is None:
+        from google.adk.sessions import InMemorySessionService
+        _session_service = InMemorySessionService()
+        logger.info("Initialized ADK session service")
+    return _session_service
+
+
+def _get_runner_for_session(session_id: str):
     """
-    Lazily initialize ADK components.
+    Get or create a runner for the given session.
+
+    Each session gets its own orchestrator instance to ensure thread-safe
+    citation storage (the podcast search tool stores citations keyed by session_id).
+
+    Args:
+        session_id: The session identifier
 
     Returns:
-        Tuple of (orchestrator, runner, session_service)
+        Runner instance for this session
     """
-    global _orchestrator, _runner, _session_service
+    with _runners_lock:
+        if session_id not in _session_runners:
+            from google.adk.runners import Runner
 
-    if _orchestrator is None:
-        from google.adk.runners import Runner
-        from google.adk.sessions import InMemorySessionService
+            logger.info(f"Creating ADK runner for session: {session_id}")
+            orchestrator = create_orchestrator(config, session_id)
+            runner = Runner(
+                agent=orchestrator,
+                session_service=_get_session_service(),
+                app_name="podcast-rag"
+            )
+            _session_runners[session_id] = runner
 
-        logger.info("Initializing ADK components...")
-        _orchestrator = create_orchestrator(config)
-        _session_service = InMemorySessionService()
-        _runner = Runner(
-            agent=_orchestrator,
-            session_service=_session_service,
-            app_name="podcast-rag"
-        )
-        logger.info("ADK components initialized successfully")
+            # Clean up old sessions (keep max 100 runners)
+            if len(_session_runners) > 100:
+                # Remove oldest entries (first 20)
+                old_sessions = list(_session_runners.keys())[:20]
+                for old_sid in old_sessions:
+                    del _session_runners[old_sid]
+                logger.info(f"Cleaned up {len(old_sessions)} old session runners")
 
-    return _orchestrator, _runner, _session_service
+        return _session_runners[session_id]
+
+
+def _validate_session_id(session_id: str) -> str:
+    """
+    Validate and sanitize session ID from client.
+
+    Args:
+        session_id: Raw session ID from request header
+
+    Returns:
+        Valid session ID (either validated input or newly generated UUID)
+    """
+    if not session_id:
+        return str(uuid.uuid4())
+
+    # Check length (UUIDs are 36 chars with hyphens)
+    if len(session_id) > 64:
+        logger.warning(f"Session ID too long ({len(session_id)} chars), generating new one")
+        return str(uuid.uuid4())
+
+    # Allow only alphanumeric, hyphens, and underscores
+    # This covers standard UUIDs and common session ID formats
+    if not re.match(r'^[a-zA-Z0-9_-]+$', session_id):
+        logger.warning(f"Session ID contains invalid characters, generating new one")
+        return str(uuid.uuid4())
+
+    return session_id
+
+
+def _extract_grounding_chunk(chunk) -> Optional[dict]:
+    """
+    Safely extract data from a grounding chunk with defensive type checking.
+
+    Args:
+        chunk: A grounding chunk object from Google's grounding metadata
+
+    Returns:
+        Dict with 'uri' and 'title' keys, or None if extraction fails
+    """
+    try:
+        if not chunk:
+            return None
+
+        chunk_data = {}
+
+        # Try to extract web data
+        web = getattr(chunk, 'web', None)
+        if web:
+            uri = getattr(web, 'uri', None)
+            title = getattr(web, 'title', None)
+
+            # Validate types
+            if uri is not None and isinstance(uri, str):
+                chunk_data['uri'] = uri
+            else:
+                chunk_data['uri'] = ''
+
+            if title is not None and isinstance(title, str):
+                chunk_data['title'] = title
+            else:
+                chunk_data['title'] = ''
+
+            return chunk_data if chunk_data.get('uri') or chunk_data.get('title') else None
+
+        return None
+
+    except Exception as e:
+        logger.warning(f"Error extracting grounding chunk: {e}")
+        return None
+
+
+def _extract_search_entry_point(grounding_metadata) -> str:
+    """
+    Safely extract search entry point HTML from grounding metadata.
+
+    Args:
+        grounding_metadata: Grounding metadata object from Google's response
+
+    Returns:
+        Rendered HTML string, or empty string if not available
+    """
+    try:
+        if not grounding_metadata:
+            return ""
+
+        search_entry_point = getattr(grounding_metadata, 'search_entry_point', None)
+        if not search_entry_point:
+            return ""
+
+        rendered = getattr(search_entry_point, 'rendered_content', None)
+        if rendered and isinstance(rendered, str):
+            return rendered
+
+        return ""
+
+    except Exception as e:
+        logger.warning(f"Error extracting search entry point: {e}")
+        return ""
 
 
 def _combine_citations(podcast_results: dict, web_results: dict) -> List[dict]:
@@ -156,7 +280,9 @@ async def generate_streaming_response(
     from google.genai import types
 
     try:
-        _, runner, session_service = _get_adk_components()
+        # Get session-specific runner (ensures thread-safe citation storage)
+        runner = _get_runner_for_session(session_id)
+        session_service = _get_session_service()
 
         # Get or create session
         session = await session_service.get_session(
@@ -174,8 +300,8 @@ async def generate_streaming_response(
         # Signal search phase
         yield f"event: status\ndata: {json.dumps({'phase': 'searching', 'message': 'Searching podcasts and web...'})}\n\n"
 
-        # Clear any previous podcast citations before new search
-        clear_podcast_citations()
+        # Clear any previous podcast citations for this session
+        clear_podcast_citations(session_id)
 
         # Build message content
         content = types.Content(
@@ -194,12 +320,29 @@ async def generate_streaming_response(
         # Track which agents we've seen
         seen_agents = set()
 
-        # Run the orchestrator
-        async for event in runner.run_async(
-            user_id="default",
-            session_id=session_id,
-            new_message=content
-        ):
+        # Run the orchestrator with timeout
+        # Use timeout for the overall execution to prevent hanging
+        timeout_seconds = config.ADK_PARALLEL_TIMEOUT
+
+        async def run_with_timeout():
+            """Wrapper to run orchestrator with timeout."""
+            async for event in runner.run_async(
+                user_id="default",
+                session_id=session_id,
+                new_message=content
+            ):
+                yield event
+
+        # Process events with per-iteration timeout check
+        event_iterator = run_with_timeout()
+        start_time = asyncio.get_event_loop().time()
+
+        async for event in event_iterator:
+            # Check if we've exceeded total timeout
+            elapsed = asyncio.get_event_loop().time() - start_time
+            if elapsed > timeout_seconds:
+                logger.warning(f"ADK execution timeout after {elapsed:.1f}s")
+                raise asyncio.TimeoutError(f"Search timed out after {timeout_seconds}s")
             # Get agent/author info
             author = getattr(event, 'author', None)
             author_str = str(author) if author else ''
@@ -253,22 +396,21 @@ async def generate_streaming_response(
                         web_complete = True
                         yield f"event: status\ndata: {json.dumps({'agent': 'web', 'status': 'complete', 'message': 'Web search complete'})}\n\n"
 
-            # Extract grounding metadata from google_search tool
+            # Extract grounding metadata from google_search tool (with defensive type checking)
             if hasattr(event, 'grounding_metadata') and event.grounding_metadata:
                 gm = event.grounding_metadata
                 if hasattr(gm, 'grounding_chunks') and gm.grounding_chunks:
                     for chunk in gm.grounding_chunks:
-                        chunk_data = {}
-                        if hasattr(chunk, 'web') and chunk.web:
-                            chunk_data['uri'] = getattr(chunk.web, 'uri', '')
-                            chunk_data['title'] = getattr(chunk.web, 'title', '')
-                        grounding_chunks.append(chunk_data)
-                    logger.debug(f"Extracted {len(grounding_chunks)} grounding chunks")
+                        chunk_data = _extract_grounding_chunk(chunk)
+                        if chunk_data:
+                            grounding_chunks.append(chunk_data)
+                    if grounding_chunks:
+                        logger.debug(f"Extracted {len(grounding_chunks)} grounding chunks")
+
                 # Extract search entry point (required by Google ToS)
-                if hasattr(gm, 'search_entry_point') and gm.search_entry_point:
-                    rendered = getattr(gm.search_entry_point, 'rendered_content', '')
-                    if rendered and not search_entry_point:
-                        search_entry_point = rendered
+                if not search_entry_point:
+                    search_entry_point = _extract_search_entry_point(gm)
+                    if search_entry_point:
                         logger.debug("Extracted search entry point HTML")
 
             # Check for final response
@@ -276,24 +418,22 @@ async def generate_streaming_response(
                 if hasattr(event, 'content') and event.content:
                     if hasattr(event.content, 'parts'):
                         for part in event.content.parts:
-                            if hasattr(part, 'text'):
+                            if hasattr(part, 'text') and part.text:
                                 final_text = part.text
+
                     # Also check for grounding metadata in the final response
                     if hasattr(event.content, 'grounding_metadata'):
                         gm = event.content.grounding_metadata
                         if hasattr(gm, 'grounding_chunks') and gm.grounding_chunks:
                             for chunk in gm.grounding_chunks:
-                                chunk_data = {}
-                                if hasattr(chunk, 'web') and chunk.web:
-                                    chunk_data['uri'] = getattr(chunk.web, 'uri', '')
-                                    chunk_data['title'] = getattr(chunk.web, 'title', '')
+                                chunk_data = _extract_grounding_chunk(chunk)
                                 if chunk_data and chunk_data not in grounding_chunks:
                                     grounding_chunks.append(chunk_data)
+
                         # Extract search entry point from final response
-                        if hasattr(gm, 'search_entry_point') and gm.search_entry_point:
-                            rendered = getattr(gm.search_entry_point, 'rendered_content', '')
-                            if rendered and not search_entry_point:
-                                search_entry_point = rendered
+                        if not search_entry_point:
+                            search_entry_point = _extract_search_entry_point(gm)
+                            if search_entry_point:
                                 logger.debug("Extracted search entry point from final response")
 
         # Stream the final response word by word
@@ -306,10 +446,10 @@ async def generate_streaming_response(
                 await asyncio.sleep(config.WEB_STREAMING_DELAY)
 
         # Combine and send citations
-        # Get podcast citations from module-level storage (set by the tool)
-        podcast_citations = get_latest_podcast_citations()
+        # Get podcast citations from session-specific storage (set by the tool)
+        podcast_citations = get_podcast_citations(session_id)
         podcast_results = {'citations': podcast_citations} if podcast_citations else {}
-        logger.info(f"Retrieved {len(podcast_citations)} podcast citations from storage")
+        logger.info(f"Retrieved {len(podcast_citations)} podcast citations for session {session_id}")
 
         # Include grounding_chunks if we captured them from google_search
         if grounding_chunks:
@@ -369,8 +509,9 @@ async def chat(request: Request, chat_request: ChatRequest):
     if not chat_request.query or not chat_request.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
-    # Generate session ID
-    session_id = request.headers.get('X-Session-ID', str(uuid.uuid4()))
+    # Get and validate session ID
+    raw_session_id = request.headers.get('X-Session-ID', '')
+    session_id = _validate_session_id(raw_session_id)
 
     # Convert Pydantic models to dicts for the generator
     history_dicts = None

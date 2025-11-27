@@ -15,6 +15,17 @@ Architecture:
 """
 
 from src.agents.orchestrator import create_orchestrator
-from src.agents.podcast_search import get_latest_podcast_citations, clear_podcast_citations
+from src.agents.podcast_search import (
+    get_podcast_citations,
+    set_podcast_citations,
+    clear_podcast_citations,
+    get_latest_podcast_citations,  # Deprecated, for backwards compatibility
+)
 
-__all__ = ["create_orchestrator", "get_latest_podcast_citations", "clear_podcast_citations"]
+__all__ = [
+    "create_orchestrator",
+    "get_podcast_citations",
+    "set_podcast_citations",
+    "clear_podcast_citations",
+    "get_latest_podcast_citations",  # Deprecated
+]

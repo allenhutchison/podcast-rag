@@ -6,7 +6,10 @@ using Google's Gemini File Search, wrapped as a custom function tool.
 """
 
 import logging
-from typing import Dict, List
+import re
+import threading
+import time
+from typing import Dict, List, Optional
 
 from google.adk.agents import LlmAgent
 
@@ -15,29 +18,140 @@ from src.db.gemini_file_search import GeminiFileSearchManager
 
 logger = logging.getLogger(__name__)
 
-# Module-level storage for the latest podcast search results
-# This allows adk_routes to retrieve structured citation data
-_latest_podcast_citations: List[Dict] = []
+
+# Patterns that may indicate prompt injection attempts
+_INJECTION_PATTERNS = [
+    r'ignore\s+(all\s+)?(previous|prior|above)\s+(instructions?|prompts?)',
+    r'disregard\s+(all\s+)?(previous|prior|above)',
+    r'forget\s+(everything|all)\s+(you|about)',
+    r'you\s+are\s+now\s+a',
+    r'new\s+instructions?\s*:',
+    r'system\s*:\s*',
+    r'<\s*system\s*>',
+    r'\[\s*system\s*\]',
+]
+_COMPILED_PATTERNS = [re.compile(p, re.IGNORECASE) for p in _INJECTION_PATTERNS]
 
 
+def sanitize_query(query: str) -> str:
+    """
+    Sanitize user query to mitigate prompt injection attacks.
+
+    This is a defense-in-depth measure. It:
+    1. Strips control characters
+    2. Limits query length
+    3. Logs warnings for suspicious patterns (but doesn't block)
+
+    Args:
+        query: Raw user query
+
+    Returns:
+        Sanitized query string
+    """
+    # Strip control characters (except newlines and tabs)
+    sanitized = ''.join(
+        char for char in query
+        if char >= ' ' or char in '\n\t'
+    )
+
+    # Limit length (already validated at API level, but defense-in-depth)
+    max_length = 2000
+    if len(sanitized) > max_length:
+        sanitized = sanitized[:max_length]
+        logger.warning(f"Query truncated from {len(query)} to {max_length} chars")
+
+    # Check for potential injection patterns (log warning but don't block)
+    for pattern in _COMPILED_PATTERNS:
+        if pattern.search(sanitized):
+            logger.warning(f"Potential prompt injection detected in query: {sanitized[:100]}...")
+            break
+
+    return sanitized.strip()
+
+# Thread-safe session-based storage for podcast citations
+# Key: session_id, Value: {'citations': List[Dict], 'timestamp': float}
+_session_citations: Dict[str, Dict] = {}
+_citations_lock = threading.Lock()
+
+# Citation storage TTL (5 minutes) - entries older than this will be cleaned up
+_CITATION_TTL_SECONDS = 300
+
+
+def get_podcast_citations(session_id: str) -> List[Dict]:
+    """
+    Get the citations for a specific session.
+
+    Args:
+        session_id: The session identifier
+
+    Returns:
+        List of citation dictionaries, or empty list if not found
+    """
+    with _citations_lock:
+        session_data = _session_citations.get(session_id, {})
+        return session_data.get('citations', []).copy()
+
+
+def set_podcast_citations(session_id: str, citations: List[Dict]):
+    """
+    Store citations for a specific session.
+
+    Args:
+        session_id: The session identifier
+        citations: List of citation dictionaries to store
+    """
+    with _citations_lock:
+        _session_citations[session_id] = {
+            'citations': citations,
+            'timestamp': time.time()
+        }
+        # Clean up old entries while we have the lock
+        _cleanup_old_citations()
+
+
+def clear_podcast_citations(session_id: str):
+    """
+    Clear stored podcast citations for a specific session.
+
+    Args:
+        session_id: The session identifier
+    """
+    with _citations_lock:
+        if session_id in _session_citations:
+            del _session_citations[session_id]
+
+
+def _cleanup_old_citations():
+    """Remove citation entries older than TTL. Must be called with lock held."""
+    current_time = time.time()
+    expired_sessions = [
+        sid for sid, data in _session_citations.items()
+        if current_time - data.get('timestamp', 0) > _CITATION_TTL_SECONDS
+    ]
+    for sid in expired_sessions:
+        del _session_citations[sid]
+    if expired_sessions:
+        logger.debug(f"Cleaned up {len(expired_sessions)} expired citation sessions")
+
+
+# Backwards compatibility - module-level functions that use a default session
+# These are deprecated and should not be used in production
 def get_latest_podcast_citations() -> List[Dict]:
-    """Get the citations from the most recent podcast search."""
-    return _latest_podcast_citations.copy()
+    """
+    DEPRECATED: Get citations from default session.
+    Use get_podcast_citations(session_id) instead.
+    """
+    return get_podcast_citations("_default")
 
 
-def clear_podcast_citations():
-    """Clear stored podcast citations (call before new search)."""
-    global _latest_podcast_citations
-    _latest_podcast_citations = []
-
-
-def create_podcast_search_tool(config: Config, file_search_manager: GeminiFileSearchManager):
+def create_podcast_search_tool(config: Config, file_search_manager: GeminiFileSearchManager, session_id: str = "_default"):
     """
     Create a custom tool that wraps Gemini File Search for podcast transcripts.
 
     Args:
         config: Application configuration
         file_search_manager: Initialized GeminiFileSearchManager instance
+        session_id: Session identifier for thread-safe citation storage
 
     Returns:
         Function tool for searching podcasts
@@ -52,14 +166,15 @@ def create_podcast_search_tool(config: Config, file_search_manager: GeminiFileSe
         Returns:
             Dict containing response_text and citations with metadata
         """
-        global _latest_podcast_citations
         from google import genai
         from google.genai import types
 
-        logger.info(f"Podcast search tool called with query: {query}")
+        # Sanitize query to mitigate prompt injection
+        safe_query = sanitize_query(query)
+        logger.debug(f"Podcast search tool called with query: {safe_query[:100]}...")
 
-        # Clear previous citations
-        _latest_podcast_citations = []
+        # Clear previous citations for this session
+        clear_podcast_citations(session_id)
 
         try:
             client = genai.Client(api_key=config.GEMINI_API_KEY)
@@ -67,7 +182,7 @@ def create_podcast_search_tool(config: Config, file_search_manager: GeminiFileSe
 
             response = client.models.generate_content(
                 model=config.GEMINI_MODEL,
-                contents=f"Find and summarize relevant information about: {query}",
+                contents=f"Find and summarize relevant information about: {safe_query}",
                 config=types.GenerateContentConfig(
                     tools=[types.Tool(
                         file_search=types.FileSearch(
@@ -81,18 +196,18 @@ def create_podcast_search_tool(config: Config, file_search_manager: GeminiFileSe
             # Extract citations with metadata enrichment from cache
             citations = _extract_citations(response, file_search_manager)
 
-            # Store citations in module-level variable for retrieval by adk_routes
-            _latest_podcast_citations = citations
-            logger.info(f"Stored {len(citations)} podcast citations for retrieval")
+            # Store citations in session-specific storage for retrieval
+            set_podcast_citations(session_id, citations)
+            logger.debug(f"Stored {len(citations)} podcast citations for session {session_id}")
 
             result = {
                 'response_text': response.text if hasattr(response, 'text') else str(response),
                 'citations': citations,
                 'source': 'podcast_archive',
-                'query': query
+                'query': safe_query
             }
 
-            logger.info(f"Podcast search returned {len(citations)} citations")
+            logger.debug(f"Podcast search returned {len(citations)} citations")
             return result
 
         except Exception as e:
@@ -180,12 +295,13 @@ def _extract_citations(
     return citations
 
 
-def create_podcast_search_agent(config: Config) -> LlmAgent:
+def create_podcast_search_agent(config: Config, session_id: str = "_default") -> LlmAgent:
     """
     Create the PodcastSearchAgent with custom File Search tool.
 
     Args:
         config: Application configuration
+        session_id: Session identifier for thread-safe citation storage
 
     Returns:
         Configured LlmAgent for podcast search
@@ -209,6 +325,6 @@ When you receive results:
 
 Be thorough but concise. Focus on factual information from the transcripts.""",
         description="Searches podcast transcripts using Gemini File Search",
-        tools=[create_podcast_search_tool(config, file_search_manager)],
+        tools=[create_podcast_search_tool(config, file_search_manager, session_id)],
         output_key="podcast_results"
     )
