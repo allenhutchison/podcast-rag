@@ -189,6 +189,7 @@ async def generate_streaming_response(
         final_text = ""
         web_results = {}
         grounding_chunks = []
+        search_entry_point = ""  # Required by Google ToS for grounding
 
         # Track which agents we've seen
         seen_agents = set()
@@ -263,6 +264,12 @@ async def generate_streaming_response(
                             chunk_data['title'] = getattr(chunk.web, 'title', '')
                         grounding_chunks.append(chunk_data)
                     logger.debug(f"Extracted {len(grounding_chunks)} grounding chunks")
+                # Extract search entry point (required by Google ToS)
+                if hasattr(gm, 'search_entry_point') and gm.search_entry_point:
+                    rendered = getattr(gm.search_entry_point, 'rendered_content', '')
+                    if rendered and not search_entry_point:
+                        search_entry_point = rendered
+                        logger.debug("Extracted search entry point HTML")
 
             # Check for final response
             if hasattr(event, 'is_final_response') and event.is_final_response():
@@ -282,6 +289,12 @@ async def generate_streaming_response(
                                     chunk_data['title'] = getattr(chunk.web, 'title', '')
                                 if chunk_data and chunk_data not in grounding_chunks:
                                     grounding_chunks.append(chunk_data)
+                        # Extract search entry point from final response
+                        if hasattr(gm, 'search_entry_point') and gm.search_entry_point:
+                            rendered = getattr(gm.search_entry_point, 'rendered_content', '')
+                            if rendered and not search_entry_point:
+                                search_entry_point = rendered
+                                logger.debug("Extracted search entry point from final response")
 
         # Stream the final response word by word
         if final_text:
@@ -315,7 +328,13 @@ async def generate_streaming_response(
                 if c.get('source_type') == 'web':
                     logger.debug(f"Web citation: {c.get('ref_id')} - {c.get('title', 'no title')} - {c.get('url', 'no url')}")
 
-        yield f"event: citations\ndata: {json.dumps({'citations': citations})}\n\n"
+        # Include search entry point if available (required by Google ToS for grounding)
+        citations_data = {'citations': citations}
+        if search_entry_point:
+            citations_data['search_entry_point'] = search_entry_point
+            logger.info("Including Google search entry point in response")
+
+        yield f"event: citations\ndata: {json.dumps(citations_data)}\n\n"
 
         # Signal completion
         yield f"event: done\ndata: {json.dumps({'status': 'complete'})}\n\n"

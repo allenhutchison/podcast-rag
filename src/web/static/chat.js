@@ -78,82 +78,92 @@ function removeTypingIndicator() {
 /**
  * Render citations below the message
  * Handles both podcast (P prefix) and web (W prefix) citations
+ * Also renders Google search entry point if provided (required by ToS)
  */
-function renderCitations(container, citations) {
-    if (!citations || citations.length === 0) {
+function renderCitations(container, citations, searchEntryPoint) {
+    if ((!citations || citations.length === 0) && !searchEntryPoint) {
         return;
     }
 
-    const citationsHtml = citations.map(citation => {
+    // Separate podcast and web citations
+    const podcastCitations = citations ? citations.filter(c => c.source_type === 'podcast') : [];
+    const webCitations = citations ? citations.filter(c => c.source_type === 'web') : [];
+
+    // Render podcast citations
+    const podcastHtml = podcastCitations.map(citation => {
         const refId = citation.ref_id;
-        const isPodcast = citation.source_type === 'podcast';
-
-        if (isPodcast) {
-            // Podcast citation
-            const metadata = citation.metadata || {};
-            const parts = [];
-            if (metadata.podcast && metadata.episode) {
-                parts.push(`${metadata.podcast} - ${metadata.episode}`);
-            } else if (metadata.podcast) {
-                parts.push(metadata.podcast);
-            } else if (metadata.episode) {
-                parts.push(metadata.episode);
-            } else if (citation.title) {
-                // Clean up filename: remove _transcription.txt suffix and format
-                let cleanTitle = citation.title
-                    .replace(/_transcription\.txt$/i, '')
-                    .replace(/[-_]/g, ' ')
-                    .trim();
-                parts.push(cleanTitle);
-            }
-            const titleText = parts.length > 0 ? parts.join(' - ') : 'Podcast Source';
-            const dateText = metadata.release_date ? `(${metadata.release_date})` : '';
-
-            return `
-                <div class="citation-card bg-blue-50 border border-blue-200 rounded-md px-3 py-2">
-                    <span class="font-semibold text-blue-600 text-sm">[${refId}]</span>
-                    <span class="text-sm text-gray-800">${escapeHtml(titleText)}</span>
-                    ${dateText ? `<span class="text-xs text-gray-500 ml-1">${escapeHtml(dateText)}</span>` : ''}
-                </div>
-            `;
-        } else {
-            // Web citation
-            const titleText = citation.title || 'Web Source';
-            const url = citation.url || '';
-
-            // Extract domain from URL
-            let domain = '';
-            if (url) {
-                try {
-                    const urlObj = new URL(url);
-                    domain = urlObj.hostname.replace('www.', '');
-                } catch (e) {
-                    domain = url;
-                }
-            }
-
-            return `
-                <div class="citation-card bg-green-50 border border-green-200 rounded-md px-3 py-2">
-                    <div class="flex items-start gap-2">
-                        <span class="font-semibold text-green-600 text-sm flex-shrink-0">[${refId}]</span>
-                        <div class="flex-1 min-w-0">
-                            ${url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="text-sm text-gray-800 hover:text-green-700 hover:underline block truncate">${escapeHtml(titleText)}</a>` : `<span class="text-sm text-gray-800 block">${escapeHtml(titleText)}</span>`}
-                            ${domain ? `<span class="text-xs text-green-600 block">${escapeHtml(domain)}</span>` : ''}
-                        </div>
-                    </div>
-                </div>
-            `;
+        const metadata = citation.metadata || {};
+        const parts = [];
+        if (metadata.podcast && metadata.episode) {
+            parts.push(`${metadata.podcast} - ${metadata.episode}`);
+        } else if (metadata.podcast) {
+            parts.push(metadata.podcast);
+        } else if (metadata.episode) {
+            parts.push(metadata.episode);
+        } else if (citation.title) {
+            // Clean up filename: remove _transcription.txt suffix and format
+            let cleanTitle = citation.title
+                .replace(/_transcription\.txt$/i, '')
+                .replace(/[-_]/g, ' ')
+                .trim();
+            parts.push(cleanTitle);
         }
+        const titleText = parts.length > 0 ? parts.join(' - ') : 'Podcast Source';
+        const dateText = metadata.release_date ? `(${metadata.release_date})` : '';
+
+        return `
+            <div class="citation-card bg-blue-50 border border-blue-200 rounded-md px-3 py-2">
+                <span class="font-semibold text-blue-600 text-sm">[${refId}]</span>
+                <span class="text-sm text-gray-800">${escapeHtml(titleText)}</span>
+                ${dateText ? `<span class="text-xs text-gray-500 ml-1">${escapeHtml(dateText)}</span>` : ''}
+            </div>
+        `;
     }).join('');
 
-    container.innerHTML = `
-        <div class="border-t border-gray-200 pt-3 mt-2">
-            <p class="text-xs font-semibold text-gray-600 mb-2">SOURCES:</p>
-            <div class="space-y-2">
-                ${citationsHtml}
+    // Render web citations (simplified - just show domain as clickable link)
+    const webHtml = webCitations.map(citation => {
+        const refId = citation.ref_id;
+        // Title from Google is typically just the domain (e.g., "example.com")
+        const domain = citation.title || 'Web Source';
+        const url = citation.url || '';
+
+        return `
+            <div class="citation-card bg-green-50 border border-green-200 rounded-md px-3 py-2 inline-block mr-2 mb-1">
+                <span class="font-semibold text-green-600 text-sm">[${refId}]</span>
+                ${url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="text-sm text-green-700 hover:underline">${escapeHtml(domain)}</a>` : `<span class="text-sm text-gray-800">${escapeHtml(domain)}</span>`}
             </div>
-        </div>
-    `;
+        `;
+    }).join('');
+
+    // Build the full citations section
+    let html = '<div class="border-t border-gray-200 pt-3 mt-2">';
+
+    // Podcast sources section
+    if (podcastHtml) {
+        html += `
+            <p class="text-xs font-semibold text-gray-600 mb-2">PODCAST SOURCES:</p>
+            <div class="space-y-2 mb-3">
+                ${podcastHtml}
+            </div>
+        `;
+    }
+
+    // Web sources section (if we have web citations or search entry point)
+    if (webHtml || searchEntryPoint) {
+        html += `<p class="text-xs font-semibold text-gray-600 mb-2">WEB SOURCES:</p>`;
+
+        if (webHtml) {
+            html += `<div class="mb-2">${webHtml}</div>`;
+        }
+
+        // Google search entry point (required by ToS for grounding)
+        if (searchEntryPoint) {
+            html += `<div class="google-search-suggestions mt-2">${searchEntryPoint}</div>`;
+        }
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
 }
 
 /**
@@ -390,7 +400,7 @@ chatForm.addEventListener('submit', async (e) => {
                             scrollToBottom();
                         } else if (eventType === 'citations') {
                             textContainer.innerHTML = fullText;
-                            renderCitations(citationsContainer, data.citations);
+                            renderCitations(citationsContainer, data.citations, data.search_entry_point);
                             scrollToBottom();
                         } else if (eventType === 'status') {
                             // Handle status updates
