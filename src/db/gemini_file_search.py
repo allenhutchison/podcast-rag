@@ -47,6 +47,9 @@ class GeminiFileSearchManager:
     # Cache file name used for both local and GCS storage
     CACHE_FILE_NAME = '.file_search_cache.json'
 
+    # Gemini API maximum documents per page for list operations
+    MAX_PAGE_SIZE = 20
+
     def __init__(self, config, dry_run=False):
         """
         Initialize the File Search manager.
@@ -1025,23 +1028,21 @@ class GeminiFileSearchManager:
         # List documents from the store with max page size
         documents = self.client.file_search_stores.documents.list(
             parent=store_name,
-            config={'page_size': 20}  # API max is 20
+            config={'page_size': self.MAX_PAGE_SIZE}
         )
 
         # Check for tqdm availability before starting iteration
-        tqdm_available = False
+        tqdm_module = None
         if show_progress:
             try:
-                from tqdm import tqdm
-                tqdm_available = True
+                import tqdm as tqdm_module
             except ImportError:
                 logging.info("Fetching files (install tqdm for progress bar)...")
 
-        if show_progress and tqdm_available:
-            from tqdm import tqdm
+        if tqdm_module:
             print("Syncing files and metadata from remote File Search store...")
 
-            with tqdm(desc="Fetching files", unit=" files") as pbar:
+            with tqdm_module.tqdm(desc="Fetching files", unit=" files") as pbar:
                 for doc in documents:
                     metadata = self._extract_doc_metadata(doc)
                     files[doc.display_name] = doc.name
@@ -1094,32 +1095,24 @@ class GeminiFileSearchManager:
         files = {}
         files_with_metadata = {}
 
-        # Use async client with max page size (API limit is 20)
+        # Use async client with max page size
         documents = await self.client.aio.file_search_stores.documents.list(
             parent=store_name,
-            config={'page_size': 20}
+            config={'page_size': self.MAX_PAGE_SIZE}
         )
 
+        # Check for tqdm availability before starting iteration
+        tqdm_module = None
         if show_progress:
             try:
-                from tqdm import tqdm
-                print("Syncing files and metadata from remote File Search store (async)...")
-
-                with tqdm(desc="Fetching files", unit=" files") as pbar:
-                    async for doc in documents:
-                        metadata = self._extract_doc_metadata(doc)
-                        files[doc.display_name] = doc.name
-                        files_with_metadata[doc.display_name] = {
-                            'resource_name': doc.name,
-                            'metadata': metadata
-                        }
-                        pbar.update(1)
-
-                print(f"✓ Synced {len(files)} files with metadata from remote")
-
+                import tqdm as tqdm_module
             except ImportError:
                 logging.info("Fetching files (install tqdm for progress bar)...")
-                count = 0
+
+        if tqdm_module:
+            print("Syncing files and metadata from remote File Search store (async)...")
+
+            with tqdm_module.tqdm(desc="Fetching files", unit=" files") as pbar:
                 async for doc in documents:
                     metadata = self._extract_doc_metadata(doc)
                     files[doc.display_name] = doc.name
@@ -1127,10 +1120,24 @@ class GeminiFileSearchManager:
                         'resource_name': doc.name,
                         'metadata': metadata
                     }
-                    count += 1
-                    if count % 1000 == 0:
-                        logging.info(f"  Fetched {count} files...")
-                logging.info(f"Fetched {len(files)} files from remote")
+                    pbar.update(1)
+
+            print(f"✓ Synced {len(files)} files with metadata from remote")
+
+        elif show_progress:
+            # No tqdm, but progress requested - log periodically
+            count = 0
+            async for doc in documents:
+                metadata = self._extract_doc_metadata(doc)
+                files[doc.display_name] = doc.name
+                files_with_metadata[doc.display_name] = {
+                    'resource_name': doc.name,
+                    'metadata': metadata
+                }
+                count += 1
+                if count % 1000 == 0:
+                    logging.info(f"  Fetched {count} files...")
+            logging.info(f"Fetched {len(files)} files from remote")
         else:
             async for doc in documents:
                 metadata = self._extract_doc_metadata(doc)
