@@ -38,15 +38,16 @@ def sanitize_query(query: str) -> str:
     Sanitize user query to mitigate prompt injection attacks.
 
     This is a defense-in-depth measure. It:
-    1. Strips control characters
-    2. Limits query length
+    1. Strips control characters (except newlines and tabs)
+    2. Limits query length to 2000 characters
     3. Logs warnings for suspicious patterns (but doesn't block)
 
     Args:
-        query: Raw user query
+        query: Raw user query string
 
     Returns:
-        Sanitized query string
+        str: Sanitized query with control characters removed, length limited,
+            and whitespace trimmed. Suspicious patterns are logged but still returned.
     """
     # Strip control characters (except newlines and tabs)
     sanitized = ''.join(
@@ -85,7 +86,13 @@ def get_podcast_citations(session_id: str) -> List[Dict]:
         session_id: The session identifier
 
     Returns:
-        List of citation dictionaries, or empty list if not found
+        List[Dict]: Copy of citation list for the session. Each citation dict contains:
+            - index (int): 1-based citation index
+            - source_type (str): Always 'podcast'
+            - title (str): Episode/transcript title
+            - text (str): Relevant excerpt from transcript
+            - metadata (dict): Contains podcast, episode, release_date, hosts
+        Returns empty list if session not found.
     """
     with _citations_lock:
         session_data = _session_citations.get(session_id, {})

@@ -70,7 +70,12 @@ _runners_lock = threading.Lock()
 
 
 def _get_session_service():
-    """Get or create the shared session service."""
+    """
+    Get or create the shared session service.
+
+    Returns:
+        InMemorySessionService: Shared session service instance for all ADK sessions
+    """
     global _session_service
     if _session_service is None:
         from google.adk.sessions import InMemorySessionService
@@ -90,7 +95,8 @@ def _get_runner_for_session(session_id: str):
         session_id: The session identifier
 
     Returns:
-        Runner instance for this session
+        Runner: ADK Runner instance configured with a session-specific orchestrator
+            containing PodcastSearchAgent and WebSearchAgent sub-agents
     """
     with _runners_lock:
         if session_id not in _session_runners:
@@ -219,11 +225,18 @@ def _combine_citations(podcast_results: dict, web_results: dict) -> List[dict]:
     Combine citations from podcast and web search results.
 
     Args:
-        podcast_results: Results from PodcastSearchAgent
-        web_results: Results from WebSearchAgent
+        podcast_results: Results from PodcastSearchAgent containing 'citations' list
+        web_results: Results from WebSearchAgent containing 'grounding_chunks' list
 
     Returns:
-        List of unified citations with P/W prefixes
+        List[dict]: Unified citations list where each citation dict contains:
+            - ref_id (str): Reference ID with prefix (e.g., 'P1', 'W2')
+            - source_type (str): Either 'podcast' or 'web'
+            - title (str): Source title
+            - text (str): Excerpt or snippet text
+            - metadata (dict): Source-specific metadata
+                - For podcasts: podcast, episode, release_date, hosts
+                - For web: url
     """
     combined = []
 
@@ -247,8 +260,10 @@ def _combine_citations(podcast_results: dict, web_results: dict) -> List[dict]:
                     'ref_id': f"W{i}",
                     'source_type': 'web',
                     'title': chunk.get('title', ''),
-                    'url': chunk.get('uri', chunk.get('url', '')),
-                    'text': chunk.get('text', '')
+                    'text': chunk.get('text', ''),
+                    'metadata': {
+                        'url': chunk.get('uri', chunk.get('url', ''))
+                    }
                 })
 
     return combined
@@ -449,37 +464,38 @@ async def generate_streaming_response(
         # Get podcast citations from session-specific storage (set by the tool)
         podcast_citations = get_podcast_citations(session_id)
         podcast_results = {'citations': podcast_citations} if podcast_citations else {}
-        logger.info(f"Retrieved {len(podcast_citations)} podcast citations for session {session_id}")
+        logger.debug(f"Retrieved {len(podcast_citations)} podcast citations for session {session_id}")
 
         # Include grounding_chunks if we captured them from google_search
         if grounding_chunks:
             web_results = web_results or {}
             web_results['grounding_chunks'] = grounding_chunks
-            logger.info(f"Adding {len(grounding_chunks)} grounding chunks to web results")
+            logger.debug(f"Adding {len(grounding_chunks)} grounding chunks to web results")
 
         citations = _combine_citations(podcast_results, web_results)
 
         # Log citation details for debugging
         podcast_count = len([c for c in citations if c.get('source_type') == 'podcast'])
         web_count = len([c for c in citations if c.get('source_type') == 'web'])
-        logger.info(f"Citations: {podcast_count} podcast, {web_count} web")
+        logger.debug(f"Citations: {podcast_count} podcast, {web_count} web")
         if web_count > 0:
             for c in citations:
                 if c.get('source_type') == 'web':
-                    logger.debug(f"Web citation: {c.get('ref_id')} - {c.get('title', 'no title')} - {c.get('url', 'no url')}")
+                    url = c.get('metadata', {}).get('url', 'no url')
+                    logger.debug(f"Web citation: {c.get('ref_id')} - {c.get('title', 'no title')} - {url}")
 
         # Include search entry point if available (required by Google ToS for grounding)
         citations_data = {'citations': citations}
         if search_entry_point:
             citations_data['search_entry_point'] = search_entry_point
-            logger.info("Including Google search entry point in response")
+            logger.debug("Including Google search entry point in response")
 
         yield f"event: citations\ndata: {json.dumps(citations_data)}\n\n"
 
         # Signal completion
         yield f"event: done\ndata: {json.dumps({'status': 'complete'})}\n\n"
 
-        logger.info(f"Query completed with {len(citations)} citations")
+        logger.debug(f"Query completed with {len(citations)} citations")
 
     except asyncio.TimeoutError:
         logger.error("ADK orchestration timed out")

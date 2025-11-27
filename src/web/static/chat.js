@@ -125,7 +125,9 @@ function renderCitations(container, citations, searchEntryPoint) {
         const refId = citation.ref_id;
         // Title from Google is typically just the domain (e.g., "example.com")
         const domain = citation.title || 'Web Source';
-        const url = citation.url || '';
+        // URL is now in metadata for consistency with podcast citations
+        const metadata = citation.metadata || {};
+        const url = metadata.url || '';
 
         return `
             <div class="citation-card bg-green-50 border border-green-200 rounded-md px-3 py-2 inline-block mr-2 mb-1">
