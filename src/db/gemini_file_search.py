@@ -47,6 +47,9 @@ class GeminiFileSearchManager:
     # Cache file name used for both local and GCS storage
     CACHE_FILE_NAME = '.file_search_cache.json'
 
+    # Gemini API maximum documents per page for list operations
+    MAX_PAGE_SIZE = 20
+
     def __init__(self, config, dry_run=False):
         """
         Initialize the File Search manager.
@@ -958,7 +961,12 @@ class GeminiFileSearchManager:
         except Exception as e:
             logging.warning(f"Failed to update cache entry: {e}")
 
-    def get_existing_files(self, store_name: Optional[str] = None, use_cache: bool = True, show_progress: bool = False) -> Dict[str, str]:
+    def get_existing_files(
+        self,
+        store_name: Optional[str] = None,
+        use_cache: bool = True,
+        show_progress: bool = False
+    ) -> Dict[str, str]:
         """
         Get a mapping of display names to document resource names for existing files.
 
@@ -985,78 +993,227 @@ class GeminiFileSearchManager:
         # Cache miss or disabled - fetch from remote WITH METADATA
         logging.info("Fetching file list and metadata from remote File Search store...")
         try:
-            # List documents in the store and create mapping
-            documents = self.client.file_search_stores.documents.list(parent=store_name)
-            files = {}
-            files_with_metadata = {}  # Enhanced structure for cache
+            return self._fetch_files_sync(store_name, show_progress)
+        except Exception as e:
+            logging.error(f"Failed to list documents: {e}")
+            raise
 
-            # Show progress if requested
-            if show_progress:
-                try:
-                    from tqdm import tqdm
-                    # We don't know total count upfront (paginated API), so use a counter
-                    print("Syncing files and metadata from remote File Search store...")
-                    with tqdm(desc="Fetching files", unit=" files") as pbar:
-                        for doc in documents:
-                            files[doc.display_name] = doc.name
+    def _extract_doc_metadata(self, doc) -> Dict:
+        """Extract metadata from a document object."""
+        metadata = {}
+        if hasattr(doc, 'custom_metadata') and doc.custom_metadata:
+            for meta in doc.custom_metadata:
+                if hasattr(meta, 'key') and hasattr(meta, 'string_value'):
+                    metadata[meta.key] = meta.string_value
+        return metadata
 
-                            # Extract metadata for cache
-                            metadata = {}
-                            if hasattr(doc, 'custom_metadata') and doc.custom_metadata:
-                                for meta in doc.custom_metadata:
-                                    if hasattr(meta, 'key') and hasattr(meta, 'string_value'):
-                                        metadata[meta.key] = meta.string_value
+    def _fetch_files_sync(
+        self,
+        store_name: str,
+        show_progress: bool = False
+    ) -> Dict[str, str]:
+        """
+        Fetch files from remote store using synchronous iteration.
 
-                            files_with_metadata[doc.display_name] = {
-                                'resource_name': doc.name,
-                                'metadata': metadata
-                            }
-                            pbar.update(1)
-                    print(f"✓ Synced {len(files)} files with metadata from remote")
-                except ImportError:
-                    # Fallback if tqdm not available
-                    logging.info("Fetching files (install tqdm for progress bar)...")
-                    count = 0
-                    for doc in documents:
-                        files[doc.display_name] = doc.name
+        Args:
+            store_name: Store to fetch from
+            show_progress: Show progress bar
 
-                        # Extract metadata for cache
-                        metadata = {}
-                        if hasattr(doc, 'custom_metadata') and doc.custom_metadata:
-                            for meta in doc.custom_metadata:
-                                if hasattr(meta, 'key') and hasattr(meta, 'string_value'):
-                                    metadata[meta.key] = meta.string_value
+        Returns:
+            Dictionary mapping display_name -> document resource name
+        """
+        files = {}
+        files_with_metadata = {}
 
-                        files_with_metadata[doc.display_name] = {
-                            'resource_name': doc.name,
-                            'metadata': metadata
-                        }
-                        count += 1
-                        if count % 1000 == 0:
-                            logging.info(f"  Fetched {count} files...")
-                    logging.info(f"Fetched {len(files)} files from remote")
-            else:
-                # No progress, just fetch silently
+        # List documents from the store with max page size
+        documents = self.client.file_search_stores.documents.list(
+            parent=store_name,
+            config={'page_size': self.MAX_PAGE_SIZE}
+        )
+
+        # Check for tqdm availability before starting iteration
+        tqdm_module = None
+        if show_progress:
+            try:
+                import tqdm as tqdm_module
+            except ImportError:
+                logging.info("Fetching files (install tqdm for progress bar)...")
+
+        if tqdm_module:
+            print("Syncing files and metadata from remote File Search store...")
+
+            with tqdm_module.tqdm(desc="Fetching files", unit=" files") as pbar:
                 for doc in documents:
+                    metadata = self._extract_doc_metadata(doc)
                     files[doc.display_name] = doc.name
-
-                    # Extract metadata for cache
-                    metadata = {}
-                    if hasattr(doc, 'custom_metadata') and doc.custom_metadata:
-                        for meta in doc.custom_metadata:
-                            if hasattr(meta, 'key') and hasattr(meta, 'string_value'):
-                                metadata[meta.key] = meta.string_value
-
                     files_with_metadata[doc.display_name] = {
                         'resource_name': doc.name,
                         'metadata': metadata
                     }
-                logging.info(f"Fetched {len(files)} files from remote")
+                    pbar.update(1)
 
-            # Save enhanced cache with metadata
-            self._save_cache_with_metadata(store_name, files_with_metadata)
+            print(f"✓ Synced {len(files)} files with metadata from remote")
+        else:
+            # No progress bar or tqdm not available
+            count = 0
+            for doc in documents:
+                metadata = self._extract_doc_metadata(doc)
+                files[doc.display_name] = doc.name
+                files_with_metadata[doc.display_name] = {
+                    'resource_name': doc.name,
+                    'metadata': metadata
+                }
+                count += 1
+                if count % 1000 == 0:
+                    logging.info(f"  Fetched {count} files...")
 
-            return files
+            logging.info(f"Fetched {len(files)} files from remote")
+
+        # Save enhanced cache with metadata
+        self._save_cache_with_metadata(store_name, files_with_metadata)
+
+        return files
+
+    async def _fetch_files_async(
+        self,
+        store_name: str,
+        show_progress: bool = False
+    ) -> Dict[str, str]:
+        """
+        Fetch files from remote store using async API.
+
+        Uses the native async SDK support for faster iteration through
+        paginated results.
+
+        Args:
+            store_name: Store to fetch from
+            show_progress: Show progress bar
+
+        Returns:
+            Dictionary mapping display_name -> document resource name
+        """
+        files = {}
+        files_with_metadata = {}
+
+        # Use async client with max page size
+        documents = await self.client.aio.file_search_stores.documents.list(
+            parent=store_name,
+            config={'page_size': self.MAX_PAGE_SIZE}
+        )
+
+        # Check for tqdm availability before starting iteration
+        tqdm_module = None
+        if show_progress:
+            try:
+                import tqdm as tqdm_module
+            except ImportError:
+                logging.info("Fetching files (install tqdm for progress bar)...")
+
+        if tqdm_module:
+            print("Syncing files and metadata from remote File Search store (async)...")
+
+            with tqdm_module.tqdm(desc="Fetching files", unit=" files") as pbar:
+                async for doc in documents:
+                    metadata = self._extract_doc_metadata(doc)
+                    files[doc.display_name] = doc.name
+                    files_with_metadata[doc.display_name] = {
+                        'resource_name': doc.name,
+                        'metadata': metadata
+                    }
+                    pbar.update(1)
+
+            print(f"✓ Synced {len(files)} files with metadata from remote")
+
+        elif show_progress:
+            # No tqdm, but progress requested - log periodically
+            count = 0
+            async for doc in documents:
+                metadata = self._extract_doc_metadata(doc)
+                files[doc.display_name] = doc.name
+                files_with_metadata[doc.display_name] = {
+                    'resource_name': doc.name,
+                    'metadata': metadata
+                }
+                count += 1
+                if count % 1000 == 0:
+                    logging.info(f"  Fetched {count} files...")
+            logging.info(f"Fetched {len(files)} files from remote")
+        else:
+            async for doc in documents:
+                metadata = self._extract_doc_metadata(doc)
+                files[doc.display_name] = doc.name
+                files_with_metadata[doc.display_name] = {
+                    'resource_name': doc.name,
+                    'metadata': metadata
+                }
+            logging.info(f"Fetched {len(files)} files from remote")
+
+        # Save enhanced cache with metadata
+        self._save_cache_with_metadata(store_name, files_with_metadata)
+
+        return files
+
+    def get_existing_files_async(
+        self,
+        store_name: Optional[str] = None,
+        use_cache: bool = True,
+        show_progress: bool = False
+    ) -> Dict[str, str]:
+        """
+        Get existing files using async API for faster fetching.
+
+        This is a synchronous wrapper that runs the async fetch internally.
+        Use this for faster cache rebuilding.
+
+        Note: This method creates a new event loop with asyncio.run(). It will
+        fail if called from within an existing async context. For async contexts,
+        use _fetch_files_async() directly with await.
+
+        Args:
+            store_name: Store to query (uses default if None)
+            use_cache: If True, try to load from local cache first (default: True)
+            show_progress: If True, show progress bar during remote fetch (default: False)
+
+        Returns:
+            Dictionary mapping display_name -> document resource name
+
+        Raises:
+            RuntimeError: If called from within an existing async event loop.
+                Use the sync get_existing_files() method instead in async contexts,
+                or await _fetch_files_async() directly.
+        """
+        import asyncio
+
+        if store_name is None:
+            store_name = self.create_or_get_store()
+
+        if self.dry_run:
+            return {}
+
+        # Try to load from cache if enabled
+        if use_cache:
+            cached_files = self._load_cache(store_name)
+            if cached_files is not None:
+                return cached_files
+
+        # Check for existing event loop to provide helpful error message
+        try:
+            asyncio.get_running_loop()
+            # If we get here, there IS a running loop - can't use asyncio.run()
+            raise RuntimeError(
+                "get_existing_files_async() cannot be called from within an async context. "
+                "Use get_existing_files() (sync) instead, or await _fetch_files_async() directly."
+            )
+        except RuntimeError as e:
+            # Only proceed if it's the "no running loop" error
+            if "cannot be called from within an async context" in str(e):
+                raise  # Re-raise our custom error
+            # Otherwise it's the expected "no running loop" case, proceed
+
+        # Cache miss - fetch from remote using async
+        logging.info("Fetching file list using async API...")
+        try:
+            return asyncio.run(self._fetch_files_async(store_name, show_progress))
         except Exception as e:
             logging.error(f"Failed to list documents: {e}")
             raise
