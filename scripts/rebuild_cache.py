@@ -4,10 +4,15 @@ Script to rebuild the File Search cache with metadata.
 
 This script fetches all documents from the remote File Search store
 and saves them to the local cache file with full metadata.
+
+Supports both sync and async modes:
+- Async mode (default): Uses native async SDK for faster fetching
+- Sync mode: Uses concurrent thread pool processing
 """
 
 import logging
 import sys
+import time
 from pathlib import Path
 
 # Add parent directory to path to import from src
@@ -22,6 +27,23 @@ def main():
     """Rebuild the cache with metadata from remote."""
     parser = get_base_parser()
     parser.description = "Rebuild File Search cache with metadata"
+    parser.add_argument(
+        '--sync',
+        action='store_true',
+        help='Use synchronous mode with thread pool (default: async mode)'
+    )
+    parser.add_argument(
+        '--page-size',
+        type=int,
+        default=20,
+        help='Number of documents per API page (default: 20, max: 20)'
+    )
+    parser.add_argument(
+        '--workers',
+        type=int,
+        default=4,
+        help='Number of worker threads for sync mode (default: 4)'
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -30,8 +52,9 @@ def main():
         handlers=[logging.StreamHandler()]
     )
 
-    print("Rebuilding File Search cache with metadata...")
-    print("This will take about 10 minutes for 18k files.\n")
+    mode = "sync (threaded)" if args.sync else "async"
+    print(f"Rebuilding File Search cache with metadata ({mode} mode)...")
+    print(f"Page size: {args.page_size}\n")
 
     # Load config
     config = Config(env_file=args.env_file)
@@ -61,15 +84,34 @@ def main():
 
     # Fetch all files with metadata (show progress)
     print("\nFetching files and metadata from remote...")
-    files = manager.get_existing_files(store_name, use_cache=False, show_progress=True)
+    start_time = time.time()
 
-    print(f"\n✓ Cache rebuilt with {len(files)} files and metadata!")
-    
-    if config.GCS_METADATA_BUCKET:
-        print(f"Cache saved to GCS bucket: {config.GCS_METADATA_BUCKET}")
+    if args.sync:
+        # Use sync mode with thread pool
+        files = manager.get_existing_files(
+            store_name,
+            use_cache=False,
+            show_progress=True,
+            max_workers=args.workers
+        )
     else:
-        print(f"Cache file: {manager._get_cache_path()}")
-        
+        # Use async mode (faster)
+        files = manager.get_existing_files_async(
+            store_name,
+            use_cache=False,
+            show_progress=True,
+            page_size=args.page_size
+        )
+
+    elapsed = time.time() - start_time
+    print(f"\n✓ Cache rebuilt with {len(files)} files and metadata!")
+    print(f"  Time elapsed: {elapsed:.1f} seconds ({len(files)/elapsed:.0f} files/sec)")
+
+    if config.GCS_METADATA_BUCKET:
+        print(f"  Cache saved to GCS bucket: {config.GCS_METADATA_BUCKET}")
+    else:
+        print(f"  Cache file: {manager._get_cache_path()}")
+
     print("\nAll future RAG queries will now use instant metadata lookups!")
 
 
