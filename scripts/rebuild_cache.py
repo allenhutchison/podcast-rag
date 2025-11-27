@@ -36,7 +36,9 @@ def main():
         '--page-size',
         type=int,
         default=20,
-        help='Number of documents per API page (default: 20, max: 20)'
+        choices=range(1, 21),
+        metavar='N',
+        help='Number of documents per API page (1-20, default: 20)'
     )
     parser.add_argument(
         '--workers',

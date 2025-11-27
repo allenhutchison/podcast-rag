@@ -1031,7 +1031,7 @@ class GeminiFileSearchManager:
         from concurrent.futures import ThreadPoolExecutor, as_completed
         import threading
 
-        # Results storage (thread-safe via GIL for dict operations)
+        # Results storage - protected by lock for thread-safe updates
         files = {}
         files_with_metadata = {}
         lock = threading.Lock()
@@ -1058,44 +1058,51 @@ class GeminiFileSearchManager:
             config={'page_size': page_size}
         )
 
+        # Check for tqdm availability before starting iteration
+        tqdm_available = False
         if show_progress:
             try:
                 from tqdm import tqdm
-                print("Syncing files and metadata from remote File Search store...")
-
-                # Collect documents in batches and process concurrently
-                batch = []
-                futures = []
-
-                with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    with tqdm(desc="Fetching files", unit=" files") as pbar:
-                        for doc in documents:
-                            batch.append(doc)
-
-                            if len(batch) >= BATCH_SIZE:
-                                # Submit batch for processing
-                                futures.append(executor.submit(process_batch, batch))
-                                batch = []
-
-                            pbar.update(1)
-
-                        # Process remaining batch
-                        if batch:
-                            futures.append(executor.submit(process_batch, batch))
-
-                    # Collect results from all futures
-                    for future in as_completed(futures):
-                        batch_files, batch_metadata = future.result()
-                        with lock:
-                            files.update(batch_files)
-                            files_with_metadata.update(batch_metadata)
-
-                print(f"✓ Synced {len(files)} files with metadata from remote")
-
+                tqdm_available = True
             except ImportError:
-                # Fallback if tqdm not available
                 logging.info("Fetching files (install tqdm for progress bar)...")
-                self._fetch_files_sequential(documents, files, files_with_metadata)
+
+        if show_progress and tqdm_available:
+            from tqdm import tqdm
+            print("Syncing files and metadata from remote File Search store...")
+
+            # Collect documents in batches and process concurrently
+            batch = []
+            futures = []
+
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                with tqdm(desc="Fetching files", unit=" files") as pbar:
+                    for doc in documents:
+                        batch.append(doc)
+
+                        if len(batch) >= BATCH_SIZE:
+                            # Submit batch for processing
+                            futures.append(executor.submit(process_batch, batch))
+                            batch = []
+
+                        pbar.update(1)
+
+                    # Process remaining batch
+                    if batch:
+                        futures.append(executor.submit(process_batch, batch))
+
+                # Collect results from all futures
+                for future in as_completed(futures):
+                    batch_files, batch_metadata = future.result()
+                    with lock:
+                        files.update(batch_files)
+                        files_with_metadata.update(batch_metadata)
+
+            print(f"✓ Synced {len(files)} files with metadata from remote")
+
+        elif show_progress and not tqdm_available:
+            # Fallback sequential fetch when tqdm not available
+            self._fetch_files_sequential(documents, files, files_with_metadata)
         else:
             # No progress bar - still use concurrent processing
             batch = []
@@ -1230,6 +1237,10 @@ class GeminiFileSearchManager:
         This is a synchronous wrapper that runs the async fetch internally.
         Use this for faster cache rebuilding.
 
+        Note: This method creates a new event loop with asyncio.run(). It will
+        fail if called from within an existing async context. For async contexts,
+        use _fetch_files_async() directly with await.
+
         Args:
             store_name: Store to query (uses default if None)
             use_cache: If True, try to load from local cache first (default: True)
@@ -1238,6 +1249,11 @@ class GeminiFileSearchManager:
 
         Returns:
             Dictionary mapping display_name -> document resource name
+
+        Raises:
+            RuntimeError: If called from within an existing async event loop.
+                Use the sync get_existing_files() method instead in async contexts,
+                or await _fetch_files_async() directly.
         """
         import asyncio
 
@@ -1252,6 +1268,17 @@ class GeminiFileSearchManager:
             cached_files = self._load_cache(store_name)
             if cached_files is not None:
                 return cached_files
+
+        # Check for existing event loop to provide helpful error message
+        try:
+            loop = asyncio.get_running_loop()
+            raise RuntimeError(
+                "get_existing_files_async() cannot be called from within an async context. "
+                "Use get_existing_files() (sync) instead, or await _fetch_files_async() directly."
+            )
+        except RuntimeError as e:
+            if "no running event loop" not in str(e):
+                raise
 
         # Cache miss - fetch from remote using async
         logging.info("Fetching file list using async API...")
