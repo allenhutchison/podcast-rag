@@ -89,8 +89,9 @@ def main():
         )
 
     elapsed = time.time() - start_time
+    throughput = len(files) / elapsed if elapsed > 0 else 0
     print(f"\n✓ Cache rebuilt with {len(files)} files and metadata!")
-    print(f"  Time elapsed: {elapsed:.1f} seconds ({len(files)/elapsed:.0f} files/sec)")
+    print(f"  Time elapsed: {elapsed:.1f} seconds ({throughput:.0f} files/sec)")
 
     if config.GCS_METADATA_BUCKET:
         print(f"  Cache saved to GCS bucket: {config.GCS_METADATA_BUCKET}")

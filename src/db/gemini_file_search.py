@@ -1195,14 +1195,15 @@ class GeminiFileSearchManager:
 
         # Check for existing event loop to provide helpful error message
         try:
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
+            # If we get here, there IS a running loop - can't use asyncio.run()
             raise RuntimeError(
                 "get_existing_files_async() cannot be called from within an async context. "
                 "Use get_existing_files() (sync) instead, or await _fetch_files_async() directly."
             )
-        except RuntimeError as e:
-            if "no running event loop" not in str(e):
-                raise
+        except RuntimeError:
+            # No running loop - this is what we want, proceed with asyncio.run()
+            pass
 
         # Cache miss - fetch from remote using async
         logging.info("Fetching file list using async API...")
