@@ -143,7 +143,7 @@ def _validate_session_id(session_id: str) -> str:
     # Allow only alphanumeric, hyphens, and underscores
     # This covers standard UUIDs and common session ID formats
     if not re.match(r'^[a-zA-Z0-9_-]+$', session_id):
-        logger.warning(f"Session ID contains invalid characters, generating new one")
+        logger.warning("Session ID contains invalid characters, generating new one")
         return str(uuid.uuid4())
 
     return session_id
@@ -272,7 +272,7 @@ def _combine_citations(podcast_results: dict, web_results: dict) -> List[dict]:
 async def generate_streaming_response(
     query: str,
     session_id: str,
-    history: Optional[List[dict]] = None
+    history: Optional[List[dict]] = None  # TODO: Integrate with ADK session context
 ) -> AsyncGenerator[str, None]:
     """
     Generate streaming response from ADK multi-agent pipeline.
