@@ -77,46 +77,95 @@ function removeTypingIndicator() {
 
 /**
  * Render citations below the message
+ * Handles both podcast (P prefix) and web (W prefix) citations
+ * Also renders Google search entry point if provided (required by ToS)
  */
-function renderCitations(container, citations) {
-    if (!citations || citations.length === 0) {
+function renderCitations(container, citations, searchEntryPoint) {
+    if ((!citations || citations.length === 0) && !searchEntryPoint) {
         return;
     }
 
-    const citationsHtml = citations.map(citation => {
-        const { index, metadata } = citation;
-        const { podcast, episode, release_date } = metadata;
+    // Separate podcast and web citations
+    const podcastCitations = citations ? citations.filter(c => c.source_type === 'podcast') : [];
+    const webCitations = citations ? citations.filter(c => c.source_type === 'web') : [];
 
-        // Build citation text
+    // Render podcast citations
+    const podcastHtml = podcastCitations.map(citation => {
+        const refId = citation.ref_id;
+        const metadata = citation.metadata || {};
         const parts = [];
-        if (podcast && episode) {
-            parts.push(`${podcast} - ${episode}`);
-        } else if (podcast) {
-            parts.push(podcast);
-        } else if (episode) {
-            parts.push(episode);
+        if (metadata.podcast && metadata.episode) {
+            parts.push(`${metadata.podcast} - ${metadata.episode}`);
+        } else if (metadata.podcast) {
+            parts.push(metadata.podcast);
+        } else if (metadata.episode) {
+            parts.push(metadata.episode);
+        } else if (citation.title) {
+            // Clean up filename: remove _transcription.txt suffix and format
+            let cleanTitle = citation.title
+                .replace(/_transcription\.txt$/i, '')
+                .replace(/[-_]/g, ' ')
+                .trim();
+            parts.push(cleanTitle);
         }
-
-        const titleText = parts.length > 0 ? parts.join(' - ') : 'Unknown Source';
-        const dateText = release_date ? `(${release_date})` : '';
+        const titleText = parts.length > 0 ? parts.join(' - ') : 'Podcast Source';
+        const dateText = metadata.release_date ? `(${metadata.release_date})` : '';
 
         return `
-            <div class="citation-card bg-gray-50 border border-gray-200 rounded-md px-3 py-2">
-                <span class="font-semibold text-primary text-sm">[${index}]</span>
+            <div class="citation-card bg-blue-50 border border-blue-200 rounded-md px-3 py-2">
+                <span class="font-semibold text-blue-600 text-sm">[${refId}]</span>
                 <span class="text-sm text-gray-800">${escapeHtml(titleText)}</span>
                 ${dateText ? `<span class="text-xs text-gray-500 ml-1">${escapeHtml(dateText)}</span>` : ''}
             </div>
         `;
     }).join('');
 
-    container.innerHTML = `
-        <div class="border-t border-gray-200 pt-3 mt-2">
-            <p class="text-xs font-semibold text-gray-600 mb-2">SOURCES:</p>
-            <div class="space-y-2">
-                ${citationsHtml}
+    // Render web citations (simplified - just show domain as clickable link)
+    const webHtml = webCitations.map(citation => {
+        const refId = citation.ref_id;
+        // Title from Google is typically just the domain (e.g., "example.com")
+        const domain = citation.title || 'Web Source';
+        // URL is now in metadata for consistency with podcast citations
+        const metadata = citation.metadata || {};
+        const url = metadata.url || '';
+
+        return `
+            <div class="citation-card bg-green-50 border border-green-200 rounded-md px-3 py-2 inline-block mr-2 mb-1">
+                <span class="font-semibold text-green-600 text-sm">[${refId}]</span>
+                ${url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="text-sm text-green-700 hover:underline">${escapeHtml(domain)}</a>` : `<span class="text-sm text-gray-800">${escapeHtml(domain)}</span>`}
             </div>
-        </div>
-    `;
+        `;
+    }).join('');
+
+    // Build the full citations section
+    let html = '<div class="border-t border-gray-200 pt-3 mt-2">';
+
+    // Podcast sources section
+    if (podcastHtml) {
+        html += `
+            <p class="text-xs font-semibold text-gray-600 mb-2">PODCAST SOURCES:</p>
+            <div class="space-y-2 mb-3">
+                ${podcastHtml}
+            </div>
+        `;
+    }
+
+    // Web sources section (if we have web citations or search entry point)
+    if (webHtml || searchEntryPoint) {
+        html += `<p class="text-xs font-semibold text-gray-600 mb-2">WEB SOURCES:</p>`;
+
+        if (webHtml) {
+            html += `<div class="mb-2">${webHtml}</div>`;
+        }
+
+        // Google search entry point (required by ToS for grounding)
+        if (searchEntryPoint) {
+            html += `<div class="google-search-suggestions mt-2">${searchEntryPoint}</div>`;
+        }
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
 }
 
 /**
@@ -150,6 +199,63 @@ function escapeHtml(text) {
  */
 function scrollToBottom() {
     chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+/**
+ * Update the status display during search
+ */
+function updateStatusDisplay(container, agent, message, isComplete = false, isThought = false) {
+    // Get or create status container
+    let statusContainer = container.querySelector('.status-container');
+    if (!statusContainer) {
+        statusContainer = document.createElement('div');
+        statusContainer.className = 'status-container space-y-2';
+        container.innerHTML = '';
+        container.appendChild(statusContainer);
+    }
+
+    // Agent icons and colors
+    const agentConfig = {
+        'podcast': { icon: '🎙️', color: 'blue', label: 'Podcast Search' },
+        'web': { icon: '🌐', color: 'green', label: 'Web Search' },
+        'synthesizer': { icon: '🔄', color: 'purple', label: 'Synthesizer' },
+        'tool': { icon: '🔧', color: 'gray', label: 'Tool' },
+        'agent': { icon: '🤖', color: 'gray', label: 'Agent' }
+    };
+
+    const config = agentConfig[agent] || agentConfig['agent'];
+
+    if (isThought) {
+        // Show agent thought in a subtle way
+        let thoughtEl = statusContainer.querySelector(`.thought-${agent}`);
+        if (!thoughtEl) {
+            thoughtEl = document.createElement('div');
+            thoughtEl.className = `thought-${agent} text-xs text-gray-500 italic pl-6 border-l-2 border-${config.color}-200 mt-1`;
+            statusContainer.appendChild(thoughtEl);
+        }
+        thoughtEl.textContent = message;
+    } else {
+        // Show agent status
+        const statusId = `status-${agent}`;
+        let statusEl = statusContainer.querySelector(`#${statusId}`);
+
+        if (!statusEl) {
+            statusEl = document.createElement('div');
+            statusEl.id = statusId;
+            statusEl.className = `flex items-center gap-2 text-sm`;
+            statusContainer.appendChild(statusEl);
+        }
+
+        const checkmark = isComplete ? '✓' : '';
+        const spinnerClass = isComplete ? '' : 'animate-pulse';
+        const textColor = isComplete ? 'text-gray-400' : `text-${config.color}-600`;
+
+        statusEl.innerHTML = `
+            <span class="${spinnerClass}">${config.icon}</span>
+            <span class="${textColor}">${escapeHtml(message)}</span>
+            <span class="text-green-500">${checkmark}</span>
+        `;
+    }
 }
 
 /**
@@ -296,7 +402,27 @@ chatForm.addEventListener('submit', async (e) => {
                             scrollToBottom();
                         } else if (eventType === 'citations') {
                             textContainer.innerHTML = fullText;
-                            renderCitations(citationsContainer, data.citations);
+                            renderCitations(citationsContainer, data.citations, data.search_entry_point);
+                            scrollToBottom();
+                        } else if (eventType === 'status') {
+                            // Handle status updates
+                            if (data.phase === 'searching') {
+                                textContainer.innerHTML = '<div class="status-container"><span class="text-gray-500 italic">Starting search...</span></div>';
+                            } else if (data.phase === 'responding') {
+                                textContainer.innerHTML = '';
+                            } else if (data.agent && data.status === 'started') {
+                                // Agent started
+                                updateStatusDisplay(textContainer, data.agent, data.message);
+                            } else if (data.agent && data.status === 'complete') {
+                                // Agent completed
+                                updateStatusDisplay(textContainer, data.agent, data.message, true);
+                            } else if (data.tool) {
+                                // Tool being called
+                                updateStatusDisplay(textContainer, 'tool', data.message);
+                            } else if (data.thought) {
+                                // Agent thought/intermediate output
+                                updateStatusDisplay(textContainer, data.agent || 'agent', data.thought, false, true);
+                            }
                             scrollToBottom();
                         } else if (eventType === 'done') {
                             // Add assistant response to history
