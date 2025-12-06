@@ -176,21 +176,21 @@ class TranscriptionWorker(WorkerInterface):
                     result.processed += 1
 
                 except FileNotFoundError as e:
-                    error_msg = f"Episode {episode.id}: {e}"
-                    logger.error(error_msg)
-                    self.repository.mark_transcript_failed(episode.id, str(e))
+                    error_msg = str(e)
+                    logger.exception(f"Episode {episode.id} transcription failed: file not found")
+                    self.repository.mark_transcript_failed(episode.id, error_msg)
                     result.failed += 1
-                    result.errors.append(error_msg)
+                    result.errors.append(f"Episode {episode.id}: {error_msg}")
 
                 except Exception as e:
-                    error_msg = f"Episode {episode.id}: {e}"
-                    logger.exception(error_msg)
-                    self.repository.mark_transcript_failed(episode.id, str(e))
+                    error_msg = str(e)
+                    logger.exception(f"Episode {episode.id} transcription failed")
+                    self.repository.mark_transcript_failed(episode.id, error_msg)
                     result.failed += 1
-                    result.errors.append(error_msg)
+                    result.errors.append(f"Episode {episode.id}: {error_msg}")
 
         except Exception as e:
-            logger.exception(f"Transcription batch failed: {e}")
+            logger.exception("Transcription batch failed")
             result.failed += 1
             result.errors.append(str(e))
 
