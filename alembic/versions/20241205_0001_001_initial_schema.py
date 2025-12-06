@@ -20,6 +20,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # Create podcasts table
+    """
+    Create the initial database schema for podcasts and episodes.
+    
+    Creates 'podcasts' and 'episodes' tables with their columns, defaults, and timestamps; establishes a foreign key from 'episodes.podcast_id' to 'podcasts.id' with ON DELETE CASCADE; adds indexes on feed_url, podcast_id, download_status, transcript_status, file_search_status, and published_date; and creates a unique constraint 'uq_episode_podcast_guid' on (podcast_id, guid).
+    """
     op.create_table(
         'podcasts',
         sa.Column('id', sa.String(36), primary_key=True),
@@ -103,5 +108,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """
+    Revert the migration by removing the episodes and podcasts tables from the database.
+    
+    This drops the 'episodes' table first and then the 'podcasts' table, undoing the schema created by the corresponding upgrade migration.
+    """
     op.drop_table('episodes')
     op.drop_table('podcasts')

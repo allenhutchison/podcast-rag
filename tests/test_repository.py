@@ -11,7 +11,11 @@ from src.db.repository import SQLAlchemyPodcastRepository
 
 @pytest.fixture
 def repository(tmp_path):
-    """Create a test repository with SQLite."""
+    """
+    Create a temporary SQLite-backed repository for tests.
+    
+    Yields a repository instance configured to use a SQLite file under the provided temporary path and closes the repository when the fixture is torn down.
+    """
     db_path = tmp_path / "test.db"
     repo = create_repository(f"sqlite:///{db_path}")
     yield repo
@@ -20,7 +24,12 @@ def repository(tmp_path):
 
 @pytest.fixture
 def sample_podcast(repository):
-    """Create a sample podcast for testing."""
+    """
+    Create and persist a sample podcast used by tests.
+    
+    Returns:
+        podcast: The created podcast object with an assigned `id` and the provided fields (feed_url, title, description, author, language).
+    """
     return repository.create_podcast(
         feed_url="https://example.com/feed.xml",
         title="Test Podcast",
@@ -313,7 +322,11 @@ class TestStatusUpdates:
         assert episode.download_error == "Connection timeout"
 
     def test_transcript_status_flow(self, repository, sample_podcast):
-        """Test transcription status transitions."""
+        """
+        Verify that an episode's transcript status progresses from "processing" to "completed" and that the transcript path is recorded when transcription completes.
+        
+        The test creates an episode, marks transcription as started, asserts the status becomes "processing", then marks transcription as complete with a file path and asserts the status is "completed" and the transcript path is stored.
+        """
         episode = repository.create_episode(
             podcast_id=sample_podcast.id,
             guid="episode-1",

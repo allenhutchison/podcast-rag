@@ -82,6 +82,12 @@ class Podcast(Base):
     __table_args__ = (Index("ix_podcasts_feed_url", "feed_url"),)
 
     def __repr__(self) -> str:
+        """
+        Provide a concise developer-facing string representation of the Podcast.
+        
+        Returns:
+            str: A string in the form "<Podcast(id=<id>, title='<title>')>".
+        """
         return f"<Podcast(id={self.id}, title={self.title!r})>"
 
 
@@ -190,11 +196,22 @@ class Episode(Base):
     )
 
     def __repr__(self) -> str:
+        """
+        Return a concise debug-friendly representation of the Episode instance.
+        
+        Returns:
+            A string in the format "<Episode(id=<id>, title='<title>')>" representing the instance.
+        """
         return f"<Episode(id={self.id}, title={self.title!r})>"
 
     @property
     def is_fully_processed(self) -> bool:
-        """Check if episode has completed all processing stages."""
+        """
+        Determine whether the episode has completed transcription, metadata extraction, and file-search indexing.
+        
+        Returns:
+            `true` if `transcript_status` and `metadata_status` are "completed" and `file_search_status` is "indexed", `false` otherwise.
+        """
         return (
             self.transcript_status == "completed"
             and self.metadata_status == "completed"
@@ -203,5 +220,10 @@ class Episode(Base):
 
     @property
     def can_cleanup_audio(self) -> bool:
-        """Check if audio file can be safely deleted."""
+        """
+        Indicates whether the episode's downloaded audio file is eligible for deletion.
+        
+        Returns:
+            bool: `True` if the episode is fully processed and a local audio file path exists, `False` otherwise.
+        """
         return self.is_fully_processed and self.local_file_path is not None

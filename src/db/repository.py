@@ -29,34 +29,88 @@ class PodcastRepositoryInterface(ABC):
 
     @abstractmethod
     def create_podcast(self, feed_url: str, title: str, **kwargs) -> Podcast:
-        """Create a new podcast subscription."""
+        """
+        Create and persist a new podcast subscription for the given feed URL and title.
+        
+        Parameters:
+            feed_url (str): RSS or Atom feed URL of the podcast.
+            title (str): Display title for the podcast subscription.
+            **kwargs: Additional Podcast attributes to set (e.g., description, is_subscribed, image_url).
+        
+        Returns:
+            Podcast: The persisted Podcast instance with updated identifiers and timestamps.
+        """
         pass
 
     @abstractmethod
     def get_podcast(self, podcast_id: str) -> Optional[Podcast]:
-        """Get podcast by ID."""
+        """
+        Retrieve a podcast by its identifier.
+        
+        Returns:
+            Podcast if a podcast with the given ID exists, `None` otherwise.
+        """
         pass
 
     @abstractmethod
     def get_podcast_by_feed_url(self, feed_url: str) -> Optional[Podcast]:
-        """Get podcast by feed URL."""
+        """
+        Retrieve a podcast matching the given feed URL.
+        
+        Parameters:
+            feed_url (str): The podcast RSS/Atom feed URL to look up.
+        
+        Returns:
+            The matching `Podcast` if found, `None` otherwise.
+        """
         pass
 
     @abstractmethod
     def list_podcasts(
         self, subscribed_only: bool = True, limit: Optional[int] = None
     ) -> List[Podcast]:
-        """List all podcasts, optionally filtering by subscription status."""
+        """
+        Return podcasts optionally filtered to subscribed ones and limited in count.
+        
+        Queries podcasts ordered by title. If `subscribed_only` is True, only podcasts with an active subscription are returned. `limit` caps the number of results when provided.
+        
+        Parameters:
+            subscribed_only (bool): If True, include only subscribed podcasts. Default is True.
+            limit (Optional[int]): Maximum number of podcasts to return; if None, no limit is applied.
+        
+        Returns:
+            List[Podcast]: Podcasts matching the filters, ordered by title.
+        """
         pass
 
     @abstractmethod
     def update_podcast(self, podcast_id: str, **kwargs) -> Optional[Podcast]:
-        """Update podcast attributes."""
+        """
+        Update attributes of an existing podcast.
+        
+        Parameters:
+            podcast_id (str): The podcast's primary key.
+            **kwargs: Podcast fields to update (for example `title`, `feed_url`, `is_subscribed`).
+        
+        Returns:
+            Optional[Podcast]: The updated Podcast instance if found and updated, `None` if no podcast with `podcast_id` exists.
+        """
         pass
 
     @abstractmethod
     def delete_podcast(self, podcast_id: str, delete_files: bool = False) -> bool:
-        """Delete a podcast and optionally its files."""
+        """
+        Remove a podcast record from the database.
+        
+        If `delete_files` is True, associated local files (podcast directory and contained files) will be removed from disk before the database record is deleted.
+        
+        Parameters:
+            podcast_id (str): The primary key/identifier of the podcast to delete.
+            delete_files (bool): Whether to remove associated local files from disk prior to deleting the record.
+        
+        Returns:
+            bool: `True` if a podcast was found and deleted, `False` if no podcast with `podcast_id` exists.
+        """
         pass
 
     # --- Episode Operations ---
@@ -71,17 +125,46 @@ class PodcastRepositoryInterface(ABC):
         enclosure_type: str,
         **kwargs,
     ) -> Episode:
-        """Create a new episode."""
+        """
+        Create and persist a new Episode for the given podcast.
+        
+        Parameters:
+            podcast_id (str): ID of the podcast to associate the episode with.
+            guid (str): Globally unique identifier for the episode (within the podcast).
+            title (str): Episode title.
+            enclosure_url (str): URL of the episode media file.
+            enclosure_type (str): MIME type of the enclosure (e.g., "audio/mpeg").
+            **kwargs: Optional episode attributes such as `published_date`, `duration`,
+                `summary`, `local_file_path`, `transcript_path`, `metadata_path`, and other
+                model fields to set on creation.
+        
+        Returns:
+            Episode: The newly created and persisted Episode instance.
+        """
         pass
 
     @abstractmethod
     def get_episode(self, episode_id: str) -> Optional[Episode]:
-        """Get episode by ID."""
+        """
+        Retrieve an episode by its primary key.
+        
+        Returns:
+            The Episode instance if found, `None` otherwise.
+        """
         pass
 
     @abstractmethod
     def get_episode_by_guid(self, podcast_id: str, guid: str) -> Optional[Episode]:
-        """Get episode by GUID within a podcast."""
+        """
+        Retrieve an episode by its GUID within the specified podcast.
+        
+        Parameters:
+            podcast_id (str): The podcast's primary identifier.
+            guid (str): The episode GUID as provided by the podcast feed.
+        
+        Returns:
+            Optional[Episode]: The matching Episode if found, `None` otherwise.
+        """
         pass
 
     @abstractmethod
@@ -94,17 +177,48 @@ class PodcastRepositoryInterface(ABC):
         limit: Optional[int] = None,
         offset: int = 0,
     ) -> List[Episode]:
-        """List episodes with optional filtering."""
+        """
+        List episodes, optionally filtered and paginated.
+        
+        Parameters:
+            podcast_id (Optional[str]): If provided, only episodes belonging to this podcast are returned.
+            download_status (Optional[str]): If provided, filter episodes by download status (e.g., "pending", "completed", "failed").
+            transcript_status (Optional[str]): If provided, filter episodes by transcript status (e.g., "pending", "completed", "failed").
+            file_search_status (Optional[str]): If provided, filter episodes by file search/indexing status (e.g., "pending", "indexed", "failed").
+            limit (Optional[int]): Maximum number of episodes to return. If None, no limit is applied.
+            offset (int): Number of episodes to skip before returning results (for pagination).
+        
+        Returns:
+            List[Episode]: A list of Episode objects matching the provided filters, ordered by published date descending and subject to offset/limit.
+        """
         pass
 
     @abstractmethod
     def update_episode(self, episode_id: str, **kwargs) -> Optional[Episode]:
-        """Update episode attributes."""
+        """
+        Update attributes of an episode record.
+        
+        Parameters:
+            episode_id (str): The primary key of the episode to update.
+            **kwargs: Episode attributes to set; keys matching model fields will be applied, other keys are ignored.
+        
+        Returns:
+            Optional[Episode]: The updated Episode instance if found and updated, `None` if no episode with `episode_id` exists.
+        """
         pass
 
     @abstractmethod
     def delete_episode(self, episode_id: str, delete_files: bool = False) -> bool:
-        """Delete an episode and optionally its files."""
+        """
+        Delete the episode identified by episode_id and, optionally, its associated files.
+        
+        Parameters:
+            episode_id (str): The primary key / identifier of the episode to delete.
+            delete_files (bool): If True, remove associated local files (e.g., audio, transcript, metadata) when present.
+        
+        Returns:
+            bool: `True` if the episode existed and was deleted, `False` otherwise.
+        """
         pass
 
     # --- Batch Operations ---
@@ -119,66 +233,163 @@ class PodcastRepositoryInterface(ABC):
         enclosure_type: str,
         **kwargs,
     ) -> tuple[Episode, bool]:
-        """Get existing episode or create new one. Returns (episode, created)."""
+        """
+        Retrieve an episode by GUID within a podcast, creating and persisting a new Episode when none exists.
+        
+        Parameters:
+            podcast_id (str): ID of the podcast the episode belongs to.
+            guid (str): Episode GUID used to identify uniqueness within the podcast.
+            title (str): Episode title to use when creating a new episode.
+            enclosure_url (str): URL of the episode media enclosure.
+            enclosure_type (str): MIME type or media type of the enclosure (e.g., "audio/mpeg").
+            **kwargs: Optional additional Episode fields to set when creating a new episode (e.g., published_date, duration).
+        
+        Returns:
+            tuple[Episode, bool]: A tuple of (episode, created) where `episode` is the found or newly created Episode and `created` is `True` if a new record was created, `False` if an existing record was returned.
+        """
         pass
 
     @abstractmethod
     def get_episodes_pending_download(self, limit: int = 10) -> List[Episode]:
-        """Get episodes that need to be downloaded."""
+        """
+        Retrieve episodes that are pending download.
+        
+        Returns episodes whose download_status is "pending", ordered by published_date descending and limited to the most recent `limit` entries.
+        
+        Parameters:
+            limit (int): Maximum number of episodes to return (default 10).
+        
+        Returns:
+            List[Episode]: A list of Episode objects pending download.
+        """
         pass
 
     @abstractmethod
     def get_episodes_pending_transcription(self, limit: int = 10) -> List[Episode]:
-        """Get downloaded episodes that need transcription."""
+        """
+        Retrieve downloaded episodes that still require transcription.
+        
+        Parameters:
+            limit (int): Maximum number of episodes to return.
+        
+        Returns:
+            List[Episode]: Episodes where the download is completed, transcription has not started or is pending, and a local audio file is present, ordered by most recently published.
+        """
         pass
 
     @abstractmethod
     def get_episodes_pending_metadata(self, limit: int = 10) -> List[Episode]:
-        """Get transcribed episodes that need metadata extraction."""
+        """
+        Return transcribed episodes that still require metadata extraction.
+        
+        Retrieves episodes whose transcription is complete, whose metadata status is pending, and that have a transcript path present; results are ordered by published date (newest first) and limited by `limit`.
+        
+        Parameters:
+            limit (int): Maximum number of episodes to return.
+        
+        Returns:
+            List[Episode]: A list of episodes matching the metadata-pending criteria.
+        """
         pass
 
     @abstractmethod
     def get_episodes_pending_indexing(self, limit: int = 10) -> List[Episode]:
-        """Get episodes with metadata that need File Search indexing."""
+        """
+        Return episodes whose metadata is complete and are awaiting File Search indexing.
+        
+        Episodes returned have metadata_status set to "completed", file_search_status set to "pending", and a transcript path present. Results are ordered by published date (newest first) and limited to at most `limit` items.
+        
+        Returns:
+            List[Episode]: A list of episodes matching the indexing criteria, ordered by published date descending, up to `limit`.
+        """
         pass
 
     @abstractmethod
     def get_episodes_ready_for_cleanup(self, limit: int = 10) -> List[Episode]:
-        """Get fully processed episodes with audio files that can be deleted."""
+        """
+        Identify episodes whose audio files can be removed.
+        
+        Episodes returned have a local audio file present and have completed transcription and metadata processing, with file-search indexing marked as completed. Results are limited to the most relevant entries according to `limit`.
+        
+        Parameters:
+        	limit (int): Maximum number of episodes to return.
+        
+        Returns:
+        	List[Episode]: Episodes eligible for audio cleanup.
+        """
         pass
 
     # --- Status Update Helpers ---
 
     @abstractmethod
     def mark_download_started(self, episode_id: str) -> None:
-        """Mark episode as currently downloading."""
+        """
+        Mark the episode identified by episode_id as downloading by setting its download status to 'in_progress' and recording the download start timestamp.
+        """
         pass
 
     @abstractmethod
     def mark_download_complete(
         self, episode_id: str, local_path: str, file_size: int, file_hash: str
     ) -> None:
-        """Mark episode download as complete."""
+        """
+        Mark an episode as downloaded and record the downloaded file's metadata.
+        
+        Parameters:
+            episode_id (str): ID of the episode to update.
+            local_path (str): Filesystem path where the downloaded file is stored.
+            file_size (int): Size of the downloaded file in bytes.
+            file_hash (str): Hash of the downloaded file (for integrity verification, e.g. SHA-256).
+        """
         pass
 
     @abstractmethod
     def mark_download_failed(self, episode_id: str, error: str) -> None:
-        """Mark episode download as failed."""
+        """
+        Mark an episode's download as failed and record the failure reason.
+        
+        Updates the episode's download-related status to indicate failure and stores the provided error message for diagnostics.
+        
+        Parameters:
+            episode_id (str): The unique identifier of the episode to update.
+            error (str): A human-readable error message or failure reason to record.
+        """
         pass
 
     @abstractmethod
     def mark_transcript_started(self, episode_id: str) -> None:
-        """Mark episode as currently being transcribed."""
+        """
+        Mark an episode as having transcription started.
+        
+        Sets the episode's transcript status to "in_progress", records the transcription start timestamp, and clears any existing transcript error on the episode record.
+        
+        Parameters:
+            episode_id (str): The primary key/ID of the episode to update.
+        """
         pass
 
     @abstractmethod
     def mark_transcript_complete(self, episode_id: str, transcript_path: str) -> None:
-        """Mark episode transcription as complete."""
+        """
+        Mark an episode's transcription as completed and record the transcript file.
+        
+        Updates the episode record to set the transcript path, mark transcription as completed, record the completion timestamp, update the record's updated_at timestamp, and persist the change to the database.
+        
+        Parameters:
+            episode_id (str): Primary key of the episode to update.
+            transcript_path (str): Filesystem path to the completed transcript file.
+        """
         pass
 
     @abstractmethod
     def mark_transcript_failed(self, episode_id: str, error: str) -> None:
-        """Mark episode transcription as failed."""
+        """
+        Mark an episode's transcription as failed and record the failure reason.
+        
+        Parameters:
+            episode_id (str): Identifier of the episode whose transcription failed.
+            error (str): Human-readable error message or reason for the failure.
+        """
         pass
 
     @abstractmethod
@@ -196,53 +407,131 @@ class PodcastRepositoryInterface(ABC):
         hosts: Optional[List[str]] = None,
         guests: Optional[List[str]] = None,
     ) -> None:
-        """Mark episode metadata extraction as complete."""
+        """
+        Record that metadata extraction for an episode completed and persist the extracted metadata.
+        
+        Parameters:
+            episode_id (str): Identifier of the episode to update.
+            metadata_path (str): Path to the stored metadata file.
+            summary (Optional[str]): Short textual summary extracted for the episode.
+            keywords (Optional[List[str]]): List of keywords or tags extracted from the episode.
+            hosts (Optional[List[str]]): List of host names identified in the episode.
+            guests (Optional[List[str]]): List of guest names identified in the episode.
+        """
         pass
 
     @abstractmethod
     def mark_metadata_failed(self, episode_id: str, error: str) -> None:
-        """Mark episode metadata extraction as failed."""
+        """
+        Mark an episode's metadata extraction as failed and record the failure reason.
+        
+        Parameters:
+            episode_id (str): ID of the episode to update.
+            error (str): Human-readable error message or failure reason to store.
+        """
         pass
 
     @abstractmethod
     def mark_indexing_started(self, episode_id: str) -> None:
-        """Mark episode as being uploaded to File Search."""
+        """
+        Mark an episode as in-progress for File Search indexing.
+        
+        Updates the episode's file search status to "indexing", records the indexing start time, and clears any previous indexing error for the specified episode.
+        
+        Parameters:
+            episode_id (str): Primary key of the episode to update.
+        """
         pass
 
     @abstractmethod
     def mark_indexing_complete(
         self, episode_id: str, resource_name: str, display_name: str
     ) -> None:
-        """Mark episode File Search indexing as complete."""
+        """
+        Record that an episode's file-search indexing finished and store the index resource details.
+        
+        Parameters:
+            episode_id (str): Identifier of the episode whose indexing completed.
+            resource_name (str): Unique name or identifier of the index resource created for the episode.
+            display_name (str): Human-readable name for the indexed resource to display in UIs or logs.
+        """
         pass
 
     @abstractmethod
     def mark_indexing_failed(self, episode_id: str, error: str) -> None:
-        """Mark episode File Search indexing as failed."""
+        """
+        Record that File Search indexing for the specified episode failed, store the provided error message, and persist the status update with an associated timestamp.
+        
+        Parameters:
+            episode_id (str): The ID of the episode whose indexing failed.
+            error (str): A human-readable error message describing the failure.
+        """
         pass
 
     @abstractmethod
     def mark_audio_cleaned_up(self, episode_id: str) -> None:
-        """Mark episode audio file as deleted after processing."""
+        """
+        Clear an episode's local audio file and remove its on-disk file if present.
+        
+        Deletes the episode's local audio file from disk (when a path exists) and clears the stored local file path on the episode record so the database no longer references the removed file.
+        
+        Parameters:
+            episode_id (str): The primary key of the episode to clean up.
+        """
         pass
 
     # --- Statistics ---
 
     @abstractmethod
     def get_podcast_stats(self, podcast_id: str) -> Dict[str, Any]:
-        """Get statistics for a podcast."""
+        """
+        Compute statistics for a single podcast.
+        
+        Parameters:
+            podcast_id (str): The podcast primary key to compute statistics for.
+        
+        Returns:
+            stats (Dict[str, Any]): A dictionary containing per-podcast statistics and counts, typically including:
+                - podcast (dict): A short snapshot of the podcast (e.g., `id`, `title`, `feed_url`, `is_subscribed`).
+                - total_episodes (int): Total number of episodes for the podcast.
+                - by_download_status (dict): Counts keyed by download status (e.g., `pending`, `in_progress`, `completed`, `failed`).
+                - by_transcript_status (dict): Counts keyed by transcript status (e.g., `pending`, `in_progress`, `completed`, `failed`).
+                - by_metadata_status (dict): Counts keyed by metadata status (e.g., `pending`, `in_progress`, `completed`, `failed`).
+                - by_indexing_status (dict): Counts keyed by file-search/indexing status (e.g., `pending`, `indexed`, `failed`).
+                - ready_for_cleanup (int): Number of episodes eligible for audio file cleanup.
+        """
         pass
 
     @abstractmethod
     def get_overall_stats(self) -> Dict[str, Any]:
-        """Get overall system statistics."""
+        """
+        Collects system-wide statistics for podcasts and episodes.
+        
+        Returns:
+            stats (Dict[str, Any]): A dictionary containing aggregated system metrics, including:
+                - total_podcasts: total number of podcasts tracked.
+                - total_episodes: total number of episodes tracked.
+                - counts_by_download_status: mapping of download status -> count.
+                - counts_by_transcript_status: mapping of transcript status -> count.
+                - counts_by_metadata_status: mapping of metadata status -> count.
+                - counts_by_file_search_status: mapping of file-search/indexing status -> count.
+                - pending_download: count of episodes awaiting download.
+                - pending_transcription: count of downloaded episodes awaiting transcription.
+                - pending_metadata: count of transcribed episodes awaiting metadata extraction.
+                - pending_indexing: count of episodes awaiting file-search indexing.
+                - ready_for_cleanup: count of episodes eligible for audio file cleanup.
+        """
         pass
 
     # --- Connection Management ---
 
     @abstractmethod
     def close(self) -> None:
-        """Close database connection."""
+        """
+        Close and release all database connections and engine resources used by the repository.
+        
+        This will dispose the underlying SQLAlchemy engine and free associated connection pool resources so the repository can be cleanly shut down.
+        """
         pass
 
 
@@ -259,13 +548,16 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         max_overflow: int = 10,
         echo: bool = False,
     ):
-        """Initialize the repository with database connection.
-
-        Args:
-            database_url: SQLAlchemy database URL
-            pool_size: Connection pool size (ignored for SQLite)
-            max_overflow: Maximum overflow connections (ignored for SQLite)
-            echo: Whether to log SQL statements
+        """
+        Initialize the repository and configure its SQLAlchemy engine and session factory.
+        
+        Creates an engine appropriate for the provided database URL, prepares a session factory, and ensures the ORM tables are created.
+        
+        Parameters:
+            database_url (str): SQLAlchemy-compatible database URL.
+            pool_size (int): Connection pool size for non-SQLite databases.
+            max_overflow (int): Maximum overflow connections for non-SQLite databases.
+            echo (bool): If true, enable SQLAlchemy SQL statement logging.
         """
         self.database_url = database_url
 
@@ -291,13 +583,28 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         logger.info(f"Database initialized: {database_url.split('@')[-1] if '@' in database_url else database_url}")
 
     def _get_session(self) -> Session:
-        """Get a new database session."""
+        """
+        Obtain a new SQLAlchemy database session from the repository's session factory.
+        
+        Returns:
+            A fresh `Session` instance bound to the repository's engine.
+        """
         return self.SessionLocal()
 
     # --- Podcast Operations ---
 
     def create_podcast(self, feed_url: str, title: str, **kwargs) -> Podcast:
-        """Create a new podcast subscription."""
+        """
+        Create and persist a new podcast subscription.
+        
+        Parameters:
+            feed_url (str): URL of the podcast RSS/Atom feed.
+            title (str): Human-readable title for the podcast.
+            **kwargs: Additional Podcast fields to set on creation.
+        
+        Returns:
+            Podcast: The newly created Podcast instance with its database-generated ID populated.
+        """
         with self._get_session() as session:
             podcast = Podcast(feed_url=feed_url, title=title, **kwargs)
             session.add(podcast)
@@ -307,12 +614,22 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             return podcast
 
     def get_podcast(self, podcast_id: str) -> Optional[Podcast]:
-        """Get podcast by ID."""
+        """
+        Retrieve a podcast by its primary key.
+        
+        Returns:
+            Podcast | None: The matching Podcast instance if found, `None` otherwise.
+        """
         with self._get_session() as session:
             return session.get(Podcast, podcast_id)
 
     def get_podcast_by_feed_url(self, feed_url: str) -> Optional[Podcast]:
-        """Get podcast by feed URL."""
+        """
+        Finds the podcast record that matches the given RSS/Atom feed URL.
+        
+        Returns:
+            Podcast or None: The `Podcast` instance with `feed_url`, or `None` if no match is found.
+        """
         with self._get_session() as session:
             stmt = select(Podcast).where(Podcast.feed_url == feed_url)
             return session.scalar(stmt)
@@ -320,7 +637,16 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
     def list_podcasts(
         self, subscribed_only: bool = True, limit: Optional[int] = None
     ) -> List[Podcast]:
-        """List all podcasts, optionally filtering by subscription status."""
+        """
+        List podcasts, optionally restricting results to subscribed podcasts.
+        
+        Parameters:
+            subscribed_only (bool): If True, include only podcasts with `is_subscribed` set to True.
+            limit (Optional[int]): Maximum number of podcasts to return; if None, no limit is applied.
+        
+        Returns:
+            List[Podcast]: Podcasts ordered by title.
+        """
         with self._get_session() as session:
             stmt = select(Podcast)
             if subscribed_only:
@@ -331,7 +657,18 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             return list(session.scalars(stmt).all())
 
     def update_podcast(self, podcast_id: str, **kwargs) -> Optional[Podcast]:
-        """Update podcast attributes."""
+        """
+        Update attributes of an existing podcast.
+        
+        Only attributes that exist on the Podcast model are set from `kwargs`. If the podcast is found, its `updated_at` timestamp is set to the current UTC time, the changes are persisted, and the refreshed Podcast instance is returned.
+        
+        Parameters:
+            podcast_id (str): Primary key of the podcast to update.
+            **kwargs: Model attributes and their new values to apply to the podcast.
+        
+        Returns:
+            Optional[Podcast]: The updated Podcast instance if found, `None` if no podcast with `podcast_id` exists.
+        """
         with self._get_session() as session:
             podcast = session.get(Podcast, podcast_id)
             if podcast:
@@ -345,7 +682,18 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             return podcast
 
     def delete_podcast(self, podcast_id: str, delete_files: bool = False) -> bool:
-        """Delete a podcast and optionally its files."""
+        """
+        Remove a podcast record from the database.
+        
+        If `delete_files` is True and the podcast has a `local_directory`, that directory is removed from disk if present. If the podcast ID does not exist, no changes are made.
+        
+        Parameters:
+            podcast_id (str): The primary key of the podcast to delete.
+            delete_files (bool): If True, remove the podcast's local directory from disk when present.
+        
+        Returns:
+            bool: `True` if a podcast was found and deleted, `False` if no podcast with the given ID exists.
+        """
         with self._get_session() as session:
             podcast = session.get(Podcast, podcast_id)
             if not podcast:
@@ -372,7 +720,20 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         enclosure_type: str,
         **kwargs,
     ) -> Episode:
-        """Create a new episode."""
+        """
+        Create and persist a new Episode for a podcast.
+        
+        Parameters:
+            podcast_id (str): ID of the parent podcast.
+            guid (str): Globally unique identifier for the episode within the podcast.
+            title (str): Episode title.
+            enclosure_url (str): URL of the episode media file.
+            enclosure_type (str): MIME type or media type of the enclosure (e.g., "audio/mpeg").
+            **kwargs: Additional Episode fields to set on creation (e.g., published_date, duration).
+        
+        Returns:
+            episode (Episode): The persisted Episode instance with database-generated fields populated.
+        """
         with self._get_session() as session:
             episode = Episode(
                 podcast_id=podcast_id,
@@ -389,12 +750,21 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             return episode
 
     def get_episode(self, episode_id: str) -> Optional[Episode]:
-        """Get episode by ID."""
+        """
+        Retrieve an episode by its ID.
+        
+        Returns:
+            The Episode with the given ID, or `None` if no matching episode exists.
+        """
         with self._get_session() as session:
             return session.get(Episode, episode_id)
 
     def get_episode_by_guid(self, podcast_id: str, guid: str) -> Optional[Episode]:
-        """Get episode by GUID within a podcast."""
+        """
+        Retrieve an episode by its GUID for the specified podcast.
+        
+        @returns The Episode if found, `None` otherwise.
+        """
         with self._get_session() as session:
             stmt = select(Episode).where(
                 Episode.podcast_id == podcast_id, Episode.guid == guid
@@ -410,7 +780,20 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         limit: Optional[int] = None,
         offset: int = 0,
     ) -> List[Episode]:
-        """List episodes with optional filtering."""
+        """
+        Retrieve episodes optionally filtered by podcast and processing statuses, with pagination.
+        
+        Parameters:
+            podcast_id (Optional[str]): Filter episodes belonging to the given podcast.
+            download_status (Optional[str]): Filter by download status (e.g., "pending", "completed", "failed").
+            transcript_status (Optional[str]): Filter by transcription status (e.g., "pending", "completed", "failed").
+            file_search_status (Optional[str]): Filter by file-search/indexing status (e.g., "pending", "indexed", "failed").
+            limit (Optional[int]): Maximum number of episodes to return. If None, no limit is applied.
+            offset (int): Number of episodes to skip before collecting results (for pagination).
+        
+        Returns:
+            List[Episode]: Episodes matching the supplied filters ordered by published date (newest first).
+        """
         with self._get_session() as session:
             stmt = select(Episode)
 
@@ -431,7 +814,18 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             return list(session.scalars(stmt).all())
 
     def update_episode(self, episode_id: str, **kwargs) -> Optional[Episode]:
-        """Update episode attributes."""
+        """
+        Update attributes of an existing episode.
+        
+        The provided keyword arguments are applied to matching attributes on the episode record; the episode's `updated_at` timestamp is set to the current UTC time and the change is persisted.
+        
+        Parameters:
+            episode_id (str): Primary key of the episode to update.
+            **kwargs: Episode attributes to set (only attributes that exist on the model are applied).
+        
+        Returns:
+            Optional[Episode]: The updated Episode instance, or `None` if no episode with `episode_id` exists.
+        """
         with self._get_session() as session:
             episode = session.get(Episode, episode_id)
             if episode:
@@ -445,7 +839,17 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             return episode
 
     def delete_episode(self, episode_id: str, delete_files: bool = False) -> bool:
-        """Delete an episode and optionally its files."""
+        """
+        Delete an episode record from the database and optionally remove its associated files from disk.
+        
+        Parameters:
+            episode_id (str): The primary key of the episode to delete.
+            delete_files (bool): If True, remove any existing files referenced by the episode
+                ('local_file_path', 'transcript_path', 'metadata_path').
+        
+        Returns:
+            bool: True if the episode was found and deleted, False if no episode with the given id exists.
+        """
         with self._get_session() as session:
             episode = session.get(Episode, episode_id)
             if not episode:
@@ -474,7 +878,20 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         enclosure_type: str,
         **kwargs,
     ) -> tuple[Episode, bool]:
-        """Get existing episode or create new one. Returns (episode, created)."""
+        """
+        Ensure an Episode exists for the given podcast by GUID; create and persist it if missing.
+        
+        Parameters:
+            podcast_id (str): ID of the podcast that owns the episode.
+            guid (str): Unique identifier of the episode within the podcast.
+            title (str): Title to set when creating a new episode.
+            enclosure_url (str): Media enclosure URL for a new episode.
+            enclosure_type (str): MIME type or descriptor of the enclosure.
+            **kwargs: Additional fields forwarded to episode creation.
+        
+        Returns:
+            tuple[Episode, bool]: (episode, created) where `created` is `True` if a new episode was created, `False` if an existing episode was returned.
+        """
         existing = self.get_episode_by_guid(podcast_id, guid)
         if existing:
             return existing, False
@@ -490,7 +907,15 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         return episode, True
 
     def get_episodes_pending_download(self, limit: int = 10) -> List[Episode]:
-        """Get episodes that need to be downloaded."""
+        """
+        Retrieve pending episodes awaiting download.
+        
+        Parameters:
+            limit (int): Maximum number of episodes to return (default 10).
+        
+        Returns:
+            List[Episode]: Episodes with `download_status == "pending"`, ordered by `published_date` descending, up to `limit` items.
+        """
         with self._get_session() as session:
             stmt = (
                 select(Episode)
@@ -501,7 +926,11 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             return list(session.scalars(stmt).all())
 
     def get_episodes_pending_transcription(self, limit: int = 10) -> List[Episode]:
-        """Get downloaded episodes that need transcription."""
+        """
+        Return episodes that have been downloaded and are awaiting transcription.
+        
+        @returns List[Episode]: Episodes with download_status == "completed", transcript_status == "pending", and a non-null local_file_path, ordered by published_date descending and limited to the provided `limit`.
+        """
         with self._get_session() as session:
             stmt = (
                 select(Episode)
@@ -516,7 +945,16 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             return list(session.scalars(stmt).all())
 
     def get_episodes_pending_metadata(self, limit: int = 10) -> List[Episode]:
-        """Get transcribed episodes that need metadata extraction."""
+        """
+        Selects transcribed episodes that require metadata extraction.
+        
+        Parameters:
+            limit (int): Maximum number of episodes to return (default 10).
+        
+        Returns:
+            List[Episode]: Episodes whose `transcript_status` is "completed", `metadata_status` is "pending",
+            and `transcript_path` is not None, ordered by `published_date` descending.
+        """
         with self._get_session() as session:
             stmt = (
                 select(Episode)
@@ -531,7 +969,15 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             return list(session.scalars(stmt).all())
 
     def get_episodes_pending_indexing(self, limit: int = 10) -> List[Episode]:
-        """Get episodes with metadata that need File Search indexing."""
+        """
+        Return episodes that have completed metadata and are pending File Search indexing.
+        
+        Parameters:
+            limit (int): Maximum number of episodes to return.
+        
+        Returns:
+            List[Episode]: Episodes where `metadata_status == "completed"`, `file_search_status == "pending"`, and `transcript_path` is present, ordered by `published_date` descending up to `limit`.
+        """
         with self._get_session() as session:
             stmt = (
                 select(Episode)
@@ -546,7 +992,16 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             return list(session.scalars(stmt).all())
 
     def get_episodes_ready_for_cleanup(self, limit: int = 10) -> List[Episode]:
-        """Get fully processed episodes with audio files that can be deleted."""
+        """
+        Return episodes that are fully processed and have local audio files eligible for deletion.
+        
+        Parameters:
+            limit (int): Maximum number of episodes to return.
+        
+        Returns:
+            List[Episode]: Episodes where transcript_status == "completed", metadata_status == "completed",
+            file_search_status == "indexed", and local_file_path is set; limited to `limit` items.
+        """
         with self._get_session() as session:
             stmt = (
                 select(Episode)
@@ -563,13 +1018,28 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
     # --- Status Update Helpers ---
 
     def mark_download_started(self, episode_id: str) -> None:
-        """Mark episode as currently downloading."""
+        """
+        Mark an episode's download status as downloading.
+        
+        Updates the episode identified by `episode_id` so its download status becomes "downloading".
+        
+        Parameters:
+            episode_id (str): Identifier of the episode to mark as downloading.
+        """
         self.update_episode(episode_id, download_status="downloading")
 
     def mark_download_complete(
         self, episode_id: str, local_path: str, file_size: int, file_hash: str
     ) -> None:
-        """Mark episode download as complete."""
+        """
+        Record that an episode's download finished and persist its download metadata.
+        
+        Parameters:
+            episode_id (str): Identifier of the episode to update.
+            local_path (str): Filesystem path to the downloaded audio file.
+            file_size (int): Size of the downloaded file in bytes.
+            file_hash (str): Hash of the downloaded file used for integrity verification.
+        """
         self.update_episode(
             episode_id,
             download_status="completed",
@@ -581,7 +1051,13 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         )
 
     def mark_download_failed(self, episode_id: str, error: str) -> None:
-        """Mark episode download as failed."""
+        """
+        Record that an episode's download failed and store the provided error message.
+        
+        Parameters:
+            episode_id (str): ID of the episode to update.
+            error (str): Human-readable error message describing the failure.
+        """
         self.update_episode(
             episode_id,
             download_status="failed",
@@ -593,7 +1069,16 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         self.update_episode(episode_id, transcript_status="processing")
 
     def mark_transcript_complete(self, episode_id: str, transcript_path: str) -> None:
-        """Mark episode transcription as complete."""
+        """
+        Mark an episode's transcription as complete and record the transcript file.
+        
+        Parameters:
+            episode_id (str): ID of the episode to update.
+            transcript_path (str): Filesystem path to the generated transcript.
+        
+        Notes:
+            Sets `transcript_status` to "completed", stores `transcript_path`, sets `transcribed_at` to the current UTC time, and clears `transcript_error`.
+        """
         self.update_episode(
             episode_id,
             transcript_status="completed",
@@ -603,7 +1088,13 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         )
 
     def mark_transcript_failed(self, episode_id: str, error: str) -> None:
-        """Mark episode transcription as failed."""
+        """
+        Mark an episode's transcription as failed and record the error message.
+        
+        Parameters:
+            episode_id (str): Identifier of the episode to update.
+            error (str): Human-readable error message describing the transcription failure.
+        """
         self.update_episode(
             episode_id,
             transcript_status="failed",
@@ -611,7 +1102,12 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         )
 
     def mark_metadata_started(self, episode_id: str) -> None:
-        """Mark episode metadata extraction as started."""
+        """
+        Mark metadata extraction for the specified episode as started.
+        
+        Parameters:
+            episode_id (str): The ID of the episode whose metadata status will be set to "processing".
+        """
         self.update_episode(episode_id, metadata_status="processing")
 
     def mark_metadata_complete(
@@ -623,7 +1119,17 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         hosts: Optional[List[str]] = None,
         guests: Optional[List[str]] = None,
     ) -> None:
-        """Mark episode metadata extraction as complete."""
+        """
+        Mark an episode's metadata extraction as completed and store the resulting metadata.
+        
+        Parameters:
+            episode_id (str): The ID of the episode to update.
+            metadata_path (str): Filesystem path or URI where the extracted metadata is stored.
+            summary (Optional[str]): Generated summary text for the episode, if available.
+            keywords (Optional[List[str]]): Extracted keywords or tags for the episode.
+            hosts (Optional[List[str]]): Identified hosts associated with the episode.
+            guests (Optional[List[str]]): Identified guests associated with the episode.
+        """
         self.update_episode(
             episode_id,
             metadata_status="completed",
@@ -636,7 +1142,13 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         )
 
     def mark_metadata_failed(self, episode_id: str, error: str) -> None:
-        """Mark episode metadata extraction as failed."""
+        """
+        Mark an episode's metadata extraction as failed and record the error message.
+        
+        Parameters:
+            episode_id (str): ID of the episode to update.
+            error (str): Error message describing the failure.
+        """
         self.update_episode(
             episode_id,
             metadata_status="failed",
@@ -644,13 +1156,27 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         )
 
     def mark_indexing_started(self, episode_id: str) -> None:
-        """Mark episode as being uploaded to File Search."""
+        """
+        Mark an episode as currently being uploaded to the File Search index.
+        
+        Parameters:
+            episode_id (str): The ID of the episode to mark.
+        """
         self.update_episode(episode_id, file_search_status="uploading")
 
     def mark_indexing_complete(
         self, episode_id: str, resource_name: str, display_name: str
     ) -> None:
-        """Mark episode File Search indexing as complete."""
+        """
+        Mark an episode as successfully indexed in the File Search system.
+        
+        Updates the episode's record to set file_search_status to "indexed", store the File Search resource identifier and display name, record the current UTC upload time, and clear any previous file search error.
+        
+        Parameters:
+            episode_id (str): ID of the episode to update.
+            resource_name (str): Internal resource identifier returned by the File Search service.
+            display_name (str): Human-readable name for the indexed resource.
+        """
         self.update_episode(
             episode_id,
             file_search_status="indexed",
@@ -661,7 +1187,13 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         )
 
     def mark_indexing_failed(self, episode_id: str, error: str) -> None:
-        """Mark episode File Search indexing as failed."""
+        """
+        Mark an episode's File Search indexing as failed.
+        
+        Parameters:
+            episode_id (str): ID of the episode to update.
+            error (str): Error message to record on the episode's indexing failure.
+        """
         self.update_episode(
             episode_id,
             file_search_status="failed",
@@ -669,7 +1201,14 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         )
 
     def mark_audio_cleaned_up(self, episode_id: str) -> None:
-        """Mark episode audio file as deleted after processing."""
+        """
+        Remove an episode's local audio file (if present) and clear its stored file path.
+        
+        If the episode exists and has a non-empty local_file_path, this will remove the file from disk when it exists and update the episode record to set local_file_path to None.
+        
+        Parameters:
+            episode_id (str): The ID of the episode whose audio file should be cleaned up.
+        """
         episode = self.get_episode(episode_id)
         if episode and episode.local_file_path:
             if os.path.exists(episode.local_file_path):
@@ -680,7 +1219,25 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
     # --- Statistics ---
 
     def get_podcast_stats(self, podcast_id: str) -> Dict[str, Any]:
-        """Get statistics for a podcast."""
+        """
+        Return a snapshot of processing statistics for the specified podcast.
+        
+        If the podcast ID does not exist, returns an empty dict.
+        
+        Returns:
+            stats (Dict[str, Any]): A dictionary containing:
+                - `podcast_id`: The podcast's ID.
+                - `title`: The podcast's title.
+                - `total_episodes`: Total number of episodes for the podcast.
+                - `pending_download`: Count of episodes with download status "pending".
+                - `downloading`: Count of episodes with download status "downloading".
+                - `downloaded`: Count of episodes with download status "completed".
+                - `download_failed`: Count of episodes with download status "failed".
+                - `pending_transcription`: Count of episodes with transcript status "pending".
+                - `transcribed`: Count of episodes with transcript status "completed".
+                - `indexed`: Count of episodes with file search status "indexed".
+                - `fully_processed`: Count of episodes considered fully processed.
+        """
         with self._get_session() as session:
             podcast = session.get(Podcast, podcast_id)
             if not podcast:
@@ -717,7 +1274,26 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             }
 
     def get_overall_stats(self) -> Dict[str, Any]:
-        """Get overall system statistics."""
+        """
+        Return aggregated system-wide counts for podcasts and episodes across processing stages.
+        
+        @returns:
+            stats (Dict[str, Any]): Mapping of statistic names to integer counts:
+                - total_podcasts: Total number of podcasts in the repository.
+                - subscribed_podcasts: Number of podcasts marked as subscribed.
+                - total_episodes: Total number of episodes in the repository.
+                - pending_download: Episodes with download_status == "pending".
+                - downloading: Episodes with download_status == "downloading".
+                - downloaded: Episodes with download_status == "completed".
+                - download_failed: Episodes with download_status == "failed".
+                - pending_transcription: Episodes with transcript_status == "pending".
+                - transcribing: Episodes with transcript_status == "processing".
+                - transcribed: Episodes with transcript_status == "completed".
+                - transcript_failed: Episodes with transcript_status == "failed".
+                - pending_indexing: Episodes with file_search_status == "pending".
+                - indexed: Episodes with file_search_status == "indexed".
+                - fully_processed: Episodes considered fully processed (all final processing steps complete).
+        """
         with self._get_session() as session:
             podcasts = self.list_podcasts(subscribed_only=False, limit=None)
             episodes = self.list_episodes(limit=None)
@@ -762,6 +1338,10 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
     # --- Connection Management ---
 
     def close(self) -> None:
-        """Close database connection."""
+        """
+        Dispose the SQLAlchemy engine and release database connections and resources.
+        
+        This closes all pooled connections and frees underlying resources held by the engine.
+        """
         self.engine.dispose()
         logger.info("Database connection closed")

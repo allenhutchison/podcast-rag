@@ -7,7 +7,14 @@ from src.podcast.feed_parser import FeedParser, ParsedPodcast, ParsedEpisode
 
 @pytest.fixture
 def parser():
-    """Create a feed parser instance."""
+    """
+    Provide a new FeedParser instance for tests.
+    
+    This function is used as a pytest fixture to supply tests with a fresh FeedParser.
+    
+    Returns:
+        FeedParser: A new FeedParser instance.
+    """
     return FeedParser()
 
 
