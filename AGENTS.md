@@ -57,7 +57,8 @@ User Query → Vector Search → Context Retrieval → Prompt Formatting → AI 
 │   └── metadata_extraction.txt   # Metadata extraction
 │
 ├── tests/                  # pytest test suite
-└── requirements.txt        # Python dependencies
+├── pyproject.toml          # Project config and dependencies (uv)
+└── uv.lock                 # Locked dependencies
 ```
 
 ## Key Files Reference
@@ -71,25 +72,33 @@ User Query → Vector Search → Context Retrieval → Prompt Formatting → AI 
 | `src/gemini_search.py` | Search manager using Gemini File Search | Search logic modifications |
 | `src/metadata_extractor.py` | AI-powered metadata parsing | Changing metadata fields |
 | `prompts/metadata_extraction.txt` | Metadata extraction prompt | Improving metadata quality |
-| `requirements.txt` | Python dependencies | Adding/updating packages |
+| `pyproject.toml` | Python dependencies (uv) | Adding/updating packages |
 
 ## Development Workflow
 
 ### Setup
 
+This project uses [uv](https://docs.astral.sh/uv/) for dependency management.
+
 ```bash
-# 1. Virtual environment
-python3 -m venv .venv
+# 1. Install uv (if not already installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# Or on macOS: brew install uv
+
+# 2. Install dependencies and create virtual environment
+uv sync
+
+# 3. Activate virtual environment (optional if using 'uv run')
 source .venv/bin/activate
 
-# 2. Install dependencies
-pip install -r requirements.txt
-
-# 3. Configure environment
+# 4. Configure environment
 cp .env.example .env
 # Edit .env with database credentials, API keys
 
-# 4. System dependencies
+# 5. Initialize the database
+alembic upgrade head
+
+# 6. System dependencies
 # Requires: ffmpeg
 ```
 
@@ -260,7 +269,7 @@ Working on: `claude/generate-claude-md-011CV2TtD4R9Z11NP64p6u5F`
 2. Add database models in `src/db/models.py` if schema changes
 3. Update Pydantic schemas in `src/schemas.py` for validation
 4. Add tests in `tests/test_*.py`
-5. Update `requirements.txt` if new dependencies
+5. Add new dependencies with `uv add <package>` (updates pyproject.toml and uv.lock)
 6. Document in README.md or GEMINI.md
 
 ### When Fixing Bugs

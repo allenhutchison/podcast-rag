@@ -98,13 +98,13 @@ def upgrade() -> None:
         sa.Column('file_search_uploaded_at', sa.DateTime, nullable=True),
         sa.Column('created_at', sa.DateTime, nullable=False),
         sa.Column('updated_at', sa.DateTime, nullable=False),
+        sa.UniqueConstraint('podcast_id', 'guid', name='uq_episode_podcast_guid'),
     )
     op.create_index('ix_episodes_podcast_id', 'episodes', ['podcast_id'])
     op.create_index('ix_episodes_download_status', 'episodes', ['download_status'])
     op.create_index('ix_episodes_transcript_status', 'episodes', ['transcript_status'])
     op.create_index('ix_episodes_file_search_status', 'episodes', ['file_search_status'])
     op.create_index('ix_episodes_published_date', 'episodes', ['published_date'])
-    op.create_unique_constraint('uq_episode_podcast_guid', 'episodes', ['podcast_id', 'guid'])
 
 
 def downgrade() -> None:

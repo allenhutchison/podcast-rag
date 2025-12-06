@@ -65,6 +65,7 @@ local_settings.py
 db.sqlite3
 db.sqlite3-journal
 podcast.db
+podcast_rag.db
 
 # Flask stuff:
 instance/
