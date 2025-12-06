@@ -79,10 +79,10 @@ class IndexingWorker(WorkerInterface):
             "release_date": (
                 episode.published_date.isoformat() if episode.published_date else None
             ),
-            "hosts": episode.hosts,
-            "guests": episode.guests,
-            "keywords": episode.keywords,
-            "summary": episode.summary,
+            "hosts": episode.ai_hosts,
+            "guests": episode.ai_guests,
+            "keywords": episode.ai_keywords,
+            "summary": episode.ai_summary,
         }
 
     def get_pending_count(self) -> int:

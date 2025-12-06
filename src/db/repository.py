@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session, joinedload, sessionmaker
 
 from .models import Base, Episode, Podcast
 
@@ -982,16 +982,17 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
     def get_episodes_pending_indexing(self, limit: int = 10) -> List[Episode]:
         """
         Return episodes that have completed metadata and are pending File Search indexing.
-        
+
         Parameters:
             limit (int): Maximum number of episodes to return.
-        
+
         Returns:
             List[Episode]: Episodes where `metadata_status == "completed"`, `file_search_status == "pending"`, and `transcript_path` is present, ordered by `published_date` descending up to `limit`.
         """
         with self._get_session() as session:
             stmt = (
                 select(Episode)
+                .options(joinedload(Episode.podcast))
                 .where(
                     Episode.metadata_status == "completed",
                     Episode.file_search_status == "pending",
@@ -1000,7 +1001,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 .order_by(Episode.published_date.desc())
                 .limit(limit)
             )
-            return list(session.scalars(stmt).all())
+            return list(session.scalars(stmt).unique().all())
 
     def get_episodes_ready_for_cleanup(self, limit: int = 10) -> List[Episode]:
         """

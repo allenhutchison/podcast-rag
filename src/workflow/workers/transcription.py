@@ -47,6 +47,8 @@ class TranscriptionWorker(WorkerInterface):
     def _get_model(self):
         """Lazily load the Whisper model."""
         if self._model is None:
+            # Disable tqdm progress bars before importing whisper
+            os.environ["TQDM_DISABLE"] = "1"
             import whisper
 
             logger.info("Loading Whisper model (large-v3)...")
@@ -125,7 +127,6 @@ class TranscriptionWorker(WorkerInterface):
             audio=episode.local_file_path,
             language="en",
             verbose=False,
-            fp=None,  # Disable tqdm progress bar
         )
 
         # Ensure directory exists
