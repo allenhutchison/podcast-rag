@@ -48,6 +48,31 @@ class Config:
         # ADK (Agent Development Kit) configuration
         self.ADK_PARALLEL_TIMEOUT = int(os.getenv("ADK_PARALLEL_TIMEOUT", "30"))
 
+        # Database configuration
+        self.DATABASE_URL = os.getenv(
+            "DATABASE_URL", "sqlite:///./podcast_rag.db"
+        )
+        self.DB_POOL_SIZE = int(os.getenv("DB_POOL_SIZE", "5"))
+        self.DB_MAX_OVERFLOW = int(os.getenv("DB_MAX_OVERFLOW", "10"))
+        self.DB_ECHO = os.getenv("DB_ECHO", "false").lower() == "true"
+
+        # Podcast download configuration
+        self.PODCAST_DOWNLOAD_DIRECTORY = os.getenv(
+            "PODCAST_DOWNLOAD_DIRECTORY", self.BASE_DIRECTORY
+        )
+        self.PODCAST_MAX_CONCURRENT_DOWNLOADS = int(
+            os.getenv("PODCAST_MAX_CONCURRENT_DOWNLOADS", "10")
+        )
+        self.PODCAST_DOWNLOAD_RETRY_ATTEMPTS = int(
+            os.getenv("PODCAST_DOWNLOAD_RETRY_ATTEMPTS", "3")
+        )
+        self.PODCAST_DOWNLOAD_TIMEOUT = int(
+            os.getenv("PODCAST_DOWNLOAD_TIMEOUT", "300")
+        )
+        self.PODCAST_CHUNK_SIZE = int(
+            os.getenv("PODCAST_CHUNK_SIZE", "8192")
+        )
+
     def load_config(self):
         '''Logs or prints the configuration for debugging purposes.'''
         print(f"Base Directory: {self.BASE_DIRECTORY}")
