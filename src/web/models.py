@@ -3,7 +3,7 @@ Pydantic models for web API request/response validation.
 """
 
 from typing import List, Literal, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Message(BaseModel):
@@ -41,8 +41,8 @@ class ChatResponse(BaseModel):
     answer: str = Field(..., description="Generated answer with inline citations")
     citations: List[Citation] = Field(..., description="List of source citations")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "answer": "The podcast discusses AI advances[1] and machine learning[2].",
                 "citations": [
@@ -65,6 +65,7 @@ class ChatResponse(BaseModel):
                 ]
             }
         }
+    )
 
 
 class UnifiedCitation(BaseModel):
@@ -89,8 +90,8 @@ class UnifiedCitation(BaseModel):
     # Common fields
     text: Optional[str] = Field(default=None, description="Excerpt text")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "examples": [
                 {
                     "ref_id": "P1",
@@ -109,3 +110,4 @@ class UnifiedCitation(BaseModel):
                 }
             ]
         }
+    )

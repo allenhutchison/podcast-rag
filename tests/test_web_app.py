@@ -161,7 +161,7 @@ class TestErrorHandling:
         """Test that invalid JSON returns 422 Unprocessable Entity."""
         response = client.post(
             "/api/chat",
-            data="invalid json",
+            content="invalid json",
             headers={"Content-Type": "application/json"}
         )
         assert response.status_code == 422

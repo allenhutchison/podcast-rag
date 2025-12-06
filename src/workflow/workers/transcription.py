@@ -1,0 +1,199 @@
+"""Transcription worker for episode audio files.
+
+Database-driven transcription using Whisper. This worker queries the database
+for episodes pending transcription and updates status after completion.
+"""
+
+import gc
+import logging
+import os
+from typing import Optional
+
+from src.config import Config
+from src.db.models import Episode
+from src.db.repository import PodcastRepositoryInterface
+from src.workflow.workers.base import WorkerInterface, WorkerResult
+
+logger = logging.getLogger(__name__)
+
+
+class TranscriptionWorker(WorkerInterface):
+    """Worker that transcribes downloaded episode audio files.
+
+    Uses OpenAI Whisper for transcription. The model is lazily loaded
+    and can be released after processing to free memory.
+    """
+
+    def __init__(
+        self,
+        config: Config,
+        repository: PodcastRepositoryInterface,
+    ):
+        """Initialize the transcription worker.
+
+        Args:
+            config: Application configuration.
+            repository: Database repository for episode operations.
+        """
+        self.config = config
+        self.repository = repository
+        self._model = None
+
+    @property
+    def name(self) -> str:
+        """Human-readable name for this worker."""
+        return "Transcription"
+
+    def _get_model(self):
+        """Lazily load the Whisper model."""
+        if self._model is None:
+            import whisper
+
+            logger.info("Loading Whisper model (large-v3)...")
+            self._model = whisper.load_model("large-v3")
+        return self._model
+
+    def _release_model(self) -> None:
+        """Release the Whisper model from memory."""
+        if self._model is not None:
+            import torch
+
+            logger.info("Releasing Whisper model from memory")
+            del self._model
+            self._model = None
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            gc.collect()
+
+    def _build_transcript_path(self, local_file_path: str) -> str:
+        """Build the transcript file path from the audio file path.
+
+        Args:
+            local_file_path: Path to the downloaded audio file.
+
+        Returns:
+            Path where the transcript should be saved.
+        """
+        base_path = os.path.splitext(local_file_path)[0]
+        return base_path + self.config.TRANSCRIPTION_OUTPUT_SUFFIX
+
+    def get_pending_count(self) -> int:
+        """Get the count of episodes pending transcription.
+
+        Returns:
+            Number of episodes waiting to be transcribed.
+        """
+        episodes = self.repository.get_episodes_pending_transcription(limit=1000)
+        return len(episodes)
+
+    def _transcribe_episode(self, episode: Episode) -> Optional[str]:
+        """Transcribe a single episode.
+
+        Args:
+            episode: Episode to transcribe.
+
+        Returns:
+            Path to transcript file if successful, None otherwise.
+
+        Raises:
+            Exception: If transcription fails.
+        """
+        if not episode.local_file_path:
+            raise ValueError(f"Episode {episode.id} has no local_file_path")
+
+        if not os.path.exists(episode.local_file_path):
+            raise FileNotFoundError(
+                f"Audio file not found: {episode.local_file_path}"
+            )
+
+        # Build transcript path
+        transcript_path = self._build_transcript_path(episode.local_file_path)
+
+        # Check if transcript already exists
+        if os.path.exists(transcript_path) and os.path.getsize(transcript_path) > 0:
+            logger.info(
+                f"Transcript already exists for episode {episode.id}, "
+                f"marking as complete"
+            )
+            return transcript_path
+
+        logger.info(f"Transcribing episode: {episode.title}")
+
+        # Get the Whisper model and transcribe
+        model = self._get_model()
+        result = model.transcribe(
+            audio=episode.local_file_path,
+            language="en",
+            verbose=False,
+        )
+
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(transcript_path), exist_ok=True)
+
+        # Write transcript to file
+        with open(transcript_path, "w", encoding="utf-8") as f:
+            f.write(result["text"])
+
+        logger.info(f"Transcription complete: {transcript_path}")
+        return transcript_path
+
+    def process_batch(self, limit: int) -> WorkerResult:
+        """Transcribe a batch of pending episodes.
+
+        Args:
+            limit: Maximum number of episodes to transcribe.
+
+        Returns:
+            WorkerResult with transcription statistics.
+        """
+        result = WorkerResult()
+
+        try:
+            # Query episodes pending transcription, ordered by published_date DESC
+            episodes = self.repository.get_episodes_pending_transcription(limit=limit)
+
+            if not episodes:
+                logger.info("No episodes pending transcription")
+                return result
+
+            logger.info(f"Processing {len(episodes)} episodes for transcription")
+
+            for episode in episodes:
+                try:
+                    # Mark as processing
+                    self.repository.mark_transcript_started(episode.id)
+
+                    # Transcribe
+                    transcript_path = self._transcribe_episode(episode)
+
+                    # Mark as complete
+                    self.repository.mark_transcript_complete(
+                        episode_id=episode.id,
+                        transcript_path=transcript_path,
+                    )
+                    result.processed += 1
+
+                except FileNotFoundError as e:
+                    error_msg = f"Episode {episode.id}: {e}"
+                    logger.error(error_msg)
+                    self.repository.mark_transcript_failed(episode.id, str(e))
+                    result.failed += 1
+                    result.errors.append(error_msg)
+
+                except Exception as e:
+                    error_msg = f"Episode {episode.id}: {e}"
+                    logger.exception(error_msg)
+                    self.repository.mark_transcript_failed(episode.id, str(e))
+                    result.failed += 1
+                    result.errors.append(error_msg)
+
+        except Exception as e:
+            logger.exception(f"Transcription batch failed: {e}")
+            result.failed += 1
+            result.errors.append(str(e))
+
+        finally:
+            # Release model after batch to free memory
+            self._release_model()
+
+        return result

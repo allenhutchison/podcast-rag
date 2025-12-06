@@ -8,7 +8,7 @@ import logging
 import os
 import shutil
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import create_engine, func, select
@@ -674,7 +674,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 for key, value in kwargs.items():
                     if hasattr(podcast, key):
                         setattr(podcast, key, value)
-                podcast.updated_at = datetime.utcnow()
+                podcast.updated_at = datetime.now(UTC)
                 session.commit()
                 session.refresh(podcast)
                 logger.debug(f"Updated podcast {podcast_id}: {kwargs.keys()}")
@@ -831,7 +831,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 for key, value in kwargs.items():
                     if hasattr(episode, key):
                         setattr(episode, key, value)
-                episode.updated_at = datetime.utcnow()
+                episode.updated_at = datetime.now(UTC)
                 session.commit()
                 session.refresh(episode)
                 logger.debug(f"Updated episode {episode_id}: {kwargs.keys()}")
@@ -1057,7 +1057,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             local_file_path=local_path,
             file_size_bytes=file_size,
             file_hash=file_hash,
-            downloaded_at=datetime.utcnow(),
+            downloaded_at=datetime.now(UTC),
             download_error=None,
         )
 
@@ -1094,7 +1094,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             episode_id,
             transcript_status="completed",
             transcript_path=transcript_path,
-            transcribed_at=datetime.utcnow(),
+            transcribed_at=datetime.now(UTC),
             transcript_error=None,
         )
 
@@ -1193,7 +1193,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             file_search_status="indexed",
             file_search_resource_name=resource_name,
             file_search_display_name=display_name,
-            file_search_uploaded_at=datetime.utcnow(),
+            file_search_uploaded_at=datetime.now(UTC),
             file_search_error=None,
         )
 
