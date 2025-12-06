@@ -28,7 +28,14 @@ class PodcastFeed:
     category: Optional[str] = None
 
     def __post_init__(self):
-        """Validate feed URL."""
+        """
+        Ensure the feed_url is present and normalized.
+        
+        Validates that the dataclass instance has a non-empty `feed_url` and trims surrounding whitespace from it.
+        
+        Raises:
+            ValueError: If `feed_url` is not provided (falsy).
+        """
         if not self.feed_url:
             raise ValueError("feed_url is required")
         # Normalize feed URL
@@ -78,18 +85,16 @@ class OPMLParser:
         pass
 
     def parse_file(self, file_path: Union[str, Path]) -> OPMLImportResult:
-        """Parse an OPML file and extract podcast feeds.
-
-        Args:
-            file_path: Path to the OPML file
-
+        """
+        Parse an OPML file and extract podcast feeds.
+        
         Returns:
-            OPMLImportResult with extracted feeds and metadata
-
+            OPMLImportResult: Contains extracted feeds and parsed metadata (title, owner, date, totals).
+        
         Raises:
-            FileNotFoundError: If file doesn't exist
-            ET.ParseError: If XML is invalid
-            ValueError: If OPML structure is invalid
+            FileNotFoundError: If the given file path does not exist.
+            ET.ParseError: If the file contains invalid XML.
+            ValueError: If the OPML content is missing required structure (e.g., no body element).
         """
         file_path = Path(file_path)
         if not file_path.exists():
@@ -103,17 +108,18 @@ class OPMLParser:
         return self.parse_string(content)
 
     def parse_string(self, content: str) -> OPMLImportResult:
-        """Parse OPML content from a string.
-
-        Args:
-            content: OPML XML content as string
-
+        """
+        Parse an OPML document and extract podcast feeds and related metadata.
+        
+        Parameters:
+            content (str): OPML XML content as a string.
+        
         Returns:
-            OPMLImportResult with extracted feeds and metadata
-
+            OPMLImportResult: Result containing extracted PodcastFeed entries, total outline count, number of outlines skipped for missing URLs, and optional head metadata (`title`, `owner_name`, `owner_email`, `date_created`).
+        
         Raises:
-            ET.ParseError: If XML is invalid
-            ValueError: If OPML structure is invalid
+            ET.ParseError: If the provided XML is not well-formed.
+            ValueError: If the root element is not `opml` or the document is missing a `body` element.
         """
         try:
             root = ET.fromstring(content)
@@ -156,6 +162,18 @@ class OPMLParser:
         current_category = None
 
         def process_outlines(parent, category=None):
+            """
+            Recursively traverse OPML outline elements under `parent`, extract podcast feeds, and assign categories.
+            
+            Processes each child "outline" element (case-insensitive), increments the total outline count, and for outlines that contain a feed URL extracts a PodcastFeed and appends it to the surrounding `feeds` collection. For outlines without a feed URL but with nested outlines, recurses into children using the outline's title as the category (if present); for leaf outlines without a URL, increments the skipped-no-URL counter. This function updates the nonlocal counters `total_outlines` and `skipped_no_url` and appends found feeds to the nonlocal `feeds` list.
+            
+            Parameters:
+            	parent (xml.etree.ElementTree.Element): XML element whose child outline elements will be processed.
+            	category (str | None): Optional category to apply to extracted feeds; if a container outline has a title it will override this for its children.
+            
+            Returns:
+            	None
+            """
             nonlocal total_outlines, skipped_no_url, current_category
 
             for outline in parent.findall("outline") + parent.findall("OUTLINE"):
@@ -204,14 +222,17 @@ class OPMLParser:
         )
 
     def _extract_feed(self, outline: ET.Element, category: Optional[str] = None) -> Optional[PodcastFeed]:
-        """Extract a PodcastFeed from an outline element.
-
-        Args:
-            outline: XML outline element
-            category: Parent category name if any
-
+        """
+        Create a PodcastFeed from an outline element or return None when no valid feed URL is present.
+        
+        Extracts the feed URL and optional metadata (title, website URL, description) from the given outline. Validates the feed URL must start with "http://", "https://", or "feed://"; normalizes "feed://" to "https://". Returns None for missing or invalid feed URLs.
+        
+        Parameters:
+            outline (xml.etree.ElementTree.Element): The outline element containing feed attributes.
+            category (str | None): Optional parent category to assign to the feed.
+        
         Returns:
-            PodcastFeed or None if extraction fails
+            PodcastFeed | None: A PodcastFeed populated from the outline, or `None` if extraction or validation fails.
         """
         feed_url = self._get_attribute(outline, self.URL_ATTRIBUTES)
         if not feed_url:
@@ -252,14 +273,15 @@ class OPMLParser:
         return None
 
     def _get_element_text(self, parent: ET.Element, tag_names: List[str]) -> Optional[str]:
-        """Get text content of a child element trying multiple possible tag names.
-
-        Args:
-            parent: Parent XML element
-            tag_names: List of possible tag names to try
-
+        """
+        Return the text of the first child element whose tag matches any name in `tag_names`.
+        
+        Parameters:
+            parent (ET.Element): Parent XML element to search.
+            tag_names (List[str]): Candidate child tag names to try in order.
+        
         Returns:
-            Element text or None if not found
+            str | None: The stripped text of the first matching child element, or `None` if no matching child with text is found.
         """
         for name in tag_names:
             element = parent.find(name)
@@ -273,19 +295,22 @@ def import_opml_to_repository(
     repository,
     skip_existing: bool = True,
 ) -> dict:
-    """Import podcasts from an OPML file into the repository.
-
-    Args:
-        opml_path: Path to OPML file
-        repository: PodcastRepositoryInterface instance
-        skip_existing: Skip feeds that already exist in database
-
+    """
+    Import podcasts from an OPML file into a podcast repository.
+    
+    Parses the OPML file at `opml_path` and creates or updates podcast records in `repository`. When `skip_existing` is True, feeds already present in the repository are left unchanged; when False, existing records are updated with metadata from the OPML.
+    
+    Parameters:
+        opml_path (Union[str, Path]): Path to the OPML file to import.
+        skip_existing (bool): If True, do not modify feeds that already exist in the repository (default True).
+        repository is intentionally undocumented as it represents the repository service provided by the caller.
+    
     Returns:
-        Dictionary with import statistics:
-        - added: Number of new podcasts added
-        - skipped: Number of existing podcasts skipped
-        - failed: Number of feeds that failed to import
-        - total: Total feeds in OPML file
+        dict: Import statistics containing:
+            - added (int): Number of new podcasts created.
+            - skipped (int): Number of feeds skipped because they already existed (or were updated when skip_existing is False).
+            - failed (int): Number of feeds that failed to import due to errors.
+            - total (int): Total number of feed outlines processed from the OPML file.
     """
     parser = OPMLParser()
     result = parser.parse_file(opml_path)

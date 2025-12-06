@@ -22,28 +22,19 @@ def create_repository(
     max_overflow: int = 10,
     echo: bool = False,
 ) -> PodcastRepositoryInterface:
-    """Create a podcast repository instance based on configuration.
-
-    Args:
-        database_url: SQLAlchemy database URL. If not provided, uses
-                     DATABASE_URL environment variable or defaults to SQLite.
-        pool_size: Connection pool size for PostgreSQL (ignored for SQLite)
-        max_overflow: Maximum overflow connections for PostgreSQL
-        echo: Whether to log SQL statements
-
+    """
+    Create a PodcastRepositoryInterface configured from the provided or discovered database URL.
+    
+    If `database_url` is not provided, it is read from the `DATABASE_URL` environment variable; if that is unset, a local SQLite default is used. Logs the chosen database type and hides credentials when present. Pool settings apply to PostgreSQL and are ignored for SQLite.
+    
+    Parameters:
+        database_url (Optional[str]): SQLAlchemy database URL to use; if None the environment or default is used.
+        pool_size (int): Connection pool size for PostgreSQL; ignored for SQLite.
+        max_overflow (int): Maximum overflow connections for PostgreSQL; ignored for SQLite.
+        echo (bool): If true, enable SQL statement logging.
+    
     Returns:
-        PodcastRepositoryInterface implementation
-
-    Examples:
-        # SQLite (local development)
-        repo = create_repository("sqlite:///./podcast_rag.db")
-
-        # PostgreSQL (Cloud SQL)
-        repo = create_repository("postgresql://user:pass@host/dbname")
-
-        # Using environment variable
-        os.environ["DATABASE_URL"] = "postgresql://..."
-        repo = create_repository()
+        PodcastRepositoryInterface: A repository instance backed by the resolved database URL.
     """
     if database_url is None:
         database_url = os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
@@ -69,13 +60,14 @@ def create_repository(
 
 
 def get_database_url_from_config(config) -> str:
-    """Extract database URL from Config object.
-
-    Args:
-        config: Config instance with database settings
-
+    """
+    Retrieve the database URL from a configuration object, falling back to the environment and a default.
+    
+    Parameters:
+        config: An object that may have a `DATABASE_URL` attribute.
+    
     Returns:
-        Database URL string
+        The resolved database URL string from `config.DATABASE_URL`, the `DATABASE_URL` environment variable, or `DEFAULT_DATABASE_URL`.
     """
     return getattr(config, "DATABASE_URL", None) or os.getenv(
         "DATABASE_URL", DEFAULT_DATABASE_URL

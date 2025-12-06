@@ -5,6 +5,13 @@ from dotenv import load_dotenv
 
 class Config:
     def __init__(self, env_file=None):
+        """
+        Initialize configuration by loading environment variables and setting default attributes.
+        
+        Loads environment variables from the provided .env file path when `env_file` is given; otherwise loads from the default environment. After loading, sets configuration attributes (paths, transcription constants, model and file-search settings, prompts location, web app settings, ADK timeout, database connection parameters, and podcast download options) using environment values with sensible defaults.
+        Parameters:
+            env_file (str | None): Optional path to a .env file to load environment variables from. If omitted, the default environment or default .env discovery is used.
+        """
         if env_file:
             load_dotenv(env_file)
         else:
@@ -74,7 +81,11 @@ class Config:
         )
 
     def load_config(self):
-        '''Logs or prints the configuration for debugging purposes.'''
+        """
+        Prints selected configuration values useful for debugging.
+        
+        Specifically displays the configured BASE_DIRECTORY and TRANSCRIPTION_OUTPUT_SUFFIX to standard output.
+        """
         print(f"Base Directory: {self.BASE_DIRECTORY}")
         print(f"Transcription Suffix: {self.TRANSCRIPTION_OUTPUT_SUFFIX}")
 

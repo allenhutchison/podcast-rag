@@ -108,16 +108,17 @@ class FeedParser:
         self.user_agent = user_agent or self.USER_AGENT
 
     def parse_url(self, feed_url: str) -> ParsedPodcast:
-        """Parse a podcast feed from URL.
-
-        Args:
-            feed_url: URL of the RSS/Atom feed
-
+        """
+        Parse a podcast feed from a URL and return its parsed podcast representation.
+        
+        Parameters:
+            feed_url (str): URL of the RSS/Atom feed to parse.
+        
         Returns:
-            ParsedPodcast with podcast and episode data
-
+            ParsedPodcast: Podcast metadata and a list of parsed episodes.
+        
         Raises:
-            ValueError: If feed cannot be parsed or is empty
+            ValueError: If the feed cannot be parsed or contains no feed data.
         """
         logger.info(f"Parsing feed: {feed_url}")
 
@@ -150,14 +151,15 @@ class FeedParser:
         return self._parse_feed(feed, feed_url)
 
     def _parse_feed(self, feed: feedparser.FeedParserDict, feed_url: str) -> ParsedPodcast:
-        """Parse a feedparser result into a ParsedPodcast.
-
-        Args:
-            feed: Parsed feed from feedparser
-            feed_url: Original URL of the feed
-
+        """
+        Convert a feedparser result into a ParsedPodcast containing podcast-level metadata and its parsed episodes.
+        
+        Parameters:
+            feed (feedparser.FeedParserDict): The parsed feed object returned by feedparser.parse().
+            feed_url (str): Original URL of the feed (used as the ParsedPodcast.feed_url).
+        
         Returns:
-            ParsedPodcast with podcast and episode data
+            ParsedPodcast: A ParsedPodcast populated with metadata (title, description, author, iTunes fields, image, dates, TTL) and a list of parsed ParsedEpisode objects.
         """
         f = feed.feed
 
@@ -212,13 +214,14 @@ class FeedParser:
         return podcast
 
     def _parse_episode(self, entry: feedparser.FeedParserDict) -> Optional[ParsedEpisode]:
-        """Parse a feed entry into a ParsedEpisode.
-
-        Args:
-            entry: Feed entry from feedparser
-
+        """
+        Convert a feedparser entry into a ParsedEpisode, or skip it when no audio enclosure is present.
+        
+        Parameters:
+            entry (feedparser.FeedParserDict): A single feed entry as returned by feedparser.
+        
         Returns:
-            ParsedEpisode or None if entry lacks required fields
+            ParsedEpisode if the entry contains a valid audio enclosure, `None` otherwise.
         """
         # Get enclosure (audio file)
         enclosure = self._extract_enclosure(entry)
@@ -283,13 +286,14 @@ class FeedParser:
         return episode
 
     def _extract_enclosure(self, entry: feedparser.FeedParserDict) -> Optional[tuple]:
-        """Extract audio enclosure from feed entry.
-
-        Args:
-            entry: Feed entry from feedparser
-
+        """
+        Extract the primary audio enclosure from a feed entry.
+        
+        Parameters:
+            entry (feedparser.FeedParserDict): Feed entry to inspect for audio enclosures.
+        
         Returns:
-            Tuple of (url, type, length) or None if no audio found
+            tuple: (url, mime_type, length) where `url` is the enclosure URL (str), `mime_type` is the MIME type (str, defaults to "audio/mpeg" when absent), and `length` is the enclosure size in bytes (int) or `None` if unknown; returns `None` if no audio enclosure is found.
         """
         # Check enclosures
         for enclosure in entry.get("enclosures", []):
@@ -337,14 +341,17 @@ class FeedParser:
         return None
 
     def _is_audio_type(self, mime_type: str, url: str) -> bool:
-        """Check if content is an audio file.
-
-        Args:
-            mime_type: MIME type string
-            url: URL of the content
-
+        """
+        Determine whether the provided MIME type or URL likely refers to audio content.
+        
+        This uses the MIME type when available (recognizing MIME types that start with "audio/" and treating ambiguous types like "application/octet-stream" as undecided) and falls back to common audio file extensions from the URL path when the MIME type is absent or ambiguous.
+        
+        Parameters:
+            mime_type (str): The content MIME type reported by the feed or HTTP headers.
+            url (str): The resource URL used to inspect the path/extension when MIME type is absent or inconclusive.
+        
         Returns:
-            True if this appears to be an audio file
+            bool: `True` if the MIME type or URL indicates audio content, `False` otherwise.
         """
         # Check MIME type
         if mime_type:
@@ -362,13 +369,16 @@ class FeedParser:
         return any(path.endswith(ext) for ext in audio_extensions)
 
     def _extract_image_url(self, feed: feedparser.FeedParserDict) -> Optional[str]:
-        """Extract podcast image URL from feed.
-
-        Args:
-            feed: Feed dict from feedparser
-
+        """
+        Extract the podcast artwork URL from a feedparser feed dictionary.
+        
+        Checks common feed locations in this order: the iTunes image, the top-level image element, and media thumbnails, returning the first valid URL found.
+        
+        Parameters:
+            feed (feedparser.FeedParserDict): Parsed feed object to inspect for image fields.
+        
         Returns:
-            Image URL or None
+            Optional[str]: The image URL if found, otherwise `None`.
         """
         # Try itunes:image
         if feed.get("itunes_image"):
@@ -391,13 +401,16 @@ class FeedParser:
         return None
 
     def _parse_explicit(self, value) -> Optional[bool]:
-        """Parse iTunes explicit flag.
-
-        Args:
-            value: Explicit value from feed
-
+        """
+        Normalize an iTunes explicit flag value from a feed.
+        
+        Accepts boolean values or string-like indicators (e.g., "yes", "no", "true", "false", "explicit", "clean") and handles None.
+        
+        Parameters:
+            value: The explicit flag value extracted from a feed entry or channel.
+        
         Returns:
-            True if explicit, False if clean, None if unknown
+            `True` if the value indicates explicit content, `False` if it indicates clean content, `None` if the value is missing or unrecognized.
         """
         if value is None:
             return None
@@ -414,18 +427,16 @@ class FeedParser:
         return None
 
     def _parse_duration(self, value) -> Optional[int]:
-        """Parse duration string into seconds.
-
-        Handles various formats:
-        - Seconds: "3600"
-        - MM:SS: "60:00"
-        - HH:MM:SS: "1:00:00"
-
-        Args:
-            value: Duration string
-
+        """
+        Convert a duration value to a total number of seconds.
+        
+        Supports a plain integer number of seconds (e.g., "3600" or 3600), "MM:SS" (e.g., "05:30"), and "HH:MM:SS" (e.g., "1:05:30"). Unrecognized or empty inputs yield None.
+        
+        Parameters:
+            value: Duration expressed as an int-like value or a time string.
+        
         Returns:
-            Duration in seconds or None
+            Total duration in seconds as an int, or None if the input cannot be parsed.
         """
         if not value:
             return None
@@ -453,13 +464,14 @@ class FeedParser:
         return None
 
     def _clean_html(self, text: Optional[str]) -> Optional[str]:
-        """Remove HTML tags from text.
-
-        Args:
-            text: Text that may contain HTML
-
+        """
+        Clean a string by removing HTML tags, decoding common HTML entities, and normalizing whitespace.
+        
+        Parameters:
+            text (Optional[str]): Input text that may contain HTML and HTML entities.
+        
         Returns:
-            Cleaned text or None
+            Optional[str]: The cleaned string with HTML removed and entities decoded, or `None` if the input is empty or the result is an empty string.
         """
         if not text:
             return None

@@ -6,7 +6,12 @@ from src.podcast.opml_parser import OPMLParser, PodcastFeed, OPMLImportResult
 
 @pytest.fixture
 def parser():
-    """Create an OPML parser instance."""
+    """
+    Create and return a new OPMLParser instance.
+    
+    Returns:
+        OPMLParser: A new parser configured for parsing OPML content.
+    """
     return OPMLParser()
 
 

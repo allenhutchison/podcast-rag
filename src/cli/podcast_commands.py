@@ -29,7 +29,18 @@ logger = logging.getLogger(__name__)
 
 
 def import_opml(args, config: Config):
-    """Import podcasts from an OPML file."""
+    """
+    Import podcasts defined in an OPML file into the repository.
+    
+    Parses the OPML file specified by args.file, shows the discovered feeds, and imports them into the database unless args.dry_run is true. When importing, existing feed handling is controlled by args.update_existing (if false, existing feeds are skipped). Prints import statistics and ensures the repository is closed on completion.
+    
+    Parameters:
+        args: CLI arguments with at least the attributes:
+            - file (str): Path to the OPML file to import.
+            - dry_run (bool): If true, show feeds that would be imported without modifying the database.
+            - update_existing (bool): If true, update existing feeds; otherwise skip them.
+        config (Config): Application configuration providing database connection settings used to create the repository.
+    """
     logger.info(f"Importing OPML file: {args.file}")
 
     repository = create_repository(
@@ -71,7 +82,15 @@ def import_opml(args, config: Config):
 
 
 def add_podcast(args, config: Config):
-    """Add a podcast from a feed URL."""
+    """
+    Add a podcast to the repository using the feed URL provided in args.
+    
+    If the feed cannot be added the function prints the error and exits the process with status 1. On success it prints the podcast title, ID, and number of episodes. The repository is closed before returning.
+    
+    Parameters:
+        args: Parsed CLI arguments; expects `args.url` to contain the feed URL to add.
+        config (Config): Application configuration used to construct the repository and determine the download directory.
+    """
     logger.info(f"Adding podcast from: {args.url}")
 
     repository = create_repository(
@@ -141,7 +160,18 @@ def sync_feeds(args, config: Config):
 
 
 def download_episodes(args, config: Config):
-    """Download pending episodes."""
+    """
+    Download pending podcast episodes according to CLI options and configuration.
+    
+    Performs episode downloads using the repository and EpisodeDownloader, prints a summary of downloaded and failed items, and lists up to the first 10 failures.
+    
+    Parameters:
+        args: Parsed command-line arguments with relevant attributes:
+            - limit (int | None): maximum number of episodes to download (defaults to 50 when not set).
+            - concurrent (int | None): maximum concurrent downloads override (falls back to config when not set).
+            - async_mode (bool): whether to run downloads using the downloader's async path.
+        config (Config): Application configuration providing database and download settings used to create the repository and downloader.
+    """
     repository = create_repository(
         database_url=config.DATABASE_URL,
         pool_size=config.DB_POOL_SIZE,
@@ -186,7 +216,16 @@ def download_episodes(args, config: Config):
 
 
 def list_podcasts(args, config: Config):
-    """List all podcasts."""
+    """
+    Prints a table of podcasts to stdout.
+    
+    Displays podcasts from the repository as rows containing ID, title (truncated to 40 characters), episode count, and subscription status. Honors the following fields on `args`: `all` (when true, include unsubscribed podcasts) and `limit` (maximum number of podcasts to list).
+    
+    Parameters:
+        args: argparse.Namespace with at least:
+            - all (bool): If true, include unsubscribed podcasts; otherwise only subscribed podcasts.
+            - limit (int | None): Maximum number of podcasts to retrieve; when None, the repository default is used.
+    """
     repository = create_repository(
         database_url=config.DATABASE_URL,
         pool_size=config.DB_POOL_SIZE,
@@ -223,7 +262,16 @@ def list_podcasts(args, config: Config):
 
 
 def show_status(args, config: Config):
-    """Show overall status and statistics."""
+    """
+    Display overall statistics or detailed status for a specific podcast to stdout.
+    
+    Parameters:
+        args: Parsed command-line arguments. If `args.podcast_id` is provided, the command prints detailed stats for that podcast; otherwise it prints aggregated overall statistics.
+        config (Config): Application configuration used to create the repository and read database connection settings.
+    
+    Notes:
+        Exits with status code 1 if a specified `podcast_id` is not found.
+    """
     repository = create_repository(
         database_url=config.DATABASE_URL,
         pool_size=config.DB_POOL_SIZE,
@@ -277,7 +325,11 @@ def show_status(args, config: Config):
 
 
 def cleanup_audio(args, config: Config):
-    """Clean up audio files for fully processed episodes."""
+    """
+    Remove downloaded audio files for episodes that are fully processed.
+    
+    If `args.dry_run` is true, print a summary and list up to 20 episodes (from the queried limit) that would be deleted without modifying files. Otherwise, delete up to `args.limit` processed-episode audio files (default 100) and print the number of files cleaned.
+    """
     repository = create_repository(
         database_url=config.DATABASE_URL,
         pool_size=config.DB_POOL_SIZE,
