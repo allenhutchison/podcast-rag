@@ -66,10 +66,10 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     """
     Run migrations using a live database connection.
-    
+
     Configure an Engine from the Alembic configuration, open a connection, configure the Alembic context with that connection and the module's target metadata, and execute migrations inside a transaction.
     """
-    configuration = config.get_section(config.config_ini_section)
+    configuration = config.get_section(config.config_ini_section) or {}
     configuration["sqlalchemy.url"] = get_url()
 
     connectable = engine_from_config(

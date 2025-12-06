@@ -179,6 +179,7 @@ def download_episodes(args, config: Config):
         echo=config.DB_ECHO,
     )
 
+    downloader = None
     try:
         downloader = EpisodeDownloader(
             repository=repository,
@@ -209,9 +210,9 @@ def download_episodes(args, config: Config):
             for f in failures[:10]:  # Show first 10
                 print(f"  - {f.episode_id}: {f.error}")
 
-        downloader.close()
-
     finally:
+        if downloader:
+            downloader.close()
         repository.close()
 
 
@@ -337,13 +338,8 @@ def cleanup_audio(args, config: Config):
         echo=config.DB_ECHO,
     )
 
+    downloader = None
     try:
-        downloader = EpisodeDownloader(
-            repository=repository,
-            download_directory=config.PODCAST_DOWNLOAD_DIRECTORY,
-            max_concurrent=1,  # Not used for cleanup
-        )
-
         if args.dry_run:
             episodes = repository.get_episodes_ready_for_cleanup(limit=args.limit or 100)
             print(f"\n[DRY RUN] Would delete audio for {len(episodes)} episodes:")
@@ -351,12 +347,18 @@ def cleanup_audio(args, config: Config):
                 print(f"  - {ep.title}: {ep.local_file_path}")
             return
 
+        downloader = EpisodeDownloader(
+            repository=repository,
+            download_directory=config.PODCAST_DOWNLOAD_DIRECTORY,
+            max_concurrent=1,  # Not used for cleanup
+        )
+
         deleted = downloader.cleanup_processed_episodes(limit=args.limit or 100)
         print(f"\nCleaned up {deleted} audio files")
 
-        downloader.close()
-
     finally:
+        if downloader:
+            downloader.close()
         repository.close()
 
 

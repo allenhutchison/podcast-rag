@@ -11,7 +11,8 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from .models import Base, Episode, Podcast
@@ -576,10 +577,8 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 echo=echo,
             )
 
-        self.SessionLocal = sessionmaker(bind=self.engine)
+        self.SessionLocal = sessionmaker(bind=self.engine, expire_on_commit=False)
 
-        # Create tables if they don't exist
-        Base.metadata.create_all(self.engine)
         logger.info(f"Database initialized: {database_url.split('@')[-1] if '@' in database_url else database_url}")
 
     def _get_session(self) -> Session:
@@ -650,7 +649,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         with self._get_session() as session:
             stmt = select(Podcast)
             if subscribed_only:
-                stmt = stmt.where(Podcast.is_subscribed == True)
+                stmt = stmt.where(Podcast.is_subscribed.is_(True))
             stmt = stmt.order_by(Podcast.title)
             if limit:
                 stmt = stmt.limit(limit)
@@ -880,7 +879,10 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
     ) -> tuple[Episode, bool]:
         """
         Ensure an Episode exists for the given podcast by GUID; create and persist it if missing.
-        
+
+        Uses optimistic creation with IntegrityError handling to avoid race conditions
+        in concurrent scenarios.
+
         Parameters:
             podcast_id (str): ID of the podcast that owns the episode.
             guid (str): Unique identifier of the episode within the podcast.
@@ -888,23 +890,32 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             enclosure_url (str): Media enclosure URL for a new episode.
             enclosure_type (str): MIME type or descriptor of the enclosure.
             **kwargs: Additional fields forwarded to episode creation.
-        
+
         Returns:
             tuple[Episode, bool]: (episode, created) where `created` is `True` if a new episode was created, `False` if an existing episode was returned.
         """
+        # First check if episode exists
         existing = self.get_episode_by_guid(podcast_id, guid)
         if existing:
             return existing, False
 
-        episode = self.create_episode(
-            podcast_id=podcast_id,
-            guid=guid,
-            title=title,
-            enclosure_url=enclosure_url,
-            enclosure_type=enclosure_type,
-            **kwargs,
-        )
-        return episode, True
+        # Try to create; handle race condition if another process created it
+        try:
+            episode = self.create_episode(
+                podcast_id=podcast_id,
+                guid=guid,
+                title=title,
+                enclosure_url=enclosure_url,
+                enclosure_type=enclosure_type,
+                **kwargs,
+            )
+            return episode, True
+        except IntegrityError:
+            # Another process created the episode; fetch and return it
+            existing = self.get_episode_by_guid(podcast_id, guid)
+            if existing:
+                return existing, False
+            raise  # Re-raise if we still can't find it (unexpected state)
 
     def get_episodes_pending_download(self, limit: int = 10) -> List[Episode]:
         """

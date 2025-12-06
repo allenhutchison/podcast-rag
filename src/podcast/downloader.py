@@ -482,43 +482,75 @@ class EpisodeDownloader:
         expected_size: Optional[int] = None,
     ) -> tuple[int, str]:
         """
-        Download the resource at `url` to `output_path`, updating an SHA-256 hash and invoking the progress callback as data is received.
-        
+        Download the resource at `url` to `output_path` with retry logic, updating an SHA-256 hash and invoking the progress callback as data is received.
+
         Parameters:
             session (aiohttp.ClientSession): Active aiohttp session used to perform the request.
             url (str): Remote URL of the file to download.
             output_path (str): Filesystem path where the response body will be written.
             episode_id (str): Identifier passed to the progress callback for this download.
             expected_size (Optional[int]): Expected total size in bytes; used when `Content-Length` is absent.
-        
+
         Returns:
             tuple[int, str]: `downloaded_size` — number of bytes written to disk, `sha256_hash` — hex-encoded SHA-256 digest of the downloaded file.
         """
-        hasher = hashlib.sha256()
-        downloaded = 0
+        retryable_status_codes = {429, 500, 502, 503, 504}
+        last_exception = None
 
-        async with session.get(url, allow_redirects=True) as response:
-            response.raise_for_status()
+        for attempt in range(self.retry_attempts):
+            try:
+                hasher = hashlib.sha256()
+                downloaded = 0
 
-            # Get total size from response if not known
-            total_size = expected_size
-            if "content-length" in response.headers:
-                try:
-                    total_size = int(response.headers["content-length"])
-                except ValueError:
-                    pass
+                async with session.get(url, allow_redirects=True) as response:
+                    # Check if we should retry for certain status codes
+                    if response.status in retryable_status_codes:
+                        if attempt < self.retry_attempts - 1:
+                            wait_time = (2 ** attempt)  # Exponential backoff
+                            logger.warning(
+                                f"Retryable status {response.status} for {url}, "
+                                f"attempt {attempt + 1}/{self.retry_attempts}, "
+                                f"waiting {wait_time}s"
+                            )
+                            await asyncio.sleep(wait_time)
+                            continue
+                    response.raise_for_status()
 
-            with open(output_path, "wb") as f:
-                async for chunk in response.content.iter_chunked(self.chunk_size):
-                    if chunk:
-                        f.write(chunk)
-                        hasher.update(chunk)
-                        downloaded += len(chunk)
+                    # Get total size from response if not known
+                    total_size = expected_size
+                    if "content-length" in response.headers:
+                        try:
+                            total_size = int(response.headers["content-length"])
+                        except ValueError:
+                            pass
 
-                        if self.progress_callback and total_size:
-                            self.progress_callback(episode_id, downloaded, total_size)
+                    with open(output_path, "wb") as f:
+                        async for chunk in response.content.iter_chunked(self.chunk_size):
+                            if chunk:
+                                f.write(chunk)
+                                hasher.update(chunk)
+                                downloaded += len(chunk)
 
-        return downloaded, hasher.hexdigest()
+                                if self.progress_callback and total_size:
+                                    self.progress_callback(episode_id, downloaded, total_size)
+
+                return downloaded, hasher.hexdigest()
+
+            except aiohttp.ClientError as e:
+                last_exception = e
+                if attempt < self.retry_attempts - 1:
+                    wait_time = (2 ** attempt)  # Exponential backoff
+                    logger.warning(
+                        f"Download error for {url}: {e}, "
+                        f"attempt {attempt + 1}/{self.retry_attempts}, "
+                        f"waiting {wait_time}s"
+                    )
+                    await asyncio.sleep(wait_time)
+                else:
+                    raise
+
+        # Should not reach here, but just in case
+        raise last_exception or aiohttp.ClientError(f"Failed to download {url} after {self.retry_attempts} attempts")
 
     def _generate_filename(self, episode: Episode) -> str:
         """

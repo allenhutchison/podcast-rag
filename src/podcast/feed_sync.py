@@ -216,11 +216,11 @@ class FeedSyncService:
     def _update_podcast_metadata(self, podcast, parsed: ParsedPodcast) -> None:
         """
         Update a podcast's stored metadata using values from a parsed feed.
-        
+
         Only fields present in the parsed feed that differ from the podcast's current values will be applied.
-        
+
         Parameters:
-            podcast: The podcast record/object to update (must provide attributes like id, title, description, website_url, author, language, itunes_author, itunes_category, itunes_explicit, image_url).
+            podcast: The podcast record/object to update (must provide attributes like id, title, description, website_url, author, language, itunes_author, itunes_category, itunes_subcategory, itunes_type, itunes_explicit, image_url).
             parsed (ParsedPodcast): Parsed feed metadata to use for updates.
         """
         updates = {}
@@ -240,6 +240,10 @@ class FeedSyncService:
             updates["itunes_author"] = parsed.itunes_author
         if parsed.itunes_category and parsed.itunes_category != podcast.itunes_category:
             updates["itunes_category"] = parsed.itunes_category
+        if parsed.itunes_subcategory and parsed.itunes_subcategory != podcast.itunes_subcategory:
+            updates["itunes_subcategory"] = parsed.itunes_subcategory
+        if parsed.itunes_type and parsed.itunes_type != podcast.itunes_type:
+            updates["itunes_type"] = parsed.itunes_type
         if parsed.itunes_explicit is not None and parsed.itunes_explicit != podcast.itunes_explicit:
             updates["itunes_explicit"] = parsed.itunes_explicit
         if parsed.image_url and parsed.image_url != podcast.image_url:

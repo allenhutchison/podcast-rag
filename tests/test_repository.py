@@ -13,11 +13,11 @@ from src.db.repository import SQLAlchemyPodcastRepository
 def repository(tmp_path):
     """
     Create a temporary SQLite-backed repository for tests.
-    
+
     Yields a repository instance configured to use a SQLite file under the provided temporary path and closes the repository when the fixture is torn down.
     """
     db_path = tmp_path / "test.db"
-    repo = create_repository(f"sqlite:///{db_path}")
+    repo = create_repository(f"sqlite:///{db_path}", create_tables=True)
     yield repo
     repo.close()
 

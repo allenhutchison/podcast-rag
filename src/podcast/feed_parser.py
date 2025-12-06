@@ -6,6 +6,7 @@ podcast metadata including iTunes namespace extensions.
 
 import logging
 import re
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from email.utils import parsedate_to_datetime
@@ -13,6 +14,9 @@ from typing import List, Optional
 from urllib.parse import urlparse
 
 import feedparser
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 logger = logging.getLogger(__name__)
 
@@ -99,34 +103,66 @@ class FeedParser:
     # User agent for feed requests
     USER_AGENT = "PodcastRAG/1.0 (+https://github.com/podcast-rag)"
 
-    def __init__(self, user_agent: Optional[str] = None):
+    def __init__(
+        self,
+        user_agent: Optional[str] = None,
+        retry_attempts: int = 3,
+        timeout: int = 30,
+    ):
         """Initialize the feed parser.
 
         Args:
             user_agent: Custom user agent string for requests
+            retry_attempts: Number of retry attempts for transient HTTP failures
+            timeout: Request timeout in seconds
         """
         self.user_agent = user_agent or self.USER_AGENT
+        self.retry_attempts = retry_attempts
+        self.timeout = timeout
+        self._session = self._create_session()
+
+    def _create_session(self) -> requests.Session:
+        """Create an HTTP session with retry logic for fetching feeds."""
+        session = requests.Session()
+
+        retry_strategy = Retry(
+            total=self.retry_attempts,
+            backoff_factor=1,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["GET", "HEAD"],
+        )
+
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        session.headers.update({"User-Agent": self.user_agent})
+
+        return session
 
     def parse_url(self, feed_url: str) -> ParsedPodcast:
         """
         Parse a podcast feed from a URL and return its parsed podcast representation.
-        
+
+        Uses a resilient HTTP session with retry logic for transient failures.
+
         Parameters:
             feed_url (str): URL of the RSS/Atom feed to parse.
-        
+
         Returns:
             ParsedPodcast: Podcast metadata and a list of parsed episodes.
-        
+
         Raises:
             ValueError: If the feed cannot be parsed or contains no feed data.
+            requests.RequestException: If the feed cannot be fetched after retries.
         """
         logger.info(f"Parsing feed: {feed_url}")
 
-        # Parse the feed
-        feed = feedparser.parse(
-            feed_url,
-            agent=self.user_agent,
-        )
+        # Fetch the feed content with retry logic
+        response = self._session.get(feed_url, timeout=self.timeout)
+        response.raise_for_status()
+
+        # Parse the fetched content
+        feed = feedparser.parse(response.content)
 
         # Check for errors
         if feed.bozo and feed.bozo_exception:

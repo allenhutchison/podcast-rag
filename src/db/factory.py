@@ -8,6 +8,7 @@ import logging
 import os
 from typing import Optional
 
+from .models import Base
 from .repository import PodcastRepositoryInterface, SQLAlchemyPodcastRepository
 
 logger = logging.getLogger(__name__)
@@ -21,18 +22,21 @@ def create_repository(
     pool_size: int = 5,
     max_overflow: int = 10,
     echo: bool = False,
+    create_tables: bool = False,
 ) -> PodcastRepositoryInterface:
     """
     Create a PodcastRepositoryInterface configured from the provided or discovered database URL.
-    
+
     If `database_url` is not provided, it is read from the `DATABASE_URL` environment variable; if that is unset, a local SQLite default is used. Logs the chosen database type and hides credentials when present. Pool settings apply to PostgreSQL and are ignored for SQLite.
-    
+
     Parameters:
         database_url (Optional[str]): SQLAlchemy database URL to use; if None the environment or default is used.
         pool_size (int): Connection pool size for PostgreSQL; ignored for SQLite.
         max_overflow (int): Maximum overflow connections for PostgreSQL; ignored for SQLite.
         echo (bool): If true, enable SQL statement logging.
-    
+        create_tables (bool): If true, create database tables directly (for testing only;
+            production should use Alembic migrations).
+
     Returns:
         PodcastRepositoryInterface: A repository instance backed by the resolved database URL.
     """
@@ -51,12 +55,19 @@ def create_repository(
     else:
         logger.info(f"Creating repository with URL: {database_url}")
 
-    return SQLAlchemyPodcastRepository(
+    repo = SQLAlchemyPodcastRepository(
         database_url=database_url,
         pool_size=pool_size,
         max_overflow=max_overflow,
         echo=echo,
     )
+
+    # Create tables directly for testing (production should use Alembic migrations)
+    if create_tables:
+        Base.metadata.create_all(repo.engine)
+        logger.info("Created database tables (testing mode)")
+
+    return repo
 
 
 def get_database_url_from_config(config) -> str:
