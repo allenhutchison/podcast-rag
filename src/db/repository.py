@@ -8,12 +8,12 @@ import logging
 import os
 import shutil
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session, joinedload, sessionmaker
 
 from .models import Base, Episode, Podcast
 
@@ -674,7 +674,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 for key, value in kwargs.items():
                     if hasattr(podcast, key):
                         setattr(podcast, key, value)
-                podcast.updated_at = datetime.utcnow()
+                podcast.updated_at = datetime.now(UTC)
                 session.commit()
                 session.refresh(podcast)
                 logger.debug(f"Updated podcast {podcast_id}: {kwargs.keys()}")
@@ -831,7 +831,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 for key, value in kwargs.items():
                     if hasattr(episode, key):
                         setattr(episode, key, value)
-                episode.updated_at = datetime.utcnow()
+                episode.updated_at = datetime.now(UTC)
                 session.commit()
                 session.refresh(episode)
                 logger.debug(f"Updated episode {episode_id}: {kwargs.keys()}")
@@ -982,16 +982,17 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
     def get_episodes_pending_indexing(self, limit: int = 10) -> List[Episode]:
         """
         Return episodes that have completed metadata and are pending File Search indexing.
-        
+
         Parameters:
             limit (int): Maximum number of episodes to return.
-        
+
         Returns:
             List[Episode]: Episodes where `metadata_status == "completed"`, `file_search_status == "pending"`, and `transcript_path` is present, ordered by `published_date` descending up to `limit`.
         """
         with self._get_session() as session:
             stmt = (
                 select(Episode)
+                .options(joinedload(Episode.podcast))
                 .where(
                     Episode.metadata_status == "completed",
                     Episode.file_search_status == "pending",
@@ -1000,7 +1001,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 .order_by(Episode.published_date.desc())
                 .limit(limit)
             )
-            return list(session.scalars(stmt).all())
+            return list(session.scalars(stmt).unique().all())
 
     def get_episodes_ready_for_cleanup(self, limit: int = 10) -> List[Episode]:
         """
@@ -1057,7 +1058,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             local_file_path=local_path,
             file_size_bytes=file_size,
             file_hash=file_hash,
-            downloaded_at=datetime.utcnow(),
+            downloaded_at=datetime.now(UTC),
             download_error=None,
         )
 
@@ -1094,7 +1095,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             episode_id,
             transcript_status="completed",
             transcript_path=transcript_path,
-            transcribed_at=datetime.utcnow(),
+            transcribed_at=datetime.now(UTC),
             transcript_error=None,
         )
 
@@ -1193,7 +1194,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             file_search_status="indexed",
             file_search_resource_name=resource_name,
             file_search_display_name=display_name,
-            file_search_uploaded_at=datetime.utcnow(),
+            file_search_uploaded_at=datetime.now(UTC),
             file_search_error=None,
         )
 

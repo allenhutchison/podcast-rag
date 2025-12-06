@@ -733,7 +733,7 @@ class GeminiFileSearchManager:
                 return None
 
         try:
-            from datetime import datetime
+            from datetime import UTC, datetime
             # cache_data is already loaded above
 
             # Verify cache is for the same store
@@ -810,13 +810,13 @@ class GeminiFileSearchManager:
         cache_path = self._get_cache_path()
 
         try:
-            from datetime import datetime
+            from datetime import UTC, datetime
             import tempfile
 
             cache_data = {
                 'version': '1.0',
                 'store_name': store_name,
-                'last_sync': datetime.utcnow().isoformat() + 'Z',
+                'last_sync': datetime.now(UTC).isoformat() + 'Z',
                 'file_count': len(files),
                 'files': files
             }
@@ -865,13 +865,13 @@ class GeminiFileSearchManager:
         cache_path = self._get_cache_path()
 
         try:
-            from datetime import datetime
+            from datetime import UTC, datetime
             import tempfile
 
             cache_data = {
                 'version': '2.0',  # Version 2 with metadata
                 'store_name': store_name,
-                'last_sync': datetime.utcnow().isoformat() + 'Z',
+                'last_sync': datetime.now(UTC).isoformat() + 'Z',
                 'file_count': len(files_with_metadata),
                 'files': files_with_metadata
             }
@@ -920,7 +920,7 @@ class GeminiFileSearchManager:
         cache_path = self._get_cache_path()
 
         try:
-            from datetime import datetime
+            from datetime import UTC, datetime
 
             # Load existing cache or create new
             cache_data = {}
@@ -944,7 +944,7 @@ class GeminiFileSearchManager:
             # Update entry
             cache_data['files'][display_name] = file_name
             cache_data['file_count'] = len(cache_data['files'])
-            cache_data['last_update'] = datetime.utcnow().isoformat() + 'Z'
+            cache_data['last_update'] = datetime.now(UTC).isoformat() + 'Z'
 
             # Save updated cache
             if self.config.GCS_METADATA_BUCKET:

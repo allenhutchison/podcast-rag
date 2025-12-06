@@ -2,7 +2,7 @@ import unittest
 import os
 import json
 import tempfile
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 # Mock the config and logger
@@ -51,7 +51,7 @@ class TestCacheLogic(unittest.TestCase):
         cache_data = {
             'version': '2.0',
             'store_name': 'store_123',
-            'last_sync': datetime.utcnow().isoformat(),
+            'last_sync': datetime.now(UTC).isoformat(),
             'files': {}
         }
         with open(self.cache_path, 'w') as f:
@@ -72,7 +72,7 @@ class TestCacheLogic(unittest.TestCase):
     def test_refresh_logic_stale(self):
         """Verify logic proceeds if cache is old (>24h)."""
         # Create stale cache file
-        stale_time = datetime.utcnow() - timedelta(hours=25)
+        stale_time = datetime.now(UTC) - timedelta(hours=25)
         cache_data = {
             'version': '2.0',
             'store_name': 'store_123',
@@ -86,7 +86,7 @@ class TestCacheLogic(unittest.TestCase):
         with open(self.cache_path, 'r') as f:
             data = json.load(f)
             last_sync = datetime.fromisoformat(data.get('last_sync'))
-            if datetime.utcnow() - last_sync > timedelta(hours=24):
+            if datetime.now(UTC) - last_sync > timedelta(hours=24):
                 should_update = True
                 
         self.assertTrue(should_update, "Should update if cache is stale")
@@ -94,7 +94,7 @@ class TestCacheLogic(unittest.TestCase):
     def test_refresh_logic_fresh(self):
         """Verify logic skips if cache is fresh (<24h) and not empty."""
         # Create fresh cache file
-        fresh_time = datetime.utcnow() - timedelta(hours=1)
+        fresh_time = datetime.now(UTC) - timedelta(hours=1)
         cache_data = {
             'version': '2.0',
             'store_name': 'store_123',
@@ -112,7 +112,7 @@ class TestCacheLogic(unittest.TestCase):
             
             if file_count == 0:
                 should_update = True
-            elif datetime.utcnow() - last_sync > timedelta(hours=24):
+            elif datetime.now(UTC) - last_sync > timedelta(hours=24):
                 should_update = True
                 
         self.assertFalse(should_update, "Should NOT update if cache is fresh and has files")
