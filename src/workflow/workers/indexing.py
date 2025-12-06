@@ -133,7 +133,15 @@ class IndexingWorker(WorkerInterface):
         # If skipped (already exists), look up the existing resource name
         if resource_name is None:
             existing = self._get_existing_files()
-            resource_name = existing.get(display_name, "")
+            resource_name = existing.get(display_name)
+            if not resource_name:
+                logger.error(
+                    f"Cache inconsistency: episode {episode.id} skipped but "
+                    f"display_name '{display_name}' not found in existing files"
+                )
+                raise ValueError(
+                    f"File '{display_name}' reported as existing but not found in cache"
+                )
             logger.info(f"Transcript already indexed: {display_name}")
         else:
             # Update cache with new file
@@ -179,21 +187,21 @@ class IndexingWorker(WorkerInterface):
                     result.processed += 1
 
                 except FileNotFoundError as e:
-                    error_msg = f"Episode {episode.id}: {e}"
-                    logger.error(error_msg)
-                    self.repository.mark_indexing_failed(episode.id, str(e))
+                    error_msg = str(e)
+                    logger.exception(f"Episode {episode.id} indexing failed: file not found")
+                    self.repository.mark_indexing_failed(episode.id, error_msg)
                     result.failed += 1
-                    result.errors.append(error_msg)
+                    result.errors.append(f"Episode {episode.id}: {error_msg}")
 
                 except Exception as e:
-                    error_msg = f"Episode {episode.id}: {e}"
-                    logger.exception(error_msg)
-                    self.repository.mark_indexing_failed(episode.id, str(e))
+                    error_msg = str(e)
+                    logger.exception(f"Episode {episode.id} indexing failed")
+                    self.repository.mark_indexing_failed(episode.id, error_msg)
                     result.failed += 1
-                    result.errors.append(error_msg)
+                    result.errors.append(f"Episode {episode.id}: {error_msg}")
 
         except Exception as e:
-            logger.exception(f"Indexing batch failed: {e}")
+            logger.exception("Indexing batch failed")
             result.failed += 1
             result.errors.append(str(e))
 

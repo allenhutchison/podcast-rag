@@ -125,6 +125,7 @@ class TranscriptionWorker(WorkerInterface):
             audio=episode.local_file_path,
             language="en",
             verbose=False,
+            fp=None,  # Disable tqdm progress bar
         )
 
         # Ensure directory exists

@@ -216,7 +216,7 @@ class WorkflowOrchestrator:
             return result
 
         except Exception as e:
-            logger.exception(f"Stage {stage} failed with error: {e}")
+            logger.exception(f"Stage {stage} failed")
             return WorkerResult(failed=1, errors=[str(e)])
 
     def run_once(
@@ -252,6 +252,7 @@ class WorkflowOrchestrator:
                 )
 
         result.completed_at = datetime.now(UTC)
+        result.success = result.total_failed == 0
 
         logger.info(
             f"Workflow run completed in {result.duration_seconds:.1f}s: "
@@ -274,8 +275,8 @@ class WorkflowOrchestrator:
         while True:
             try:
                 self.run_once()
-            except Exception as e:
-                logger.exception(f"Workflow run failed: {e}")
+            except Exception:
+                logger.exception("Workflow run failed")
 
             logger.info(f"Sleeping for {interval} seconds...")
             time.sleep(interval)
@@ -292,7 +293,7 @@ class WorkflowOrchestrator:
             if worker:
                 try:
                     status[stage] = worker.get_pending_count()
-                except Exception as e:
-                    logger.warning(f"Failed to get count for {stage}: {e}")
+                except Exception:
+                    logger.warning(f"Failed to get count for {stage}", exc_info=True)
                     status[stage] = -1
         return status

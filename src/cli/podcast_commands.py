@@ -415,7 +415,7 @@ def process_workflow(args, config: Config):
                 print(f"  Processed: {result.processed}")
                 print(f"  Failed: {result.failed}")
                 if result.errors:
-                    print(f"  Errors:")
+                    print("  Errors:")
                     for error in result.errors[:10]:
                         print(f"    - {error}")
             else:
