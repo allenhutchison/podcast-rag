@@ -7,12 +7,12 @@ This document provides context for AI assistants working with this codebase.
 **Podcast RAG System** is a Python-based Retrieval-Augmented Generation (RAG) application that enables intelligent search and question-answering over podcast libraries.
 
 **Core Functionality:**
-- Transcribes audio using OpenAI Whisper
+- Transcribes audio using faster-whisper (CTranslate2-based Whisper)
 - Extracts structured metadata using AI (Gemini)
 - Stores transcriptions in vector databases for semantic search
 - Answers natural language queries with source citations via CLI
 
-**Tech Stack:** Python 3.11, Gemini File Search, Whisper, Gemini API
+**Tech Stack:** Python 3.11+, Gemini File Search, faster-whisper, Gemini API
 
 ## Architecture
 
@@ -237,8 +237,23 @@ Follow conventional commits:
 - `docs(module): Update documentation`
 - `test(module): Add tests`
 
+### Code Review (Required Before Commits)
+
+Run the CodeRabbit code review tool before committing any code changes:
+
+```bash
+# Run code review (may take up to 30 minutes for large changes)
+coderabbit --prompt-only
+```
+
+**Important:**
+- Run this after making changes but BEFORE committing
+- Review all findings and address issues before committing
+- The tool analyzes code for type errors, potential bugs, and best practices
+- For long-running reviews, check periodically for output
+
 ### Current Branch
-Working on: `claude/generate-claude-md-011CV2TtD4R9Z11NP64p6u5F`
+Check current branch with: `git branch --show-current`
 
 ## Common Issues & Solutions
 
@@ -270,25 +285,31 @@ Working on: `claude/generate-claude-md-011CV2TtD4R9Z11NP64p6u5F`
 3. Update Pydantic schemas in `src/schemas.py` for validation
 4. Add tests in `tests/test_*.py`
 5. Add new dependencies with `uv add <package>` (updates pyproject.toml and uv.lock)
-6. Document in README.md or GEMINI.md
+6. Run full test suite: `pytest`
+7. Run code review: `coderabbit --prompt-only` and address findings
+8. Document in README.md or GEMINI.md
+9. Commit changes
 
 ### When Fixing Bugs
 1. Write failing test first (TDD approach)
 2. Fix code to pass test
 3. Run full test suite: `pytest`
 4. Check for regressions in related components
-5. Update documentation if behavior changes
+5. Run code review: `coderabbit --prompt-only` and address findings
+6. Update documentation if behavior changes
+7. Commit changes
 
 ### When Refactoring
 1. Ensure tests pass before refactoring
 2. Refactor incrementally with tests passing at each step
-3. Use descriptive commit messages
-4. Consider backward compatibility
-5. Update docstrings and type hints
+3. Run code review: `coderabbit --prompt-only` and address findings
+4. Use descriptive commit messages
+5. Consider backward compatibility
+6. Update docstrings and type hints
 
 ---
 
-**Last Updated:** 2025-11-11
+**Last Updated:** 2025-12-07
 **Project Version:** See `git log -1` for latest commit
 **Python Version:** 3.11+
 **License:** Apache 2.0

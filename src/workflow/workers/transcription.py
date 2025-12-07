@@ -1,7 +1,11 @@
 """Transcription worker for episode audio files.
 
-Database-driven transcription using Whisper. This worker queries the database
+Database-driven transcription using faster-whisper. This worker queries the database
 for episodes pending transcription and updates status after completion.
+
+faster-whisper uses CTranslate2 for efficient inference, providing 1.5-2.6x speedup
+over OpenAI Whisper with equal or better accuracy. See docs/faster-whisper-benchmark.md
+for detailed benchmark results.
 """
 
 import gc
@@ -20,8 +24,13 @@ logger = logging.getLogger(__name__)
 class TranscriptionWorker(WorkerInterface):
     """Worker that transcribes downloaded episode audio files.
 
-    Uses OpenAI Whisper for transcription. The model is lazily loaded
+    Uses faster-whisper for transcription. The model is lazily loaded
     and can be released after processing to free memory.
+
+    Configuration (via environment or Config):
+        WHISPER_MODEL: Model size (default: "medium")
+        WHISPER_DEVICE: Device to use (default: "cuda")
+        WHISPER_COMPUTE_TYPE: Compute type (default: "float16")
     """
 
     def __init__(
@@ -45,44 +54,66 @@ class TranscriptionWorker(WorkerInterface):
         return "Transcription"
 
     def _get_model(self):
-        """Lazily load the Whisper model."""
+        """Lazily load the faster-whisper model."""
         if self._model is None:
-            import whisper
+            from faster_whisper import WhisperModel
 
-            logger.info("Loading Whisper model (large-v3)...")
-            self._model = whisper.load_model("large-v3")
+            model_size = self.config.WHISPER_MODEL
+            device = self.config.WHISPER_DEVICE
+            compute_type = self.config.WHISPER_COMPUTE_TYPE
+
+            # CPU doesn't support float16, use int8 instead
+            if device == "cpu" and compute_type == "float16":
+                logger.info("CPU device: switching compute_type from float16 to int8")
+                compute_type = "int8"
+
+            logger.info(
+                f"Loading faster-whisper model ({model_size}) on {device} "
+                f"with compute_type={compute_type}..."
+            )
+            self._model = WhisperModel(
+                model_size,
+                device=device,
+                compute_type=compute_type,
+            )
         return self._model
 
     def _release_model(self) -> None:
-        """Release the Whisper model from memory."""
+        """Release the faster-whisper model from memory."""
         if self._model is not None:
-            import torch
-
-            logger.info("Releasing Whisper model from memory")
+            logger.info("Releasing faster-whisper model from memory")
             del self._model
             self._model = None
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+
+            # Try to clear CUDA cache if torch is available
+            try:
+                import torch
+
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except ImportError:
+                pass  # torch not installed, skip CUDA cache clearing
+
             gc.collect()
 
     def load_model(self) -> None:
-        """Explicitly load the Whisper model for continuous operation.
+        """Explicitly load the faster-whisper model for continuous operation.
 
         Use this in pipeline mode to load the model once at startup
         and keep it loaded across multiple transcriptions.
         """
         self._get_model()
-        logger.info("Whisper model loaded for continuous transcription")
+        logger.info("faster-whisper model loaded for continuous transcription")
 
     def unload_model(self) -> None:
-        """Release the Whisper model from memory.
+        """Release the faster-whisper model from memory.
 
         Alias for _release_model() for public API consistency.
         """
         self._release_model()
 
     def is_model_loaded(self) -> bool:
-        """Check if the Whisper model is currently loaded.
+        """Check if the faster-whisper model is currently loaded.
 
         Returns:
             True if model is loaded, False otherwise.
@@ -110,16 +141,18 @@ class TranscriptionWorker(WorkerInterface):
         episodes = self.repository.get_episodes_pending_transcription(limit=1000)
         return len(episodes)
 
-    def _transcribe_episode(self, episode: Episode) -> Optional[str]:
+    def _transcribe_episode(self, episode: Episode) -> str:
         """Transcribe a single episode.
 
         Args:
             episode: Episode to transcribe.
 
         Returns:
-            Path to transcript file if successful, None otherwise.
+            Path to transcript file.
 
         Raises:
+            ValueError: If episode has no local_file_path.
+            FileNotFoundError: If audio file does not exist.
             Exception: If transcription fails.
         """
         if not episode.local_file_path:
@@ -143,20 +176,25 @@ class TranscriptionWorker(WorkerInterface):
 
         logger.info(f"Transcribing episode: {episode.title}")
 
-        # Get the Whisper model and transcribe
+        # Get the faster-whisper model and transcribe
         model = self._get_model()
-        result = model.transcribe(
-            audio=episode.local_file_path,
+        segments, _info = model.transcribe(
+            episode.local_file_path,
+            beam_size=5,
             language="en",
-            verbose=None,
+            vad_filter=True,  # Filter out silence for cleaner transcripts
         )
+
+        # Collect all segment texts (segments is a generator)
+        transcript_parts = [segment.text.strip() for segment in segments]
+        transcript_text = " ".join(transcript_parts)
 
         # Ensure directory exists
         os.makedirs(os.path.dirname(transcript_path), exist_ok=True)
 
         # Write transcript to file
         with open(transcript_path, "w", encoding="utf-8") as f:
-            f.write(result["text"])
+            f.write(transcript_text)
 
         logger.info(f"Transcription complete: {transcript_path}")
         return transcript_path
