@@ -176,7 +176,7 @@ class TranscriptionWorker(WorkerInterface):
 
         # Get the faster-whisper model and transcribe
         model = self._get_model()
-        segments, info = model.transcribe(
+        segments, _info = model.transcribe(
             episode.local_file_path,
             beam_size=5,
             language="en",

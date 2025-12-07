@@ -15,7 +15,7 @@ After extensive benchmarking and transcript comparison, faster-whisper provides:
 ## Test Environment
 
 - **Hardware**: NVIDIA GeForce RTX 4090
-- **Audio Sample**: 13.8 minute podcast episode
+- **Audio Sample**: 13.8-minute podcast episode
 - **Podcast**: [Up First from NPR](https://www.npr.org/podcasts/510318/up-first)
 - **Episode**: "Autism and Tylenol, Jimmy Kimmel Returns, Trump At The UN"
 - **Date**: December 7, 2025

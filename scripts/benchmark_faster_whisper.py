@@ -44,12 +44,12 @@ def check_dependencies() -> None:
     missing = []
 
     try:
-        import whisper  # noqa: F401
+        import whisper  # Used to check if installed
     except ImportError:
         missing.append("openai-whisper")
 
     try:
-        from faster_whisper import WhisperModel  # noqa: F401
+        from faster_whisper import WhisperModel  # Used to check if installed
     except ImportError:
         missing.append("faster-whisper")
 
@@ -237,7 +237,7 @@ class TranscriptionBenchmark:
         start = time.perf_counter()
 
         # Transcribe - segments is a generator
-        segments, info = model.transcribe(
+        segments, _info = model.transcribe(
             audio_path,
             beam_size=5,
             language="en",
@@ -364,7 +364,11 @@ class TranscriptionBenchmark:
             whisper_result.transcript,
             faster_whisper_result.transcript,
         )
-        comparison["speedup"] = round(avg_whisper_time / avg_faster_whisper_time, 2)
+        if avg_faster_whisper_time > 0:
+            comparison["speedup"] = round(avg_whisper_time / avg_faster_whisper_time, 2)
+        else:
+            logger.warning("faster-whisper time is zero, cannot calculate speedup")
+            comparison["speedup"] = float("inf")
         result.comparison = comparison
 
         return result, whisper_result.transcript, faster_whisper_result.transcript
@@ -451,8 +455,8 @@ class TranscriptionBenchmark:
                             faster_whisper_transcript,
                         )
 
-                except Exception as e:
-                    logger.error(f"Error processing {audio_path}: {e}")
+                except Exception:
+                    logger.exception(f"Error processing {audio_path}")
                     continue
 
             # Calculate summary for this model size
@@ -621,8 +625,8 @@ Examples:
     path = args.audio_file or args.audio_dir
     try:
         audio_files = find_audio_files(path, limit=args.limit)
-    except ValueError as e:
-        logger.error(str(e))
+    except ValueError:
+        logger.exception("Invalid path provided")
         sys.exit(1)
 
     if not audio_files:
@@ -674,7 +678,7 @@ Examples:
         print(f"  Average word similarity: {summary['avg_word_similarity']:.2%}")
 
         load_times = report.model_load_times.get(model_size, {})
-        print(f"  Model load times:")
+        print("  Model load times:")
         print(f"    Whisper: {load_times.get('whisper', 'N/A')}s")
         print(f"    faster-whisper: {load_times.get('faster_whisper', 'N/A')}s")
 

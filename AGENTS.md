@@ -253,7 +253,7 @@ coderabbit --prompt-only
 - For long-running reviews, check periodically for output
 
 ### Current Branch
-Working on: `claude/generate-claude-md-011CV2TtD4R9Z11NP64p6u5F`
+Check current branch with: `git branch --show-current`
 
 ## Common Issues & Solutions
 
