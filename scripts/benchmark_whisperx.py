@@ -61,6 +61,34 @@ def check_dependencies() -> None:
         sys.exit(1)
 
 
+def setup_pytorch_compatibility() -> None:
+    """Set up PyTorch 2.6+ compatibility for pyannote models.
+
+    PyTorch 2.6 changed the default weights_only=True for torch.load,
+    which breaks loading pyannote models that use omegaconf.
+    """
+    try:
+        import torch
+        from omegaconf import DictConfig, ListConfig, OmegaConf
+
+        # Add omegaconf classes to safe globals for torch.load
+        safe_classes = [ListConfig, DictConfig]
+
+        # Also add any OmegaConf-related classes that might be needed
+        try:
+            from omegaconf.basecontainer import BaseContainer
+            safe_classes.append(BaseContainer)
+        except ImportError:
+            pass
+
+        torch.serialization.add_safe_globals(safe_classes)
+        logger.debug("Added omegaconf classes to PyTorch safe globals")
+    except ImportError:
+        pass  # omegaconf not installed
+    except Exception as e:
+        logger.warning(f"Could not set up PyTorch compatibility: {e}")
+
+
 @dataclass
 class TranscriptionResult:
     """Result of a single transcription."""
@@ -177,6 +205,7 @@ class TranscriptionBenchmark:
             model_size,
             device=self.device,
             compute_type=self.compute_type,
+            language="en",  # Specify language to skip detection
         )
         load_time = time.perf_counter() - start
         logger.info(f"WhisperX model loaded in {load_time:.2f}s")
@@ -530,6 +559,7 @@ def find_audio_files(
 def main():
     """Main entry point."""
     check_dependencies()
+    setup_pytorch_compatibility()
 
     parser = argparse.ArgumentParser(
         description="Benchmark OpenAI Whisper vs WhisperX transcription performance",
