@@ -12,7 +12,7 @@ This document provides context for AI assistants working with this codebase.
 - Stores transcriptions in vector databases for semantic search
 - Answers natural language queries with source citations via CLI
 
-**Tech Stack:** Python 3.11, Gemini File Search, Whisper, Gemini API
+**Tech Stack:** Python 3.11+, Gemini File Search, faster-whisper, Gemini API
 
 ## Architecture
 

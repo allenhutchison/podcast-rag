@@ -291,11 +291,14 @@ class TranscriptionBenchmark:
 
     def release_model(self) -> None:
         """Release GPU memory."""
-        import torch
-
         gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except ImportError:
+            pass  # torch not installed, skip CUDA cache clearing
 
     def benchmark_file(
         self,
@@ -314,7 +317,13 @@ class TranscriptionBenchmark:
 
         Returns:
             Tuple of (BenchmarkResult, whisper_transcript, faster_whisper_transcript).
+
+        Raises:
+            ValueError: If runs is less than 1.
         """
+        if runs < 1:
+            raise ValueError("runs must be a positive integer (>= 1)")
+
         duration = self.get_audio_duration(audio_path)
         logger.info(f"Audio duration: {duration:.1f}s ({duration/60:.1f} min)")
 

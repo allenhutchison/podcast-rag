@@ -141,16 +141,18 @@ class TranscriptionWorker(WorkerInterface):
         episodes = self.repository.get_episodes_pending_transcription(limit=1000)
         return len(episodes)
 
-    def _transcribe_episode(self, episode: Episode) -> Optional[str]:
+    def _transcribe_episode(self, episode: Episode) -> str:
         """Transcribe a single episode.
 
         Args:
             episode: Episode to transcribe.
 
         Returns:
-            Path to transcript file if successful, None otherwise.
+            Path to transcript file.
 
         Raises:
+            ValueError: If episode has no local_file_path.
+            FileNotFoundError: If audio file does not exist.
             Exception: If transcription fails.
         """
         if not episode.local_file_path:

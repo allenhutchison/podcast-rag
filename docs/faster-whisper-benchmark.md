@@ -130,6 +130,8 @@ For GPU acceleration, set the library path before running:
 export LD_LIBRARY_PATH=/path/to/.venv/lib/python3.12/site-packages/nvidia/cudnn/lib:/path/to/.venv/lib/python3.12/site-packages/nvidia/cublas/lib:$LD_LIBRARY_PATH
 ```
 
+**Note:** Adjust the Python version in the path (e.g., `python3.11` vs `python3.12`) to match your local environment.
+
 Or add to your shell configuration file (~/.bashrc, ~/.zshrc).
 
 ## Usage
