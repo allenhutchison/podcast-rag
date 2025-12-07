@@ -303,7 +303,7 @@ class TranscriptionBenchmark:
         whisper_model: Any,
         faster_whisper_model: Any,
         runs: int = 1,
-    ) -> BenchmarkResult:
+    ) -> tuple[BenchmarkResult, str, str]:
         """Benchmark a single audio file.
 
         Args:
@@ -313,7 +313,7 @@ class TranscriptionBenchmark:
             runs: Number of runs for averaging.
 
         Returns:
-            BenchmarkResult with all metrics.
+            Tuple of (BenchmarkResult, whisper_transcript, faster_whisper_transcript).
         """
         duration = self.get_audio_duration(audio_path)
         logger.info(f"Audio duration: {duration:.1f}s ({duration/60:.1f} min)")
