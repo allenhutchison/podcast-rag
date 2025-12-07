@@ -59,6 +59,10 @@ dev = [
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
 ]
+# Benchmarking dependencies (for comparing transcription backends)
+benchmark = [
+    "whisperx>=3.1.0",
+]
 # All dependencies (for local development)
 all = [
     "podcast-rag[encoding,web]",
