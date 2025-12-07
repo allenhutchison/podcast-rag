@@ -177,6 +177,11 @@ class Episode(Base):
     file_search_display_name: Mapped[Optional[str]] = mapped_column(String(512))
     file_search_uploaded_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
+    # Retry tracking for pipeline mode
+    transcript_retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    metadata_retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    indexing_retry_count: Mapped[int] = mapped_column(Integer, default=0)
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(

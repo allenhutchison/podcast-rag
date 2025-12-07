@@ -19,8 +19,8 @@ from ..db.factory import create_repository
 from ..podcast.downloader import EpisodeDownloader
 from ..podcast.feed_sync import FeedSyncService
 from ..podcast.opml_parser import OPMLParser, import_opml_to_repository
-from ..workflow.config import WorkflowConfig
-from ..workflow.orchestrator import WorkflowOrchestrator
+from ..workflow.config import PipelineConfig, WorkflowConfig
+from ..workflow.orchestrator import PipelineOrchestrator, WorkflowOrchestrator
 
 # Set up logging
 logging.basicConfig(
@@ -436,6 +436,64 @@ def process_workflow(args, config: Config):
         repository.close()
 
 
+def run_pipeline(args, config: Config):
+    """Run the pipeline-oriented orchestrator.
+
+    Optimized for continuous GPU utilization during transcription.
+    Runs until interrupted with Ctrl+C.
+
+    Parameters:
+        args: Parsed CLI arguments (currently unused but kept for consistency).
+        config (Config): Application configuration.
+    """
+    repository = create_repository(
+        database_url=config.DATABASE_URL,
+        pool_size=config.DB_POOL_SIZE,
+        max_overflow=config.DB_MAX_OVERFLOW,
+        echo=config.DB_ECHO,
+    )
+
+    try:
+        pipeline_config = PipelineConfig.from_env()
+        orchestrator = PipelineOrchestrator(
+            config=config,
+            pipeline_config=pipeline_config,
+            repository=repository,
+        )
+
+        print(f"Starting pipeline orchestrator...")
+        print(f"  Sync interval: {pipeline_config.sync_interval_seconds}s")
+        print(f"  Download buffer: {pipeline_config.download_buffer_size} episodes")
+        print(f"  Post-processing workers: {pipeline_config.post_processing_workers}")
+        print(f"  Max retries: {pipeline_config.max_retries}")
+        print("\nPress Ctrl+C to stop\n")
+
+        stats = orchestrator.run()
+
+        print(f"\nPipeline stopped.")
+        print(f"  Transcribed: {stats.episodes_transcribed}")
+        print(f"  Transcription failures: {stats.transcription_failures}")
+        print(f"  Duration: {stats.duration_seconds:.1f}s")
+
+        if stats.post_processing:
+            print(f"\n  Post-processing:")
+            print(
+                f"    Metadata: {stats.post_processing.metadata_processed} processed, "
+                f"{stats.post_processing.metadata_failed} failed"
+            )
+            print(
+                f"    Indexing: {stats.post_processing.indexing_processed} processed, "
+                f"{stats.post_processing.indexing_failed} failed"
+            )
+            print(
+                f"    Cleanup: {stats.post_processing.cleanup_processed} processed, "
+                f"{stats.post_processing.cleanup_failed} failed"
+            )
+
+    finally:
+        repository.close()
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Create the argument parser."""
     parser = argparse.ArgumentParser(
@@ -549,10 +607,10 @@ def create_parser() -> argparse.ArgumentParser:
         help="Maximum number of files to clean up",
     )
 
-    # process command (workflow orchestrator)
+    # process command (workflow orchestrator - legacy batch mode)
     process_parser = subparsers.add_parser(
         "process",
-        help="Run the unified workflow (sync → download → transcribe → metadata → index → cleanup)",
+        help="Run the batch workflow (sync → download → transcribe → metadata → index → cleanup)",
     )
     process_parser.add_argument(
         "--stage",
@@ -563,6 +621,12 @@ def create_parser() -> argparse.ArgumentParser:
         "--continuous",
         action="store_true",
         help="Run continuously at configured interval (for scheduler mode)",
+    )
+
+    # pipeline command (new pipeline-oriented orchestrator)
+    pipeline_parser = subparsers.add_parser(
+        "pipeline",
+        help="Run the pipeline orchestrator (optimized for continuous GPU utilization)",
     )
 
     return parser
@@ -590,6 +654,7 @@ def main():
         "status": show_status,
         "cleanup": cleanup_audio,
         "process": process_workflow,
+        "pipeline": run_pipeline,
     }
 
     command_func = commands.get(args.command)

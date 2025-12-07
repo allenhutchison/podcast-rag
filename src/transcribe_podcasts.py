@@ -59,7 +59,7 @@ class TranscriptionManager:
             result = model.transcribe(
                 audio=episode_path,
                 language="en",
-                verbose=False
+                verbose=None,
             )
             
             # Write the transcription to the file

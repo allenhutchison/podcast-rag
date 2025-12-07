@@ -524,6 +524,79 @@ class PodcastRepositoryInterface(ABC):
         """
         pass
 
+    # --- Pipeline Operations ---
+
+    @abstractmethod
+    def get_download_buffer_count(self) -> int:
+        """Count episodes ready for transcription (downloaded, pending transcription).
+
+        Returns:
+            Number of episodes in the download buffer ready for transcription.
+        """
+        pass
+
+    @abstractmethod
+    def get_next_for_transcription(self) -> Optional[Episode]:
+        """Get the next episode ready for transcription.
+
+        Returns the most recently published episode that is downloaded
+        and pending transcription, excluding permanently failed episodes.
+
+        Returns:
+            Episode ready for transcription, or None if none available.
+        """
+        pass
+
+    @abstractmethod
+    def get_next_pending_post_processing(self) -> Optional[Episode]:
+        """Get the next episode needing post-processing.
+
+        Returns an episode that has completed transcription but still
+        needs metadata extraction, indexing, or cleanup.
+
+        Returns:
+            Episode needing post-processing, or None if none available.
+        """
+        pass
+
+    @abstractmethod
+    def increment_retry_count(self, episode_id: str, stage: str) -> int:
+        """Increment the retry count for a processing stage.
+
+        Args:
+            episode_id: ID of the episode.
+            stage: Processing stage ("transcript", "metadata", or "indexing").
+
+        Returns:
+            The new retry count after incrementing.
+        """
+        pass
+
+    @abstractmethod
+    def mark_permanently_failed(
+        self, episode_id: str, stage: str, error: str
+    ) -> None:
+        """Mark an episode as permanently failed for a processing stage.
+
+        Args:
+            episode_id: ID of the episode.
+            stage: Processing stage ("transcript", "metadata", or "indexing").
+            error: Error message describing the failure.
+        """
+        pass
+
+    @abstractmethod
+    def reset_episode_for_retry(self, episode_id: str, stage: str) -> None:
+        """Reset an episode's status to pending for retry.
+
+        Clears the error and resets status to pending for the given stage.
+
+        Args:
+            episode_id: ID of the episode.
+            stage: Processing stage ("transcript", "metadata", or "indexing").
+        """
+        pass
+
     # --- Connection Management ---
 
     @abstractmethod
@@ -751,12 +824,17 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
     def get_episode(self, episode_id: str) -> Optional[Episode]:
         """
         Retrieve an episode by its ID.
-        
+
         Returns:
             The Episode with the given ID, or `None` if no matching episode exists.
         """
         with self._get_session() as session:
-            return session.get(Episode, episode_id)
+            stmt = (
+                select(Episode)
+                .options(joinedload(Episode.podcast))
+                .where(Episode.id == episode_id)
+            )
+            return session.scalars(stmt).unique().first()
 
     def get_episode_by_guid(self, podcast_id: str, guid: str) -> Optional[Episode]:
         """
@@ -1346,6 +1424,170 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 ),
                 "fully_processed": sum(1 for e in episodes if e.is_fully_processed),
             }
+
+    # --- Pipeline Mode Methods ---
+
+    def get_download_buffer_count(self) -> int:
+        """Get count of episodes ready for transcription (download buffer).
+
+        Returns:
+            Number of episodes that are downloaded and pending transcription.
+        """
+        with self._get_session() as session:
+            stmt = (
+                select(func.count(Episode.id))
+                .where(
+                    Episode.download_status == "completed",
+                    Episode.transcript_status == "pending",
+                    Episode.local_file_path.isnot(None),
+                )
+            )
+            return session.scalar(stmt) or 0
+
+    def get_next_for_transcription(self) -> Optional[Episode]:
+        """Get the next single episode ready for transcription.
+
+        Returns episodes ordered by published_date (newest first),
+        excluding permanently failed episodes.
+
+        Returns:
+            Episode to transcribe, or None if no work available.
+        """
+        with self._get_session() as session:
+            stmt = (
+                select(Episode)
+                .where(
+                    Episode.download_status == "completed",
+                    Episode.transcript_status == "pending",
+                    Episode.local_file_path.isnot(None),
+                )
+                .order_by(Episode.published_date.desc())
+                .limit(1)
+            )
+            return session.scalars(stmt).first()
+
+    def get_next_pending_post_processing(self) -> Optional[Episode]:
+        """Get the next episode needing post-processing (metadata or indexing).
+
+        Returns episodes ordered by published_date (newest first).
+        Prioritizes metadata extraction over indexing.
+
+        Returns:
+            Episode to post-process, or None if no work available.
+        """
+        with self._get_session() as session:
+            # First check for episodes needing metadata
+            stmt = (
+                select(Episode)
+                .options(joinedload(Episode.podcast))
+                .where(
+                    Episode.transcript_status == "completed",
+                    Episode.metadata_status == "pending",
+                    Episode.transcript_path.isnot(None),
+                )
+                .order_by(Episode.published_date.desc())
+                .limit(1)
+            )
+            episode = session.scalars(stmt).unique().first()
+            if episode:
+                return episode
+
+            # Then check for episodes needing indexing
+            stmt = (
+                select(Episode)
+                .options(joinedload(Episode.podcast))
+                .where(
+                    Episode.metadata_status == "completed",
+                    Episode.file_search_status == "pending",
+                    Episode.transcript_path.isnot(None),
+                )
+                .order_by(Episode.published_date.desc())
+                .limit(1)
+            )
+            return session.scalars(stmt).unique().first()
+
+    def increment_retry_count(self, episode_id: str, stage: str) -> int:
+        """Increment and return the retry count for a processing stage.
+
+        Args:
+            episode_id: Episode to update.
+            stage: Stage name ('transcript', 'metadata', or 'indexing').
+
+        Returns:
+            New retry count after increment.
+
+        Raises:
+            ValueError: If stage name is invalid.
+        """
+        field_map = {
+            "transcript": "transcript_retry_count",
+            "metadata": "metadata_retry_count",
+            "indexing": "indexing_retry_count",
+        }
+
+        if stage not in field_map:
+            raise ValueError(f"Invalid stage: {stage}")
+
+        field_name = field_map[stage]
+
+        with self._get_session() as session:
+            episode = session.get(Episode, episode_id)
+            if episode is None:
+                raise ValueError(f"Episode not found: {episode_id}")
+
+            current_count = getattr(episode, field_name) or 0
+            new_count = current_count + 1
+            setattr(episode, field_name, new_count)
+            session.commit()
+            return new_count
+
+    def mark_permanently_failed(self, episode_id: str, stage: str, error: str) -> None:
+        """Mark an episode as permanently failed for a stage.
+
+        Sets the status to 'permanently_failed' which excludes it from future
+        processing attempts.
+
+        Args:
+            episode_id: Episode to mark.
+            stage: Stage name ('transcript', 'metadata', or 'indexing').
+            error: Error message describing the failure.
+        """
+        status_map = {
+            "transcript": ("transcript_status", "transcript_error"),
+            "metadata": ("metadata_status", "metadata_error"),
+            "indexing": ("file_search_status", "file_search_error"),
+        }
+
+        if stage not in status_map:
+            raise ValueError(f"Invalid stage: {stage}")
+
+        status_field, error_field = status_map[stage]
+        self.update_episode(
+            episode_id,
+            **{status_field: "permanently_failed", error_field: error}
+        )
+
+    def reset_episode_for_retry(self, episode_id: str, stage: str) -> None:
+        """Reset an episode's status to pending for retry.
+
+        Args:
+            episode_id: Episode to reset.
+            stage: Stage name ('transcript', 'metadata', or 'indexing').
+        """
+        status_map = {
+            "transcript": ("transcript_status", "transcript_error"),
+            "metadata": ("metadata_status", "metadata_error"),
+            "indexing": ("file_search_status", "file_search_error"),
+        }
+
+        if stage not in status_map:
+            raise ValueError(f"Invalid stage: {stage}")
+
+        status_field, error_field = status_map[stage]
+        self.update_episode(
+            episode_id,
+            **{status_field: "pending", error_field: None}
+        )
 
     # --- Connection Management ---
 
