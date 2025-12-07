@@ -47,8 +47,6 @@ class TranscriptionWorker(WorkerInterface):
     def _get_model(self):
         """Lazily load the Whisper model."""
         if self._model is None:
-            # Disable tqdm progress bars before importing whisper
-            os.environ["TQDM_DISABLE"] = "1"
             import whisper
 
             logger.info("Loading Whisper model (large-v3)...")
@@ -66,6 +64,30 @@ class TranscriptionWorker(WorkerInterface):
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             gc.collect()
+
+    def load_model(self) -> None:
+        """Explicitly load the Whisper model for continuous operation.
+
+        Use this in pipeline mode to load the model once at startup
+        and keep it loaded across multiple transcriptions.
+        """
+        self._get_model()
+        logger.info("Whisper model loaded for continuous transcription")
+
+    def unload_model(self) -> None:
+        """Release the Whisper model from memory.
+
+        Alias for _release_model() for public API consistency.
+        """
+        self._release_model()
+
+    def is_model_loaded(self) -> bool:
+        """Check if the Whisper model is currently loaded.
+
+        Returns:
+            True if model is loaded, False otherwise.
+        """
+        return self._model is not None
 
     def _build_transcript_path(self, local_file_path: str) -> str:
         """Build the transcript file path from the audio file path.
@@ -126,7 +148,7 @@ class TranscriptionWorker(WorkerInterface):
         result = model.transcribe(
             audio=episode.local_file_path,
             language="en",
-            verbose=False,
+            verbose=None,
         )
 
         # Ensure directory exists
@@ -138,6 +160,44 @@ class TranscriptionWorker(WorkerInterface):
 
         logger.info(f"Transcription complete: {transcript_path}")
         return transcript_path
+
+    def transcribe_single(self, episode: Episode) -> Optional[str]:
+        """Transcribe a single episode without releasing the model.
+
+        Unlike process_batch, this method:
+        - Does NOT release the model after completion (for continuous operation)
+        - Returns the transcript path directly (or None on failure)
+        - Updates database status
+
+        Use this in pipeline mode where the model stays loaded across
+        multiple transcriptions for GPU efficiency.
+
+        Args:
+            episode: Episode to transcribe.
+
+        Returns:
+            Path to transcript file if successful, None on failure.
+        """
+        try:
+            self.repository.mark_transcript_started(episode.id)
+            transcript_path = self._transcribe_episode(episode)
+            self.repository.mark_transcript_complete(
+                episode_id=episode.id,
+                transcript_path=transcript_path,
+            )
+            return transcript_path
+
+        except FileNotFoundError as e:
+            error_msg = str(e)
+            logger.exception(f"Episode {episode.id} transcription failed: file not found")
+            self.repository.mark_transcript_failed(episode.id, error_msg)
+            return None
+
+        except Exception as e:
+            error_msg = str(e)
+            logger.exception(f"Episode {episode.id} transcription failed")
+            self.repository.mark_transcript_failed(episode.id, error_msg)
+            return None
 
     def process_batch(self, limit: int) -> WorkerResult:
         """Transcribe a batch of pending episodes.
