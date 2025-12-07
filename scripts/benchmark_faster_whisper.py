@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Benchmark script to compare OpenAI Whisper vs WhisperX transcription performance.
+"""Benchmark script to compare OpenAI Whisper vs faster-whisper transcription performance.
 
 This script measures:
 - Model load time
@@ -7,10 +7,12 @@ This script measures:
 - Realtime factor (transcription time / audio duration)
 - Transcript similarity between the two methods
 
+faster-whisper uses CTranslate2, providing up to 4x faster inference than OpenAI Whisper.
+
 Usage:
-    python scripts/benchmark_whisperx.py --audio-file /path/to/audio.mp3
-    python scripts/benchmark_whisperx.py --audio-dir /path/to/podcasts/ --limit 5
-    python scripts/benchmark_whisperx.py --audio-file audio.mp3 --models large-v3,medium
+    python scripts/benchmark_faster_whisper.py --audio-file /path/to/audio.mp3
+    python scripts/benchmark_faster_whisper.py --audio-dir /path/to/podcasts/ --limit 5
+    python scripts/benchmark_faster_whisper.py --audio-file audio.mp3 --models large-v3,medium
 """
 
 import argparse
@@ -47,9 +49,9 @@ def check_dependencies() -> None:
         missing.append("openai-whisper")
 
     try:
-        import whisperx  # noqa: F401
+        from faster_whisper import WhisperModel  # noqa: F401
     except ImportError:
-        missing.append("whisperx")
+        missing.append("faster-whisper")
 
     if missing:
         print("Missing required dependencies:", ", ".join(missing))
@@ -57,36 +59,8 @@ def check_dependencies() -> None:
         print("To install dependencies, run:")
         print("  uv sync --extra encoding --extra benchmark")
         print("  # or")
-        print("  pip install openai-whisper whisperx")
+        print("  pip install openai-whisper faster-whisper")
         sys.exit(1)
-
-
-def setup_pytorch_compatibility() -> None:
-    """Set up PyTorch 2.6+ compatibility for pyannote models.
-
-    PyTorch 2.6 changed the default weights_only=True for torch.load,
-    which breaks loading pyannote models that use omegaconf.
-    """
-    try:
-        import torch
-        from omegaconf import DictConfig, ListConfig, OmegaConf
-
-        # Add omegaconf classes to safe globals for torch.load
-        safe_classes = [ListConfig, DictConfig]
-
-        # Also add any OmegaConf-related classes that might be needed
-        try:
-            from omegaconf.basecontainer import BaseContainer
-            safe_classes.append(BaseContainer)
-        except ImportError:
-            pass
-
-        torch.serialization.add_safe_globals(safe_classes)
-        logger.debug("Added omegaconf classes to PyTorch safe globals")
-    except ImportError:
-        pass  # omegaconf not installed
-    except Exception as e:
-        logger.warning(f"Could not set up PyTorch compatibility: {e}")
 
 
 @dataclass
@@ -105,7 +79,7 @@ class BenchmarkResult:
     file: str
     duration_seconds: float
     whisper: Optional[dict] = None
-    whisperx: Optional[dict] = None
+    faster_whisper: Optional[dict] = None
     comparison: Optional[dict] = None
 
 
@@ -121,7 +95,7 @@ class BenchmarkReport:
 
 
 class TranscriptionBenchmark:
-    """Benchmark whisper vs whisperX transcription."""
+    """Benchmark whisper vs faster-whisper transcription."""
 
     def __init__(
         self,
@@ -134,10 +108,16 @@ class TranscriptionBenchmark:
         Args:
             model_sizes: List of model sizes to test (e.g., ["large-v3", "medium"])
             device: Device to use ("cuda" or "cpu")
-            compute_type: Compute type for whisperX ("float16", "int8", etc.)
+            compute_type: Compute type for faster-whisper ("float16", "int8", etc.)
         """
         self.model_sizes = model_sizes
         self.device = device
+
+        # CPU doesn't support float16 efficiently, use int8 instead
+        if device == "cpu" and compute_type == "float16":
+            logger.info("CPU device: switching compute_type from float16 to int8")
+            compute_type = "int8"
+
         self.compute_type = compute_type
 
     def get_audio_duration(self, audio_path: str) -> float:
@@ -188,8 +168,8 @@ class TranscriptionBenchmark:
         logger.info(f"Whisper model loaded in {load_time:.2f}s")
         return model, load_time
 
-    def load_whisperx(self, model_size: str) -> tuple[Any, float]:
-        """Load WhisperX model.
+    def load_faster_whisper(self, model_size: str) -> tuple[Any, float]:
+        """Load faster-whisper model.
 
         Args:
             model_size: Model size (e.g., "large-v3", "medium", "small")
@@ -197,18 +177,17 @@ class TranscriptionBenchmark:
         Returns:
             Tuple of (model, load_time_seconds)
         """
-        import whisperx
+        from faster_whisper import WhisperModel
 
-        logger.info(f"Loading WhisperX model: {model_size}")
+        logger.info(f"Loading faster-whisper model: {model_size}")
         start = time.perf_counter()
-        model = whisperx.load_model(
+        model = WhisperModel(
             model_size,
             device=self.device,
             compute_type=self.compute_type,
-            language="en",  # Specify language to skip detection
         )
         load_time = time.perf_counter() - start
-        logger.info(f"WhisperX model loaded in {load_time:.2f}s")
+        logger.info(f"faster-whisper model loaded in {load_time:.2f}s")
         return model, load_time
 
     def transcribe_whisper(
@@ -242,36 +221,37 @@ class TranscriptionBenchmark:
             word_count=word_count,
         )
 
-    def transcribe_whisperx(
+    def transcribe_faster_whisper(
         self, model: Any, audio_path: str
     ) -> TranscriptionResult:
-        """Transcribe with WhisperX.
+        """Transcribe with faster-whisper.
 
         Args:
-            model: Loaded WhisperX model.
+            model: Loaded faster-whisper model.
             audio_path: Path to audio file.
 
         Returns:
             TranscriptionResult with transcript and timing.
         """
-        import whisperx
-
-        logger.info(f"Transcribing with WhisperX: {os.path.basename(audio_path)}")
+        logger.info(f"Transcribing with faster-whisper: {os.path.basename(audio_path)}")
         start = time.perf_counter()
 
-        # Load audio
-        audio = whisperx.load_audio(audio_path)
+        # Transcribe - segments is a generator
+        segments, info = model.transcribe(
+            audio_path,
+            beam_size=5,
+            language="en",
+            vad_filter=True,  # Filter out silence
+        )
 
-        # Transcribe
-        result = model.transcribe(audio, batch_size=16, language="en")
+        # Collect all segment texts
+        segment_texts = [segment.text.strip() for segment in segments]
+        transcript = " ".join(segment_texts)
         transcription_time = time.perf_counter() - start
 
-        # Extract text from segments
-        segments = result.get("segments", [])
-        transcript = " ".join(seg.get("text", "").strip() for seg in segments)
         word_count = len(transcript.split())
 
-        logger.info(f"WhisperX transcription completed in {transcription_time:.2f}s")
+        logger.info(f"faster-whisper transcription completed in {transcription_time:.2f}s")
         return TranscriptionResult(
             transcript=transcript,
             transcription_time=transcription_time,
@@ -321,7 +301,7 @@ class TranscriptionBenchmark:
         self,
         audio_path: str,
         whisper_model: Any,
-        whisperx_model: Any,
+        faster_whisper_model: Any,
         runs: int = 1,
     ) -> BenchmarkResult:
         """Benchmark a single audio file.
@@ -329,7 +309,7 @@ class TranscriptionBenchmark:
         Args:
             audio_path: Path to audio file.
             whisper_model: Loaded Whisper model.
-            whisperx_model: Loaded WhisperX model.
+            faster_whisper_model: Loaded faster-whisper model.
             runs: Number of runs for averaging.
 
         Returns:
@@ -359,31 +339,35 @@ class TranscriptionBenchmark:
             "word_count": whisper_result.word_count,
         }
 
-        # Benchmark WhisperX
-        whisperx_times = []
-        whisperx_result = None
+        # Benchmark faster-whisper
+        faster_whisper_times = []
+        faster_whisper_result = None
         for i in range(runs):
             if runs > 1:
-                logger.info(f"WhisperX run {i+1}/{runs}")
-            whisperx_result = self.transcribe_whisperx(whisperx_model, audio_path)
-            whisperx_times.append(whisperx_result.transcription_time)
+                logger.info(f"faster-whisper run {i+1}/{runs}")
+            faster_whisper_result = self.transcribe_faster_whisper(
+                faster_whisper_model, audio_path
+            )
+            faster_whisper_times.append(faster_whisper_result.transcription_time)
 
-        avg_whisperx_time = sum(whisperx_times) / len(whisperx_times)
-        result.whisperx = {
-            "transcription_time": round(avg_whisperx_time, 2),
-            "realtime_factor": round(avg_whisperx_time / duration, 4) if duration else 0,
-            "word_count": whisperx_result.word_count,
+        avg_faster_whisper_time = sum(faster_whisper_times) / len(faster_whisper_times)
+        result.faster_whisper = {
+            "transcription_time": round(avg_faster_whisper_time, 2),
+            "realtime_factor": (
+                round(avg_faster_whisper_time / duration, 4) if duration else 0
+            ),
+            "word_count": faster_whisper_result.word_count,
         }
 
         # Compare transcripts
         comparison = self.compare_transcripts(
             whisper_result.transcript,
-            whisperx_result.transcript,
+            faster_whisper_result.transcript,
         )
-        comparison["speedup"] = round(avg_whisper_time / avg_whisperx_time, 2)
+        comparison["speedup"] = round(avg_whisper_time / avg_faster_whisper_time, 2)
         result.comparison = comparison
 
-        return result, whisper_result.transcript, whisperx_result.transcript
+        return result, whisper_result.transcript, faster_whisper_result.transcript
 
     def run_benchmark(
         self,
@@ -420,11 +404,13 @@ class TranscriptionBenchmark:
             whisper_model, whisper_load_time = self.load_whisper(model_size)
             self.release_model()  # Clear some memory before loading next
 
-            whisperx_model, whisperx_load_time = self.load_whisperx(model_size)
+            faster_whisper_model, faster_whisper_load_time = self.load_faster_whisper(
+                model_size
+            )
 
             report.model_load_times[model_size] = {
                 "whisper": round(whisper_load_time, 2),
-                "whisperx": round(whisperx_load_time, 2),
+                "faster_whisper": round(faster_whisper_load_time, 2),
             }
 
             # Benchmark each file
@@ -435,18 +421,20 @@ class TranscriptionBenchmark:
                 logger.info(f"\n--- Processing: {os.path.basename(audio_path)} ---")
 
                 try:
-                    result, whisper_transcript, whisperx_transcript = self.benchmark_file(
-                        audio_path,
-                        whisper_model,
-                        whisperx_model,
-                        runs=runs,
+                    result, whisper_transcript, faster_whisper_transcript = (
+                        self.benchmark_file(
+                            audio_path,
+                            whisper_model,
+                            faster_whisper_model,
+                            runs=runs,
+                        )
                     )
                     result_dict = {
                         "model_size": model_size,
                         "file": result.file,
                         "duration_seconds": result.duration_seconds,
                         "whisper": result.whisper,
-                        "whisperx": result.whisperx,
+                        "faster_whisper": result.faster_whisper,
                         "comparison": result.comparison,
                     }
                     model_results.append(result_dict)
@@ -460,7 +448,7 @@ class TranscriptionBenchmark:
                             model_size,
                             result.file,
                             whisper_transcript,
-                            whisperx_transcript,
+                            faster_whisper_transcript,
                         )
 
                 except Exception as e:
@@ -486,7 +474,7 @@ class TranscriptionBenchmark:
 
             # Release models before loading next size
             del whisper_model
-            del whisperx_model
+            del faster_whisper_model
             self.release_model()
 
         return report
@@ -497,7 +485,7 @@ class TranscriptionBenchmark:
         model_size: str,
         filename: str,
         whisper_transcript: str,
-        whisperx_transcript: str,
+        faster_whisper_transcript: str,
     ) -> None:
         """Save transcripts to files for manual review.
 
@@ -506,7 +494,7 @@ class TranscriptionBenchmark:
             model_size: Model size used.
             filename: Original audio filename.
             whisper_transcript: Transcript from Whisper.
-            whisperx_transcript: Transcript from WhisperX.
+            faster_whisper_transcript: Transcript from faster-whisper.
         """
         base_name = os.path.splitext(filename)[0]
         model_dir = os.path.join(output_dir, model_size)
@@ -516,9 +504,9 @@ class TranscriptionBenchmark:
         with open(whisper_path, "w", encoding="utf-8") as f:
             f.write(whisper_transcript)
 
-        whisperx_path = os.path.join(model_dir, f"{base_name}_whisperx.txt")
-        with open(whisperx_path, "w", encoding="utf-8") as f:
-            f.write(whisperx_transcript)
+        faster_whisper_path = os.path.join(model_dir, f"{base_name}_faster_whisper.txt")
+        with open(faster_whisper_path, "w", encoding="utf-8") as f:
+            f.write(faster_whisper_transcript)
 
         logger.info(f"Saved transcripts to {model_dir}/")
 
@@ -559,24 +547,23 @@ def find_audio_files(
 def main():
     """Main entry point."""
     check_dependencies()
-    setup_pytorch_compatibility()
 
     parser = argparse.ArgumentParser(
-        description="Benchmark OpenAI Whisper vs WhisperX transcription performance",
+        description="Benchmark OpenAI Whisper vs faster-whisper transcription performance",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
     # Single file, all model sizes
-    python scripts/benchmark_whisperx.py --audio-file /path/to/episode.mp3
+    python scripts/benchmark_faster_whisper.py --audio-file /path/to/episode.mp3
 
     # Directory with limit
-    python scripts/benchmark_whisperx.py --audio-dir /path/to/podcasts/ --limit 3
+    python scripts/benchmark_faster_whisper.py --audio-dir /path/to/podcasts/ --limit 3
 
     # Specific models only
-    python scripts/benchmark_whisperx.py --audio-file ep.mp3 --models large-v3,medium
+    python scripts/benchmark_faster_whisper.py --audio-file ep.mp3 --models large-v3,medium
 
     # Multiple runs for averaging
-    python scripts/benchmark_whisperx.py --audio-file ep.mp3 --runs 3
+    python scripts/benchmark_faster_whisper.py --audio-file ep.mp3 --runs 3
         """,
     )
     parser.add_argument(
@@ -621,7 +608,7 @@ Examples:
     parser.add_argument(
         "--compute-type",
         default="float16",
-        help="Compute type for WhisperX (default: float16)",
+        help="Compute type for faster-whisper (default: float16)",
     )
 
     args = parser.parse_args()
@@ -689,7 +676,7 @@ Examples:
         load_times = report.model_load_times.get(model_size, {})
         print(f"  Model load times:")
         print(f"    Whisper: {load_times.get('whisper', 'N/A')}s")
-        print(f"    WhisperX: {load_times.get('whisperx', 'N/A')}s")
+        print(f"    faster-whisper: {load_times.get('faster_whisper', 'N/A')}s")
 
     # Save results
     output_path = args.output

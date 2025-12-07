@@ -24,6 +24,14 @@ class Config:
         self.TRANSCRIPTION_OUTPUT_SUFFIX = "_transcription.txt"
         self.TRANSCRIPTION_TEMP_FILE_SUFFIX = ".transcription_in_progress"
 
+        # Whisper transcription configuration
+        # Model options: tiny, base, small, medium, large-v3
+        # Recommend "medium" for best balance of speed and accuracy
+        self.WHISPER_MODEL = os.getenv("WHISPER_MODEL", "medium")
+        self.WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cuda")
+        # Compute type: float16 (GPU), int8 (CPU), float32
+        self.WHISPER_COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "float16")
+
         # Model configuration
         self.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "your_api_key_here")
         self.GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")

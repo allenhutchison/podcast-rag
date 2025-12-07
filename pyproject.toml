@@ -39,11 +39,14 @@ dependencies = [
 [project.optional-dependencies]
 # Encoding/transcription service dependencies
 encoding = [
-    "openai-whisper>=20231117",
+    "faster-whisper>=1.0.0",
     "APScheduler>=3.10.0",
     "eyed3>=0.9.0",
     "mcp>=1.0.0",
     "tqdm>=4.66.0",
+    # NVIDIA cuDNN libraries for GPU support (required for faster-whisper on CUDA)
+    "nvidia-cublas-cu12",
+    "nvidia-cudnn-cu12",
 ]
 # Web service dependencies
 web = [
@@ -61,7 +64,8 @@ dev = [
 ]
 # Benchmarking dependencies (for comparing transcription backends)
 benchmark = [
-    "whisperx>=3.1.0",
+    "faster-whisper>=1.0.0",
+    "openai-whisper>=20231117",  # For comparison benchmarks only
 ]
 # All dependencies (for local development)
 all = [
