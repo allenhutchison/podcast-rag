@@ -169,12 +169,15 @@ class TestTranscriptionWorkerDatabaseStorage:
             transcript_status="completed",
         )
 
+        # Re-fetch episode to get updated transcript_path
+        episode = repository.get_episode(sample_episode_with_audio.id)
+
         worker = TranscriptionWorker(config=mock_config, repository=repository)
         mock_model = MagicMock()
         worker._model = mock_model
 
         # Try to transcribe - should read from file
-        result = worker._transcribe_episode(sample_episode_with_audio)
+        result = worker._transcribe_episode(episode)
 
         # Should return file content
         assert result == legacy_text
