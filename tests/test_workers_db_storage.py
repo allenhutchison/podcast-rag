@@ -11,6 +11,7 @@ from pathlib import Path
 
 from src.db.factory import create_repository
 from src.db.models import Episode
+from src.schemas import PodcastMetadata
 from src.workflow.workers.base import WorkerResult
 
 
@@ -52,7 +53,7 @@ def sample_episode_with_audio(repository, sample_podcast, tmp_path):
     # Create a mock audio file
     audio_file = tmp_path / "episode.mp3"
     audio_file.write_bytes(b"fake audio data")
-    
+
     episode = repository.create_episode(
         podcast_id=sample_podcast.id,
         guid="test-episode",
@@ -66,7 +67,8 @@ def sample_episode_with_audio(repository, sample_podcast, tmp_path):
         len(b"fake audio data"),
         "abc123"
     )
-    return episode
+    # Re-fetch episode to get updated local_file_path
+    return repository.get_episode(episode.id)
 
 
 class TestTranscriptionWorkerDatabaseStorage:
@@ -133,15 +135,17 @@ class TestTranscriptionWorkerDatabaseStorage:
             sample_episode_with_audio.id,
             transcript_text=existing_text,
         )
+        # Re-fetch episode to get updated transcript_text
+        episode = repository.get_episode(sample_episode_with_audio.id)
 
         worker = TranscriptionWorker(config=mock_config, repository=repository)
-        
+
         # Mock should not be called
         mock_model = MagicMock()
         worker._model = mock_model
 
         # Try to transcribe
-        result = worker._transcribe_episode(sample_episode_with_audio)
+        result = worker._transcribe_episode(episode)
 
         # Should return existing text without calling model
         assert result == existing_text
@@ -278,13 +282,18 @@ class TestMetadataWorkerDatabaseStorage:
         
         # Mock AI extraction
         with patch.object(worker, '_extract_ai_metadata') as mock_extract:
-            mock_extract.return_value = {
-                "summary": "Test summary",
-                "keywords": ["test"],
-                "hosts": [],
-                "guests": [],
-            }
-            
+            mock_extract.return_value = PodcastMetadata(
+                podcast_title="Test Podcast",
+                episode_title="Episode 1",
+                episode_number=None,
+                date=None,
+                hosts=["Host Name"],
+                co_hosts=[],
+                guests=[],
+                summary="This is a test summary that needs to be at least 100 characters long to pass validation. Adding more text here.",
+                keywords=["test", "podcast", "episode", "audio", "transcript"],
+            )
+
             # Process episode
             merged = worker._process_episode(episode)
 
@@ -322,13 +331,18 @@ class TestMetadataWorkerDatabaseStorage:
         
         # Mock AI extraction
         with patch.object(worker, '_extract_ai_metadata') as mock_extract:
-            mock_extract.return_value = {
-                "summary": "Test summary",
-                "keywords": [],
-                "hosts": [],
-                "guests": [],
-            }
-            
+            mock_extract.return_value = PodcastMetadata(
+                podcast_title="Test Podcast",
+                episode_title="Episode 1",
+                episode_number=None,
+                date=None,
+                hosts=["Host Name"],
+                co_hosts=[],
+                guests=[],
+                summary="This is a test summary that needs to be at least 100 characters long to pass validation. Adding more text here.",
+                keywords=["test", "podcast", "episode", "audio", "transcript"],
+            )
+
             # Process episode
             merged = worker._process_episode(episode)
 
@@ -360,24 +374,31 @@ class TestMetadataWorkerDatabaseStorage:
             episode.id,
             transcript_text="Transcript content",
         )
+        # Re-fetch episode to get updated local_file_path
+        episode = repository.get_episode(episode.id)
 
         worker = MetadataWorker(config=mock_config, repository=repository)
-        
+
         # Mock MP3 tag reading
         with patch.object(worker, '_read_mp3_tags') as mock_read_tags:
             mock_read_tags.return_value = {
                 "artist": "Test Artist",
                 "album": "Test Album",
             }
-            
+
             with patch.object(worker, '_extract_ai_metadata') as mock_extract:
-                mock_extract.return_value = {
-                    "summary": "Summary",
-                    "keywords": ["test"],
-                    "hosts": [],
-                    "guests": [],
-                }
-                
+                mock_extract.return_value = PodcastMetadata(
+                    podcast_title="Test Podcast",
+                    episode_title="Episode 1",
+                    episode_number=None,
+                    date=None,
+                    hosts=["Host Name"],
+                    co_hosts=[],
+                    guests=[],
+                    summary="This is a test summary that needs to be at least 100 characters long to pass validation. Adding more text here.",
+                    keywords=["test", "podcast", "episode", "audio", "transcript"],
+                )
+
                 # Process episode
                 merged = worker._process_episode(episode)
 
@@ -433,14 +454,19 @@ class TestMetadataWorkerDatabaseStorage:
         with patch.object(worker, '_extract_ai_metadata') as mock_extract:
             def side_effect(transcript, filename):
                 idx = transcript.split()[-1]
-                return {
-                    "summary": f"Summary {idx}",
-                    "keywords": [f"keyword{idx}"],
-                    "hosts": [],
-                    "guests": [],
-                }
+                return PodcastMetadata(
+                    podcast_title="Test Podcast",
+                    episode_title=f"Episode {idx}",
+                    episode_number=None,
+                    date=None,
+                    hosts=["Host Name"],
+                    co_hosts=[],
+                    guests=[],
+                    summary=f"Summary {idx} - This is a test summary that needs to be at least 100 characters long to pass validation. Adding more text here.",
+                    keywords=["test", "podcast", "episode", "audio", "transcript"],
+                )
             mock_extract.side_effect = side_effect
-            
+
             # Process batch
             result = worker.process_batch(limit=10)
 
@@ -452,7 +478,7 @@ class TestMetadataWorkerDatabaseStorage:
             episodes = repository.list_episodes(podcast_id=sample_podcast.id)
             episode = [e for e in episodes if e.guid == f"episode-{i}"][0]
             assert episode.metadata_status == "completed"
-            assert episode.ai_summary == f"Summary {i}"
+            assert episode.ai_summary.startswith(f"Summary {i}")
 
 
 class TestIndexingWorkerDatabaseStorage:
@@ -479,7 +505,8 @@ class TestIndexingWorkerDatabaseStorage:
         worker = IndexingWorker(config=mock_config, repository=repository)
         display_name = worker._build_display_name(episode)
 
-        assert "Test_Episode_Title" in display_name
+        # Code preserves spaces and alphanumeric chars
+        assert "Test Episode Title" in display_name
         assert display_name.endswith("_transcription.txt")
 
     def test_build_display_name_from_transcript_path(
@@ -500,6 +527,8 @@ class TestIndexingWorkerDatabaseStorage:
             transcript_path="/path/to/episode_123_transcription.txt",
             transcript_status="completed",
         )
+        # Re-fetch episode to get updated transcript_path
+        episode = repository.get_episode(episode.id)
 
         worker = IndexingWorker(config=mock_config, repository=repository)
         display_name = worker._build_display_name(episode)
@@ -519,7 +548,7 @@ class TestIndexingWorkerDatabaseStorage:
             enclosure_url="https://example.com/episode.mp3",
             enclosure_type="audio/mpeg",
         )
-        
+
         transcript_text = "Transcript content for indexing."
         repository.mark_transcript_complete(
             episode.id,
@@ -529,13 +558,15 @@ class TestIndexingWorkerDatabaseStorage:
             episode_id=episode.id,
             summary="Summary",
         )
+        # Re-fetch episode to avoid DetachedInstanceError when accessing podcast relationship
+        episode = repository.get_episode(episode.id)
 
         worker = IndexingWorker(config=mock_config, repository=repository)
-        
-        # Mock file search manager
+
+        # Mock file search manager (use _file_search_manager to bypass property)
         mock_manager = MagicMock()
         mock_manager.upload_transcript_text.return_value = "corpus/doc/123"
-        worker.file_search_manager = mock_manager
+        worker._file_search_manager = mock_manager
         worker._existing_files = {}
 
         # Index episode
@@ -596,11 +627,11 @@ class TestIndexingWorkerDatabaseStorage:
             )
 
         worker = IndexingWorker(config=mock_config, repository=repository)
-        
-        # Mock file search
+
+        # Mock file search (use _file_search_manager to bypass property)
         mock_manager = MagicMock()
         mock_manager.upload_transcript_text.return_value = "corpus/doc/123"
-        worker.file_search_manager = mock_manager
+        worker._file_search_manager = mock_manager
         worker._existing_files = {}
 
         # Process batch
@@ -623,7 +654,7 @@ class TestIndexingWorkerDatabaseStorage:
             enclosure_url="https://example.com/episode.mp3",
             enclosure_type="audio/mpeg",
         )
-        
+
         transcript_text = "Transcription avec caractères spéciaux: émojis 🎙️"
         repository.mark_transcript_complete(
             episode.id,
@@ -633,12 +664,15 @@ class TestIndexingWorkerDatabaseStorage:
             episode_id=episode.id,
             summary="Résumé",
         )
+        # Re-fetch episode to avoid DetachedInstanceError when accessing podcast relationship
+        episode = repository.get_episode(episode.id)
 
         worker = IndexingWorker(config=mock_config, repository=repository)
-        
+
+        # Mock file search (use _file_search_manager to bypass property)
         mock_manager = MagicMock()
         mock_manager.upload_transcript_text.return_value = "corpus/doc/123"
-        worker.file_search_manager = mock_manager
+        worker._file_search_manager = mock_manager
         worker._existing_files = {}
 
         # Should handle Unicode without errors
