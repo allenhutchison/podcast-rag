@@ -59,7 +59,7 @@ web = [
 ]
 # Development dependencies
 dev = [
-    "pytest>=8.0.0",
+    "pytest>=9.0.1",
     "pytest-cov>=4.1.0",
 ]
 # Benchmarking dependencies (for comparing transcription backends)

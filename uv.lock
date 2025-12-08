@@ -2550,7 +2550,7 @@ requires-dist = [
     { name = "openai-whisper", marker = "extra == 'benchmark'", specifier = ">=20231117" },
     { name = "podcast-rag", extras = ["encoding", "web"], marker = "extra == 'all'" },
     { name = "pydantic", specifier = ">=2.0.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.1" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "requests", specifier = ">=2.31.0" },

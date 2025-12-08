@@ -4,7 +4,6 @@ Handles metadata extraction, indexing, and cleanup in background threads
 while the main transcription loop continues.
 """
 
-import json
 import logging
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -280,20 +279,17 @@ class PostProcessor:
             worker = worker_class(config=self.config, repository=self.repository)
 
             self.repository.mark_metadata_started(episode.id)
-            metadata_path = worker._process_episode(episode)
+            merged = worker._process_episode(episode)
 
-            # Load saved metadata for AI fields
-            with open(metadata_path, "r", encoding="utf-8") as f:
-                saved_metadata = json.load(f)
-            ai_data = saved_metadata.get("ai_metadata", {})
-
+            # Store metadata directly in database
             self.repository.mark_metadata_complete(
                 episode_id=episode.id,
-                metadata_path=metadata_path,
-                summary=ai_data.get("summary"),
-                keywords=ai_data.get("keywords"),
-                hosts=ai_data.get("hosts"),
-                guests=ai_data.get("guests"),
+                summary=merged.summary,
+                keywords=merged.keywords,
+                hosts=merged.hosts,
+                guests=merged.guests,
+                mp3_artist=merged.mp3_artist,
+                mp3_album=merged.mp3_album,
             )
 
             self._stats.increment_metadata_processed()

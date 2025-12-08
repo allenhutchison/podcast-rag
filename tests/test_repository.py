@@ -323,9 +323,8 @@ class TestStatusUpdates:
 
     def test_transcript_status_flow(self, repository, sample_podcast):
         """
-        Verify that an episode's transcript status progresses from "processing" to "completed" and that the transcript path is recorded when transcription completes.
-        
-        The test creates an episode, marks transcription as started, asserts the status becomes "processing", then marks transcription as complete with a file path and asserts the status is "completed" and the transcript path is stored.
+        Verify that an episode's transcript status progresses from "processing" to "completed"
+        and that the transcript text is stored when transcription completes.
         """
         episode = repository.create_episode(
             podcast_id=sample_podcast.id,
@@ -339,10 +338,11 @@ class TestStatusUpdates:
         episode = repository.get_episode(episode.id)
         assert episode.transcript_status == "processing"
 
-        repository.mark_transcript_complete(episode.id, "/path/to/transcript.txt")
+        transcript_text = "This is the full transcript content for the episode."
+        repository.mark_transcript_complete(episode.id, transcript_text=transcript_text)
         episode = repository.get_episode(episode.id)
         assert episode.transcript_status == "completed"
-        assert episode.transcript_path == "/path/to/transcript.txt"
+        assert episode.transcript_text == transcript_text
 
     def test_indexing_status_flow(self, repository, sample_podcast):
         """Test File Search indexing status transitions."""
@@ -407,6 +407,517 @@ class TestBatchOperations:
         assert len(pending) == 1
 
 
+
+class TestTranscriptTextStorage:
+    """Tests for transcript text database storage functionality."""
+
+    def test_mark_transcript_complete_with_text(self, repository, sample_podcast):
+        """Test storing transcript text directly in database."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        transcript_text = "This is the full transcript text content."
+        repository.mark_transcript_complete(
+            episode.id,
+            transcript_text=transcript_text,
+        )
+
+        episode = repository.get_episode(episode.id)
+        assert episode.transcript_status == "completed"
+        assert episode.transcript_text == transcript_text
+        assert episode.transcribed_at is not None
+
+    def test_mark_transcript_complete_with_text_and_path(self, repository, sample_podcast):
+        """Test storing both transcript text and legacy path."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        transcript_text = "This is the full transcript text content."
+        transcript_path = "/path/to/transcript.txt"
+        repository.mark_transcript_complete(
+            episode.id,
+            transcript_text=transcript_text,
+            transcript_path=transcript_path,
+        )
+
+        episode = repository.get_episode(episode.id)
+        assert episode.transcript_text == transcript_text
+        assert episode.transcript_path == transcript_path
+
+    def test_get_transcript_text_from_database(self, repository, sample_podcast):
+        """Test retrieving transcript text from database."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        transcript_text = "This is the full transcript text content."
+        repository.mark_transcript_complete(
+            episode.id,
+            transcript_text=transcript_text,
+        )
+
+        retrieved_text = repository.get_transcript_text(episode.id)
+        assert retrieved_text == transcript_text
+
+    def test_get_transcript_text_from_file(self, repository, sample_podcast, tmp_path):
+        """Test retrieving transcript text from legacy file."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        # Create a legacy transcript file
+        transcript_file = tmp_path / "transcript.txt"
+        transcript_text = "Legacy transcript from file."
+        transcript_file.write_text(transcript_text, encoding="utf-8")
+
+        # Update episode with only transcript_path (legacy mode)
+        repository.update_episode(
+            episode.id,
+            transcript_path=str(transcript_file),
+            transcript_status="completed",
+        )
+
+        retrieved_text = repository.get_transcript_text(episode.id)
+        assert retrieved_text == transcript_text
+
+    def test_get_transcript_text_prefers_database(self, repository, sample_podcast, tmp_path):
+        """Test that database text is preferred over file."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        # Create a file with different content
+        transcript_file = tmp_path / "transcript.txt"
+        transcript_file.write_text("File content", encoding="utf-8")
+
+        # Store different content in database
+        db_text = "Database content"
+        repository.mark_transcript_complete(
+            episode.id,
+            transcript_text=db_text,
+            transcript_path=str(transcript_file),
+        )
+
+        # Should return database content, not file content
+        retrieved_text = repository.get_transcript_text(episode.id)
+        assert retrieved_text == db_text
+
+    def test_get_transcript_text_nonexistent_episode(self, repository):
+        """Test getting transcript for non-existent episode."""
+        result = repository.get_transcript_text("nonexistent-id")
+        assert result is None
+
+    def test_get_transcript_text_no_transcript(self, repository, sample_podcast):
+        """Test getting transcript when episode has no transcript."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        result = repository.get_transcript_text(episode.id)
+        assert result is None
+
+    def test_get_transcript_text_file_not_found(self, repository, sample_podcast):
+        """Test handling missing transcript file."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        # Set transcript_path to non-existent file
+        repository.update_episode(
+            episode.id,
+            transcript_path="/nonexistent/transcript.txt",
+            transcript_status="completed",
+        )
+
+        result = repository.get_transcript_text(episode.id)
+        assert result is None
+
+    def test_get_transcript_text_unicode_content(self, repository, sample_podcast):
+        """Test handling Unicode content in transcript."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        transcript_text = "Transcript with émojis 🎙️ and spëcial çharacters"
+        repository.mark_transcript_complete(
+            episode.id,
+            transcript_text=transcript_text,
+        )
+
+        retrieved_text = repository.get_transcript_text(episode.id)
+        assert retrieved_text == transcript_text
+
+    def test_get_transcript_text_empty_string(self, repository, sample_podcast):
+        """Test handling empty transcript text."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        repository.mark_transcript_complete(
+            episode.id,
+            transcript_text="",
+        )
+
+        # Empty string should still be returned
+        retrieved_text = repository.get_transcript_text(episode.id)
+        assert retrieved_text == ""
+
+
+class TestMP3Metadata:
+    """Tests for MP3 metadata storage functionality."""
+
+    def test_mark_metadata_complete_with_mp3_tags(self, repository, sample_podcast):
+        """Test storing MP3 metadata tags."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        repository.mark_metadata_complete(
+            episode_id=episode.id,
+            summary="Episode summary",
+            keywords=["tech", "podcast"],
+            hosts=["Host 1", "Host 2"],
+            guests=["Guest 1"],
+            mp3_artist="Podcast Artist",
+            mp3_album="Podcast Album",
+        )
+
+        episode = repository.get_episode(episode.id)
+        assert episode.metadata_status == "completed"
+        assert episode.mp3_artist == "Podcast Artist"
+        assert episode.mp3_album == "Podcast Album"
+        assert episode.ai_summary == "Episode summary"
+        assert episode.ai_keywords == ["tech", "podcast"]
+        assert episode.ai_hosts == ["Host 1", "Host 2"]
+        assert episode.ai_guests == ["Guest 1"]
+
+    def test_mark_metadata_complete_without_mp3_tags(self, repository, sample_podcast):
+        """Test metadata completion without MP3 tags."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        repository.mark_metadata_complete(
+            episode_id=episode.id,
+            summary="Episode summary",
+            keywords=["tech"],
+        )
+
+        episode = repository.get_episode(episode.id)
+        assert episode.metadata_status == "completed"
+        assert episode.mp3_artist is None
+        assert episode.mp3_album is None
+        assert episode.ai_summary == "Episode summary"
+
+    def test_mark_metadata_complete_only_mp3_tags(self, repository, sample_podcast):
+        """Test storing only MP3 tags without AI metadata."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        repository.mark_metadata_complete(
+            episode_id=episode.id,
+            mp3_artist="Podcast Artist",
+            mp3_album="Podcast Album",
+        )
+
+        episode = repository.get_episode(episode.id)
+        assert episode.mp3_artist == "Podcast Artist"
+        assert episode.mp3_album == "Podcast Album"
+        assert episode.ai_summary is None
+
+    def test_update_episode_mp3_metadata(self, repository, sample_podcast):
+        """Test updating MP3 metadata on existing episode."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        repository.update_episode(
+            episode.id,
+            mp3_artist="New Artist",
+            mp3_album="New Album",
+        )
+
+        episode = repository.get_episode(episode.id)
+        assert episode.mp3_artist == "New Artist"
+        assert episode.mp3_album == "New Album"
+
+    def test_mp3_metadata_unicode_characters(self, repository, sample_podcast):
+        """Test MP3 metadata with Unicode characters."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        repository.mark_metadata_complete(
+            episode_id=episode.id,
+            mp3_artist="Artiste Français",
+            mp3_album="Álbum Español",
+        )
+
+        episode = repository.get_episode(episode.id)
+        assert episode.mp3_artist == "Artiste Français"
+        assert episode.mp3_album == "Álbum Español"
+
+    def test_mp3_metadata_long_strings(self, repository, sample_podcast):
+        """Test MP3 metadata with long strings."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        long_artist = "A" * 500  # Within 512 char limit
+        long_album = "B" * 500
+        repository.mark_metadata_complete(
+            episode_id=episode.id,
+            mp3_artist=long_artist,
+            mp3_album=long_album,
+        )
+
+        episode = repository.get_episode(episode.id)
+        assert episode.mp3_artist == long_artist
+        assert episode.mp3_album == long_album
+
+
+class TestPendingEpisodesWithTranscriptText:
+    """Tests for pending episode queries with transcript text support."""
+
+    def test_get_episodes_pending_metadata_with_transcript_text(self, repository, sample_podcast):
+        """Test that episodes with transcript_text are returned for metadata."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        # Mark transcript complete with text in database
+        repository.mark_transcript_complete(
+            episode.id,
+            transcript_text="Transcript content",
+        )
+
+        pending = repository.get_episodes_pending_metadata()
+        assert len(pending) == 1
+        assert pending[0].id == episode.id
+
+    def test_get_episodes_pending_metadata_with_transcript_path(self, repository, sample_podcast, tmp_path):
+        """Test that legacy episodes with transcript_path are still returned."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        # Create legacy transcript file
+        transcript_file = tmp_path / "transcript.txt"
+        transcript_file.write_text("Legacy transcript", encoding="utf-8")
+
+        # Mark complete with only path (legacy mode)
+        repository.update_episode(
+            episode.id,
+            transcript_status="completed",
+            transcript_path=str(transcript_file),
+        )
+
+        pending = repository.get_episodes_pending_metadata()
+        assert len(pending) == 1
+        assert pending[0].id == episode.id
+
+    def test_get_episodes_pending_metadata_without_transcript(self, repository, sample_podcast):
+        """Test that episodes without transcript are not returned."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        # Mark transcript complete but without text or path
+        repository.update_episode(
+            episode.id,
+            transcript_status="completed",
+        )
+
+        pending = repository.get_episodes_pending_metadata()
+        assert len(pending) == 0
+
+    def test_get_episodes_pending_indexing_with_transcript_text(self, repository, sample_podcast):
+        """Test that episodes with transcript_text are returned for indexing."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        # Complete transcript and metadata
+        repository.mark_transcript_complete(
+            episode.id,
+            transcript_text="Transcript content",
+        )
+        repository.mark_metadata_complete(
+            episode_id=episode.id,
+            summary="Summary",
+        )
+
+        pending = repository.get_episodes_pending_indexing()
+        assert len(pending) == 1
+        assert pending[0].id == episode.id
+
+    def test_get_episodes_pending_indexing_with_transcript_path(self, repository, sample_podcast, tmp_path):
+        """Test that legacy episodes are returned for indexing."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        # Create legacy transcript file
+        transcript_file = tmp_path / "transcript.txt"
+        transcript_file.write_text("Legacy transcript", encoding="utf-8")
+
+        # Complete with legacy path
+        repository.update_episode(
+            episode.id,
+            transcript_status="completed",
+            transcript_path=str(transcript_file),
+            metadata_status="completed",
+        )
+
+        pending = repository.get_episodes_pending_indexing()
+        assert len(pending) == 1
+        assert pending[0].id == episode.id
+
+    def test_get_episodes_pending_indexing_without_transcript(self, repository, sample_podcast):
+        """Test that episodes without transcript are not returned for indexing."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        # Complete metadata but no transcript
+        repository.update_episode(
+            episode.id,
+            transcript_status="completed",
+            metadata_status="completed",
+        )
+
+        pending = repository.get_episodes_pending_indexing()
+        assert len(pending) == 0
+
+    def test_get_episodes_pending_metadata_respects_limit(self, repository, sample_podcast):
+        """Test that pending metadata query respects limit."""
+        # Create multiple episodes
+        for i in range(5):
+            episode = repository.create_episode(
+                podcast_id=sample_podcast.id,
+                guid=f"episode-{i}",
+                title=f"Episode {i}",
+                enclosure_url=f"https://example.com/episode{i}.mp3",
+                enclosure_type="audio/mpeg",
+            )
+            repository.mark_transcript_complete(
+                episode.id,
+                transcript_text=f"Transcript {i}",
+            )
+
+        pending = repository.get_episodes_pending_metadata(limit=3)
+        assert len(pending) == 3
+
+    def test_get_episodes_pending_indexing_respects_limit(self, repository, sample_podcast):
+        """Test that pending indexing query respects limit."""
+        # Create multiple episodes
+        for i in range(5):
+            episode = repository.create_episode(
+                podcast_id=sample_podcast.id,
+                guid=f"episode-{i}",
+                title=f"Episode {i}",
+                enclosure_url=f"https://example.com/episode{i}.mp3",
+                enclosure_type="audio/mpeg",
+            )
+            repository.mark_transcript_complete(
+                episode.id,
+                transcript_text=f"Transcript {i}",
+            )
+            repository.mark_metadata_complete(
+                episode_id=episode.id,
+                summary=f"Summary {i}",
+            )
+
+        pending = repository.get_episodes_pending_indexing(limit=3)
+        assert len(pending) == 3
+
 class TestStatistics:
     """Tests for statistics methods."""
 
@@ -446,3 +957,7 @@ class TestStatistics:
 
         assert stats["total_podcasts"] == 2
         assert stats["total_episodes"] == 2
+# Additional test classes added for database storage migration:
+# - TestTranscriptTextStorage: Tests for storing transcript text directly in database
+# - TestMP3Metadata: Tests for MP3 ID3 tag metadata storage
+# - TestPendingEpisodesWithTranscriptText: Tests for pending episode queries with new storage
