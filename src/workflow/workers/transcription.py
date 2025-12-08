@@ -180,8 +180,12 @@ class TranscriptionWorker(WorkerInterface):
                 f"Transcript file already exists for episode {episode.id}, "
                 f"reading from file"
             )
-            with open(transcript_path, "r", encoding="utf-8") as f:
-                return f.read()
+            try:
+                with open(transcript_path, "r", encoding="utf-8") as f:
+                    return f.read()
+            except (OSError, UnicodeDecodeError) as e:
+                logger.warning(f"Failed to read legacy transcript {transcript_path}: {e}")
+                # Continue to transcribe if file read fails
 
         logger.info(f"Transcribing episode: {episode.title}")
 

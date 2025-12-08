@@ -1377,8 +1377,8 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         if not episode:
             return None
 
-        # Prefer database-stored text
-        if episode.transcript_text:
+        # Prefer database-stored text (use 'is not None' to allow empty strings)
+        if episode.transcript_text is not None:
             return episode.transcript_text
 
         # Fall back to reading from file for legacy episodes
