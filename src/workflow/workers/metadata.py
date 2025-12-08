@@ -249,29 +249,22 @@ class MetadataWorker(WorkerInterface):
         episodes = self.repository.get_episodes_pending_metadata(limit=1000)
         return len(episodes)
 
-    def _process_episode(self, episode: Episode) -> str:
+    def _process_episode(self, episode: Episode) -> MergedMetadata:
         """Process a single episode for metadata extraction.
 
         Args:
             episode: Episode to process.
 
         Returns:
-            Path to metadata file.
+            MergedMetadata with combined data from all sources.
 
         Raises:
             Exception: If processing fails.
         """
-        if not episode.transcript_path:
-            raise ValueError(f"Episode {episode.id} has no transcript_path")
-
-        if not os.path.exists(episode.transcript_path):
-            raise FileNotFoundError(
-                f"Transcript not found: {episode.transcript_path}"
-            )
-
-        # Read transcript
-        with open(episode.transcript_path, "r", encoding="utf-8") as f:
-            transcript = f.read()
+        # Get transcript text from database or file
+        transcript = self.repository.get_transcript_text(episode.id)
+        if not transcript:
+            raise ValueError(f"Episode {episode.id} has no transcript content")
 
         # Read MP3 tags if file exists
         mp3_tags = {}
@@ -279,45 +272,14 @@ class MetadataWorker(WorkerInterface):
             mp3_tags = self._read_mp3_tags(episode.local_file_path)
 
         # Extract AI metadata
-        filename = os.path.basename(episode.transcript_path)
+        filename = episode.title or f"episode_{episode.id}"
         ai_metadata = self._extract_ai_metadata(transcript, filename)
 
         # Merge all sources
         merged = self._merge_metadata(episode, mp3_tags, ai_metadata)
 
-        # Build metadata file path
-        metadata_path = self._build_metadata_path(episode.transcript_path)
-
-        # Ensure directory exists
-        os.makedirs(os.path.dirname(metadata_path), exist_ok=True)
-
-        # Save merged metadata
-        metadata_dict = {
-            "feed_metadata": {
-                "title": merged.title,
-                "description": merged.description,
-                "published_date": merged.published_date,
-                "duration_seconds": merged.duration_seconds,
-                "episode_number": merged.episode_number,
-                "season_number": merged.season_number,
-            },
-            "mp3_metadata": {
-                "artist": merged.mp3_artist,
-                "album": merged.mp3_album,
-            },
-            "ai_metadata": {
-                "summary": merged.summary,
-                "keywords": merged.keywords,
-                "hosts": merged.hosts,
-                "guests": merged.guests,
-            },
-        }
-
-        with open(metadata_path, "w", encoding="utf-8") as f:
-            json.dump(metadata_dict, f, indent=2, ensure_ascii=False)
-
-        logger.info(f"Metadata saved: {metadata_path}")
-        return metadata_path
+        logger.info(f"Metadata extracted for episode {episode.id}")
+        return merged
 
     def process_batch(self, limit: int) -> WorkerResult:
         """Process a batch of episodes for metadata extraction.
@@ -344,27 +306,22 @@ class MetadataWorker(WorkerInterface):
                     # Mark as processing
                     self.repository.mark_metadata_started(episode.id)
 
-                    # Process
-                    metadata_path = self._process_episode(episode)
+                    # Process and get merged metadata
+                    merged = self._process_episode(episode)
 
-                    # Load the saved metadata to get AI fields
-                    with open(metadata_path, "r", encoding="utf-8") as f:
-                        saved_metadata = json.load(f)
-
-                    ai_data = saved_metadata.get("ai_metadata", {})
-
-                    # Mark as complete
+                    # Mark as complete with all extracted data
                     self.repository.mark_metadata_complete(
                         episode_id=episode.id,
-                        metadata_path=metadata_path,
-                        summary=ai_data.get("summary"),
-                        keywords=ai_data.get("keywords"),
-                        hosts=ai_data.get("hosts"),
-                        guests=ai_data.get("guests"),
+                        summary=merged.summary,
+                        keywords=merged.keywords,
+                        hosts=merged.hosts,
+                        guests=merged.guests,
+                        mp3_artist=merged.mp3_artist,
+                        mp3_album=merged.mp3_album,
                     )
                     result.processed += 1
 
-                except FileNotFoundError as e:
+                except ValueError as e:
                     error_msg = f"Episode {episode.id}: {e}"
                     logger.error(error_msg)
                     self.repository.mark_metadata_failed(episode.id, str(e))

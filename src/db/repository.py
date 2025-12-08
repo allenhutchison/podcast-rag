@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import create_engine, func, select
+from sqlalchemy import create_engine, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, sessionmaker
 
@@ -370,15 +370,22 @@ class PodcastRepositoryInterface(ABC):
         pass
 
     @abstractmethod
-    def mark_transcript_complete(self, episode_id: str, transcript_path: str) -> None:
+    def mark_transcript_complete(
+        self,
+        episode_id: str,
+        transcript_text: str,
+        transcript_path: Optional[str] = None,
+    ) -> None:
         """
-        Mark an episode's transcription as completed and record the transcript file.
-        
-        Updates the episode record to set the transcript path, mark transcription as completed, record the completion timestamp, update the record's updated_at timestamp, and persist the change to the database.
-        
+        Mark an episode's transcription as completed and store the transcript content.
+
+        Updates the episode record to store the transcript text, mark transcription as completed,
+        record the completion timestamp, and persist the change to the database.
+
         Parameters:
             episode_id (str): Primary key of the episode to update.
-            transcript_path (str): Filesystem path to the completed transcript file.
+            transcript_text (str): Full transcript content.
+            transcript_path (str, optional): Legacy file path, kept for backward compatibility.
         """
         pass
 
@@ -402,22 +409,26 @@ class PodcastRepositoryInterface(ABC):
     def mark_metadata_complete(
         self,
         episode_id: str,
-        metadata_path: str,
         summary: Optional[str] = None,
         keywords: Optional[List[str]] = None,
         hosts: Optional[List[str]] = None,
         guests: Optional[List[str]] = None,
+        mp3_artist: Optional[str] = None,
+        mp3_album: Optional[str] = None,
+        metadata_path: Optional[str] = None,
     ) -> None:
         """
         Record that metadata extraction for an episode completed and persist the extracted metadata.
-        
+
         Parameters:
             episode_id (str): Identifier of the episode to update.
-            metadata_path (str): Path to the stored metadata file.
             summary (Optional[str]): Short textual summary extracted for the episode.
             keywords (Optional[List[str]]): List of keywords or tags extracted from the episode.
             hosts (Optional[List[str]]): List of host names identified in the episode.
             guests (Optional[List[str]]): List of guest names identified in the episode.
+            mp3_artist (Optional[str]): MP3 ID3 artist tag from the audio file.
+            mp3_album (Optional[str]): MP3 ID3 album tag from the audio file.
+            metadata_path (Optional[str]): Legacy file path, kept for backward compatibility.
         """
         pass
 
@@ -478,6 +489,24 @@ class PodcastRepositoryInterface(ABC):
         
         Parameters:
             episode_id (str): The primary key of the episode to clean up.
+        """
+        pass
+
+    # --- Transcript Access ---
+
+    @abstractmethod
+    def get_transcript_text(self, episode_id: str) -> Optional[str]:
+        """
+        Get the transcript text for an episode.
+
+        Returns the transcript content from the database (`transcript_text` column).
+        For legacy episodes with only `transcript_path`, reads the file content.
+
+        Parameters:
+            episode_id (str): ID of the episode.
+
+        Returns:
+            The transcript text if available, None otherwise.
         """
         pass
 
@@ -1036,13 +1065,14 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
     def get_episodes_pending_metadata(self, limit: int = 10) -> List[Episode]:
         """
         Selects transcribed episodes that require metadata extraction.
-        
+
         Parameters:
             limit (int): Maximum number of episodes to return (default 10).
-        
+
         Returns:
             List[Episode]: Episodes whose `transcript_status` is "completed", `metadata_status` is "pending",
-            and `transcript_path` is not None, ordered by `published_date` descending.
+            and have transcript content (either `transcript_text` or legacy `transcript_path`),
+            ordered by `published_date` descending.
         """
         with self._get_session() as session:
             stmt = (
@@ -1050,7 +1080,10 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 .where(
                     Episode.transcript_status == "completed",
                     Episode.metadata_status == "pending",
-                    Episode.transcript_path.isnot(None),
+                    or_(
+                        Episode.transcript_text.isnot(None),
+                        Episode.transcript_path.isnot(None),
+                    ),
                 )
                 .order_by(Episode.published_date.desc())
                 .limit(limit)
@@ -1065,7 +1098,8 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             limit (int): Maximum number of episodes to return.
 
         Returns:
-            List[Episode]: Episodes where `metadata_status == "completed"`, `file_search_status == "pending"`, and `transcript_path` is present, ordered by `published_date` descending up to `limit`.
+            List[Episode]: Episodes where `metadata_status == "completed"`, `file_search_status == "pending"`,
+            and have transcript content, ordered by `published_date` descending up to `limit`.
         """
         with self._get_session() as session:
             stmt = (
@@ -1074,7 +1108,10 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 .where(
                     Episode.metadata_status == "completed",
                     Episode.file_search_status == "pending",
-                    Episode.transcript_path.isnot(None),
+                    or_(
+                        Episode.transcript_text.isnot(None),
+                        Episode.transcript_path.isnot(None),
+                    ),
                 )
                 .order_by(Episode.published_date.desc())
                 .limit(limit)
@@ -1158,20 +1195,29 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         """Mark episode as currently being transcribed."""
         self.update_episode(episode_id, transcript_status="processing")
 
-    def mark_transcript_complete(self, episode_id: str, transcript_path: str) -> None:
+    def mark_transcript_complete(
+        self,
+        episode_id: str,
+        transcript_text: str,
+        transcript_path: Optional[str] = None,
+    ) -> None:
         """
-        Mark an episode's transcription as complete and record the transcript file.
-        
+        Mark an episode's transcription as complete and store the transcript content.
+
         Parameters:
             episode_id (str): ID of the episode to update.
-            transcript_path (str): Filesystem path to the generated transcript.
-        
+            transcript_text (str): Full transcript content.
+            transcript_path (str, optional): Legacy file path, kept for backward compatibility.
+
         Notes:
-            Sets `transcript_status` to "completed", stores `transcript_path`, sets `transcribed_at` to the current UTC time, and clears `transcript_error`.
+            Sets `transcript_status` to "completed", stores `transcript_text` (and optionally
+            `transcript_path`), sets `transcribed_at` to the current UTC time, and clears
+            `transcript_error`.
         """
         self.update_episode(
             episode_id,
             transcript_status="completed",
+            transcript_text=transcript_text,
             transcript_path=transcript_path,
             transcribed_at=datetime.now(UTC),
             transcript_error=None,
@@ -1203,22 +1249,26 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
     def mark_metadata_complete(
         self,
         episode_id: str,
-        metadata_path: str,
         summary: Optional[str] = None,
         keywords: Optional[List[str]] = None,
         hosts: Optional[List[str]] = None,
         guests: Optional[List[str]] = None,
+        mp3_artist: Optional[str] = None,
+        mp3_album: Optional[str] = None,
+        metadata_path: Optional[str] = None,
     ) -> None:
         """
         Mark an episode's metadata extraction as completed and store the resulting metadata.
-        
+
         Parameters:
             episode_id (str): The ID of the episode to update.
-            metadata_path (str): Filesystem path or URI where the extracted metadata is stored.
             summary (Optional[str]): Generated summary text for the episode, if available.
             keywords (Optional[List[str]]): Extracted keywords or tags for the episode.
             hosts (Optional[List[str]]): Identified hosts associated with the episode.
             guests (Optional[List[str]]): Identified guests associated with the episode.
+            mp3_artist (Optional[str]): MP3 ID3 artist tag from the audio file.
+            mp3_album (Optional[str]): MP3 ID3 album tag from the audio file.
+            metadata_path (Optional[str]): Legacy file path, kept for backward compatibility.
         """
         self.update_episode(
             episode_id,
@@ -1228,6 +1278,8 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             ai_keywords=keywords,
             ai_hosts=hosts,
             ai_guests=guests,
+            mp3_artist=mp3_artist,
+            mp3_album=mp3_album,
             metadata_error=None,
         )
 
@@ -1305,6 +1357,40 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 os.remove(episode.local_file_path)
                 logger.info(f"Deleted audio file: {episode.local_file_path}")
             self.update_episode(episode_id, local_file_path=None)
+
+    # --- Transcript Access ---
+
+    def get_transcript_text(self, episode_id: str) -> Optional[str]:
+        """
+        Get the transcript text for an episode.
+
+        Returns the transcript content from the database (`transcript_text` column).
+        For legacy episodes with only `transcript_path`, reads the file content.
+
+        Parameters:
+            episode_id (str): ID of the episode.
+
+        Returns:
+            The transcript text if available, None otherwise.
+        """
+        episode = self.get_episode(episode_id)
+        if not episode:
+            return None
+
+        # Prefer database-stored text
+        if episode.transcript_text:
+            return episode.transcript_text
+
+        # Fall back to reading from file for legacy episodes
+        if episode.transcript_path and os.path.exists(episode.transcript_path):
+            try:
+                with open(episode.transcript_path, "r", encoding="utf-8") as f:
+                    return f.read()
+            except (OSError, UnicodeDecodeError) as e:
+                logger.warning(f"Failed to read transcript file {episode.transcript_path}: {e}")
+                return None
+
+        return None
 
     # --- Statistics ---
 
@@ -1483,7 +1569,10 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 .where(
                     Episode.transcript_status == "completed",
                     Episode.metadata_status == "pending",
-                    Episode.transcript_path.isnot(None),
+                    or_(
+                        Episode.transcript_text.isnot(None),
+                        Episode.transcript_path.isnot(None),
+                    ),
                 )
                 .order_by(Episode.published_date.desc())
                 .limit(1)
@@ -1499,7 +1588,10 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 .where(
                     Episode.metadata_status == "completed",
                     Episode.file_search_status == "pending",
-                    Episode.transcript_path.isnot(None),
+                    or_(
+                        Episode.transcript_text.isnot(None),
+                        Episode.transcript_path.isnot(None),
+                    ),
                 )
                 .order_by(Episode.published_date.desc())
                 .limit(1)

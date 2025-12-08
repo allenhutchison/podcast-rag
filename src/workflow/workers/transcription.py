@@ -148,7 +148,7 @@ class TranscriptionWorker(WorkerInterface):
             episode: Episode to transcribe.
 
         Returns:
-            Path to transcript file.
+            Transcript text content.
 
         Raises:
             ValueError: If episode has no local_file_path.
@@ -163,16 +163,25 @@ class TranscriptionWorker(WorkerInterface):
                 f"Audio file not found: {episode.local_file_path}"
             )
 
-        # Build transcript path
+        # Check if transcript already exists in database
+        if episode.transcript_text:
+            logger.info(
+                f"Transcript already exists in database for episode {episode.id}, "
+                f"returning existing text"
+            )
+            return episode.transcript_text
+
+        # Build transcript path for backward compatibility check
         transcript_path = self._build_transcript_path(episode.local_file_path)
 
-        # Check if transcript already exists
+        # Check if transcript file already exists (legacy)
         if os.path.exists(transcript_path) and os.path.getsize(transcript_path) > 0:
             logger.info(
-                f"Transcript already exists for episode {episode.id}, "
-                f"marking as complete"
+                f"Transcript file already exists for episode {episode.id}, "
+                f"reading from file"
             )
-            return transcript_path
+            with open(transcript_path, "r", encoding="utf-8") as f:
+                return f.read()
 
         logger.info(f"Transcribing episode: {episode.title}")
 
@@ -189,22 +198,15 @@ class TranscriptionWorker(WorkerInterface):
         transcript_parts = [segment.text.strip() for segment in segments]
         transcript_text = " ".join(transcript_parts)
 
-        # Ensure directory exists
-        os.makedirs(os.path.dirname(transcript_path), exist_ok=True)
-
-        # Write transcript to file
-        with open(transcript_path, "w", encoding="utf-8") as f:
-            f.write(transcript_text)
-
-        logger.info(f"Transcription complete: {transcript_path}")
-        return transcript_path
+        logger.info(f"Transcription complete for episode {episode.id}")
+        return transcript_text
 
     def transcribe_single(self, episode: Episode) -> Optional[str]:
         """Transcribe a single episode without releasing the model.
 
         Unlike process_batch, this method:
         - Does NOT release the model after completion (for continuous operation)
-        - Returns the transcript path directly (or None on failure)
+        - Returns the transcript text directly (or None on failure)
         - Updates database status
 
         Use this in pipeline mode where the model stays loaded across
@@ -214,16 +216,16 @@ class TranscriptionWorker(WorkerInterface):
             episode: Episode to transcribe.
 
         Returns:
-            Path to transcript file if successful, None on failure.
+            Transcript text if successful, None on failure.
         """
         try:
             self.repository.mark_transcript_started(episode.id)
-            transcript_path = self._transcribe_episode(episode)
+            transcript_text = self._transcribe_episode(episode)
             self.repository.mark_transcript_complete(
                 episode_id=episode.id,
-                transcript_path=transcript_path,
+                transcript_text=transcript_text,
             )
-            return transcript_path
+            return transcript_text
 
         except FileNotFoundError as e:
             error_msg = str(e)
@@ -264,12 +266,12 @@ class TranscriptionWorker(WorkerInterface):
                     self.repository.mark_transcript_started(episode.id)
 
                     # Transcribe
-                    transcript_path = self._transcribe_episode(episode)
+                    transcript_text = self._transcribe_episode(episode)
 
                     # Mark as complete
                     self.repository.mark_transcript_complete(
                         episode_id=episode.id,
-                        transcript_path=transcript_path,
+                        transcript_text=transcript_text,
                     )
                     result.processed += 1
 

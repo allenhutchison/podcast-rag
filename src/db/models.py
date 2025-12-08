@@ -153,7 +153,12 @@ class Episode(Base):
     )  # pending, processing, completed, failed, skipped
     transcript_error: Mapped[Optional[str]] = mapped_column(Text)
     transcript_path: Mapped[Optional[str]] = mapped_column(String(1024))
+    transcript_text: Mapped[Optional[str]] = mapped_column(Text)  # Full transcript content
     transcribed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+    # MP3 ID3 tag metadata
+    mp3_artist: Mapped[Optional[str]] = mapped_column(String(512))
+    mp3_album: Mapped[Optional[str]] = mapped_column(String(512))
 
     # AI metadata extraction status
     metadata_status: Mapped[str] = mapped_column(

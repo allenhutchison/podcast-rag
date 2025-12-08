@@ -323,9 +323,8 @@ class TestStatusUpdates:
 
     def test_transcript_status_flow(self, repository, sample_podcast):
         """
-        Verify that an episode's transcript status progresses from "processing" to "completed" and that the transcript path is recorded when transcription completes.
-        
-        The test creates an episode, marks transcription as started, asserts the status becomes "processing", then marks transcription as complete with a file path and asserts the status is "completed" and the transcript path is stored.
+        Verify that an episode's transcript status progresses from "processing" to "completed"
+        and that the transcript text is stored when transcription completes.
         """
         episode = repository.create_episode(
             podcast_id=sample_podcast.id,
@@ -339,10 +338,11 @@ class TestStatusUpdates:
         episode = repository.get_episode(episode.id)
         assert episode.transcript_status == "processing"
 
-        repository.mark_transcript_complete(episode.id, "/path/to/transcript.txt")
+        transcript_text = "This is the full transcript content for the episode."
+        repository.mark_transcript_complete(episode.id, transcript_text=transcript_text)
         episode = repository.get_episode(episode.id)
         assert episode.transcript_status == "completed"
-        assert episode.transcript_path == "/path/to/transcript.txt"
+        assert episode.transcript_text == transcript_text
 
     def test_indexing_status_flow(self, repository, sample_podcast):
         """Test File Search indexing status transitions."""

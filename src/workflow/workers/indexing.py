@@ -94,6 +94,27 @@ class IndexingWorker(WorkerInterface):
         episodes = self.repository.get_episodes_pending_indexing(limit=1000)
         return len(episodes)
 
+    def _build_display_name(self, episode: Episode) -> str:
+        """Build a display name for the episode transcript.
+
+        Args:
+            episode: Episode to build display name for.
+
+        Returns:
+            Display name for File Search (e.g., 'episode_title_transcription.txt').
+        """
+        # If we have a transcript path, use its basename
+        if episode.transcript_path:
+            return os.path.basename(episode.transcript_path)
+
+        # Otherwise, build from episode title
+        # Sanitize title for use as filename
+        title = episode.title or f"episode_{episode.id}"
+        # Replace characters that are problematic in filenames
+        safe_title = "".join(c if c.isalnum() or c in " -_" else "_" for c in title)
+        safe_title = safe_title.strip()[:100]  # Limit length
+        return f"{safe_title}_transcription.txt"
+
     def _index_episode(self, episode: Episode) -> tuple[str, str]:
         """Upload a single episode transcript to File Search.
 
@@ -106,47 +127,36 @@ class IndexingWorker(WorkerInterface):
         Raises:
             Exception: If indexing fails.
         """
-        if not episode.transcript_path:
-            raise ValueError(f"Episode {episode.id} has no transcript_path")
+        # Get transcript text from database or file
+        transcript_text = self.repository.get_transcript_text(episode.id)
+        if not transcript_text:
+            raise ValueError(f"Episode {episode.id} has no transcript content")
 
-        if not os.path.exists(episode.transcript_path):
-            raise FileNotFoundError(
-                f"Transcript not found: {episode.transcript_path}"
-            )
+        # Build display name
+        display_name = self._build_display_name(episode)
 
-        # Build display name from transcript filename
-        display_name = os.path.basename(episode.transcript_path)
+        # Check if already exists
+        existing = self._get_existing_files()
+        if display_name in existing:
+            resource_name = existing[display_name]
+            logger.info(f"Transcript already indexed: {display_name}")
+            return resource_name, display_name
 
         # Build metadata
         metadata = self._build_metadata(episode)
 
         logger.info(f"Uploading transcript to File Search: {display_name}")
 
-        # Upload to File Search
-        resource_name = self.file_search_manager.upload_transcript(
-            transcript_path=episode.transcript_path,
+        # Upload text directly to File Search
+        resource_name = self.file_search_manager.upload_transcript_text(
+            text=transcript_text,
+            display_name=display_name,
             metadata=metadata,
-            existing_files=self._get_existing_files(),
-            skip_existing=True,
         )
 
-        # If skipped (already exists), look up the existing resource name
-        if resource_name is None:
-            existing = self._get_existing_files()
-            resource_name = existing.get(display_name)
-            if not resource_name:
-                logger.error(
-                    f"Cache inconsistency: episode {episode.id} skipped but "
-                    f"display_name '{display_name}' not found in existing files"
-                )
-                raise ValueError(
-                    f"File '{display_name}' reported as existing but not found in cache"
-                )
-            logger.info(f"Transcript already indexed: {display_name}")
-        else:
-            # Update cache with new file
-            if self._existing_files is not None:
-                self._existing_files[display_name] = resource_name
+        # Update cache with new file
+        if self._existing_files is not None:
+            self._existing_files[display_name] = resource_name
 
         return resource_name, display_name
 
