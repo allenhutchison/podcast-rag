@@ -305,6 +305,9 @@ class TestMetadataWorkerDatabaseStorage:
         call_args = mock_extract.call_args[0]
         assert call_args[0] == transcript_text
 
+        # Verify merged result contains expected data
+        assert merged.summary is not None
+
     def test_process_episode_reads_legacy_transcript_file(
         self, mock_config, repository, sample_podcast, tmp_path
     ):
@@ -479,7 +482,7 @@ class TestMetadataWorkerDatabaseStorage:
         # Verify all metadata stored
         for i in range(3):
             episodes = repository.list_episodes(podcast_id=sample_podcast.id)
-            episode = [e for e in episodes if e.guid == f"episode-{i}"][0]
+            episode = next(e for e in episodes if e.guid == f"episode-{i}")
             assert episode.metadata_status == "completed"
             assert episode.ai_summary.startswith(f"Summary {i}")
 
@@ -573,7 +576,7 @@ class TestIndexingWorkerDatabaseStorage:
         worker._existing_files = {}
 
         # Index episode
-        resource_name, display_name = worker._index_episode(episode)
+        resource_name, _display_name = worker._index_episode(episode)
 
         # Verify upload was called with database text
         mock_manager.upload_transcript_text.assert_called_once()
@@ -679,8 +682,8 @@ class TestIndexingWorkerDatabaseStorage:
         worker._existing_files = {}
 
         # Should handle Unicode without errors
-        resource_name, display_name = worker._index_episode(episode)
-        
+        _resource_name, _display_name = worker._index_episode(episode)
+
         # Verify Unicode text was passed
         call_kwargs = mock_manager.upload_transcript_text.call_args[1]
         assert "émojis 🎙️" in call_kwargs['text']
