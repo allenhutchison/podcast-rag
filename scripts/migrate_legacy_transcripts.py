@@ -354,8 +354,17 @@ def migrate_legacy_transcripts(
 
                 repository.update_episode(ep_id, **update_fields)
                 imported += 1
+            except (KeyboardInterrupt, SystemExit):
+                raise  # Don't swallow critical signals
+            except ValueError as e:
+                logger.exception(f"Validation error importing {filename}")
+                skipped += 1
+            except OSError as e:
+                logger.exception(f"I/O error importing {filename}")
+                skipped += 1
             except Exception as e:
-                logger.error(f"Failed to import {filename}: {e}")
+                # Catch database and other unexpected errors
+                logger.exception(f"Failed to import {filename}")
                 skipped += 1
 
     if unmatched_podcasts:
