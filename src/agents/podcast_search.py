@@ -75,6 +75,11 @@ def sanitize_query(query: str) -> str:
 _session_citations: Dict[str, Dict] = {}
 _citations_lock = threading.Lock()
 
+# Thread-safe session-based storage for podcast filter
+# Key: session_id, Value: podcast name string or None
+_session_podcast_filter: Dict[str, Optional[str]] = {}
+_filter_lock = threading.Lock()
+
 # Citation storage TTL (5 minutes) - entries older than this will be cleaned up
 _CITATION_TTL_SECONDS = 300
 
@@ -127,6 +132,35 @@ def clear_podcast_citations(session_id: str):
     with _citations_lock:
         if session_id in _session_citations:
             del _session_citations[session_id]
+
+
+def get_podcast_filter(session_id: str) -> Optional[str]:
+    """
+    Get the podcast filter for a specific session.
+
+    Args:
+        session_id: The session identifier
+
+    Returns:
+        Optional[str]: Podcast name to filter by, or None if no filter
+    """
+    with _filter_lock:
+        return _session_podcast_filter.get(session_id)
+
+
+def set_podcast_filter(session_id: str, podcast_name: Optional[str]):
+    """
+    Set the podcast filter for a specific session.
+
+    Args:
+        session_id: The session identifier
+        podcast_name: Podcast name to filter by, or None to clear
+    """
+    with _filter_lock:
+        if podcast_name:
+            _session_podcast_filter[session_id] = podcast_name
+        elif session_id in _session_podcast_filter:
+            del _session_podcast_filter[session_id]
 
 
 def _cleanup_old_citations():
@@ -194,14 +228,26 @@ def create_podcast_search_tool(
             client = genai.Client(api_key=config.GEMINI_API_KEY)
             store_name = file_search_manager.create_or_get_store()
 
+            # Check for podcast filter
+            podcast_filter = get_podcast_filter(session_id)
+            file_search_config = types.FileSearch(
+                file_search_store_names=[store_name]
+            )
+
+            # Add metadata filter if podcast filter is set
+            if podcast_filter:
+                file_search_config = types.FileSearch(
+                    file_search_store_names=[store_name],
+                    metadata_filter=f"podcast={podcast_filter}"
+                )
+                logger.info(f"Applying podcast metadata filter: {podcast_filter}")
+
             response = client.models.generate_content(
                 model=config.GEMINI_MODEL,
                 contents=f"Find and summarize relevant information about: {safe_query}",
                 config=types.GenerateContentConfig(
                     tools=[types.Tool(
-                        file_search=types.FileSearch(
-                            file_search_store_names=[store_name]
-                        )
+                        file_search=file_search_config
                     )],
                     response_modalities=["TEXT"]
                 )

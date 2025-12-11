@@ -8,10 +8,37 @@ const chatForm = document.getElementById('chatForm');
 const queryInput = document.getElementById('queryInput');
 const submitBtn = document.getElementById('submitBtn');
 const newChatBtn = document.getElementById('newChatBtn');
+const podcastFilter = document.getElementById('podcastFilter');
 
 let isProcessing = false;
 let conversationHistory = []; // Store conversation history
 let abortController = null; // For request cancellation
+
+/**
+ * Load podcasts for the filter dropdown
+ */
+async function loadPodcasts() {
+    try {
+        const response = await fetch('/api/podcasts');
+        if (!response.ok) {
+            console.error('Failed to load podcasts');
+            return;
+        }
+        const data = await response.json();
+
+        // Populate dropdown
+        if (data.podcasts && data.podcasts.length > 0) {
+            data.podcasts.forEach(podcast => {
+                const option = document.createElement('option');
+                option.value = podcast.id;
+                option.textContent = podcast.title;
+                podcastFilter.appendChild(option);
+            });
+        }
+    } catch (error) {
+        console.error('Error loading podcasts:', error);
+    }
+}
 
 /**
  * Add a user message to the chat
@@ -336,16 +363,24 @@ chatForm.addEventListener('submit', async (e) => {
 
         let fullText = '';
 
+        // Get selected podcast filter
+        const selectedPodcastId = podcastFilter.value ? parseInt(podcastFilter.value) : null;
+
         // Use fetch for POST with SSE streaming
+        const requestBody = {
+            query: query,
+            history: conversationHistory.slice(0, -1) // All messages except current query
+        };
+        if (selectedPodcastId) {
+            requestBody.podcast_id = selectedPodcastId;
+        }
+
         const response = await fetch('/api/chat', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                query: query,
-                history: conversationHistory.slice(0, -1) // All messages except current query
-            }),
+            body: JSON.stringify(requestBody),
             signal: abortController.signal
         });
 
@@ -472,5 +507,6 @@ if (newChatBtn) {
     });
 }
 
-// Focus input on page load
+// Load podcasts and focus input on page load
+loadPodcasts();
 queryInput.focus();
