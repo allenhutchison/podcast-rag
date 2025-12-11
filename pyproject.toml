@@ -78,8 +78,6 @@ Repository = "https://github.com/allenhutchison/podcast-rag"
 Issues = "https://github.com/allenhutchison/podcast-rag/issues"
 
 [project.scripts]
-podcast-rag = "src.file_manager:main"
-podcast-transcribe = "src.transcribe_podcasts:main"
 podcast-rag-query = "src.rag:main"
 podcast = "src.cli.podcast_commands:main"
 

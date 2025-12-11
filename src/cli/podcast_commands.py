@@ -19,8 +19,8 @@ from ..db.factory import create_repository
 from ..podcast.downloader import EpisodeDownloader
 from ..podcast.feed_sync import FeedSyncService
 from ..podcast.opml_parser import OPMLParser, import_opml_to_repository
-from ..workflow.config import PipelineConfig, WorkflowConfig
-from ..workflow.orchestrator import PipelineOrchestrator, WorkflowOrchestrator
+from ..workflow.config import PipelineConfig
+from ..workflow.orchestrator import PipelineOrchestrator
 
 # Set up logging
 logging.basicConfig(
@@ -364,78 +364,6 @@ def cleanup_audio(args, config: Config):
         repository.close()
 
 
-def process_workflow(args, config: Config):
-    """Run the unified workflow orchestrator.
-
-    Processes all stages in sequence: sync → download → transcribe →
-    metadata → index → cleanup. Can run specific stages or in
-    continuous mode.
-
-    Parameters:
-        args: Parsed CLI arguments with:
-            - stage (str | None): Specific stage to run, or None for all stages.
-            - continuous (bool): Run continuously at the configured interval.
-        config (Config): Application configuration.
-    """
-    repository = create_repository(
-        database_url=config.DATABASE_URL,
-        pool_size=config.DB_POOL_SIZE,
-        max_overflow=config.DB_MAX_OVERFLOW,
-        echo=config.DB_ECHO,
-    )
-
-    try:
-        workflow_config = WorkflowConfig.from_env()
-        orchestrator = WorkflowOrchestrator(
-            config=config,
-            workflow_config=workflow_config,
-            repository=repository,
-        )
-
-        if args.continuous:
-            print(
-                f"Starting continuous workflow "
-                f"(interval={workflow_config.run_interval_seconds}s)"
-            )
-            print("Press Ctrl+C to stop\n")
-            orchestrator.run_continuous()
-        else:
-            # Show current status first
-            status = orchestrator.get_status()
-            print("\nWorkflow Status (pending items):")
-            for stage, count in status.items():
-                print(f"  {stage}: {count}")
-            print()
-
-            # Run workflow
-            if args.stage:
-                logger.info(f"Running stage: {args.stage}")
-                result = orchestrator.run_stage(args.stage)
-                print(f"\nStage '{args.stage}' complete:")
-                print(f"  Processed: {result.processed}")
-                print(f"  Failed: {result.failed}")
-                if result.errors:
-                    print("  Errors:")
-                    for error in result.errors[:10]:
-                        print(f"    - {error}")
-            else:
-                logger.info("Running all workflow stages")
-                result = orchestrator.run_once()
-                print(f"\nWorkflow complete in {result.duration_seconds:.1f}s:")
-                print(f"  Total processed: {result.total_processed}")
-                print(f"  Total failed: {result.total_failed}")
-
-                for stage, stage_result in result.stage_results.items():
-                    if stage_result.processed > 0 or stage_result.failed > 0:
-                        print(
-                            f"  {stage}: {stage_result.processed} processed, "
-                            f"{stage_result.failed} failed"
-                        )
-
-    finally:
-        repository.close()
-
-
 def run_pipeline(args, config: Config):
     """Run the pipeline-oriented orchestrator.
 
@@ -607,23 +535,7 @@ def create_parser() -> argparse.ArgumentParser:
         help="Maximum number of files to clean up",
     )
 
-    # process command (workflow orchestrator - legacy batch mode)
-    process_parser = subparsers.add_parser(
-        "process",
-        help="Run the batch workflow (sync → download → transcribe → metadata → index → cleanup)",
-    )
-    process_parser.add_argument(
-        "--stage",
-        choices=["sync", "download", "transcription", "metadata", "indexing", "cleanup"],
-        help="Run a specific stage only",
-    )
-    process_parser.add_argument(
-        "--continuous",
-        action="store_true",
-        help="Run continuously at configured interval (for scheduler mode)",
-    )
-
-    # pipeline command (new pipeline-oriented orchestrator)
+    # pipeline command (optimized for continuous GPU utilization)
     pipeline_parser = subparsers.add_parser(
         "pipeline",
         help="Run the pipeline orchestrator (optimized for continuous GPU utilization)",
@@ -653,7 +565,6 @@ def main():
         "list": list_podcasts,
         "status": show_status,
         "cleanup": cleanup_audio,
-        "process": process_workflow,
         "pipeline": run_pipeline,
     }
 

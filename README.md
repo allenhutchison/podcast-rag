@@ -78,9 +78,9 @@ GEMINI_MODEL=gemini-2.5-flash
 GEMINI_FILE_SEARCH_STORE_NAME=podcast-transcripts
 ```
 
-3. Test the installation with a dry run:
+3. Test the installation by checking status:
 ```bash
-uv run python src/file_manager.py --dry-run
+uv run python -m src.cli podcast status
 ```
 
 See `src/config.py` for implementation details.
@@ -198,26 +198,18 @@ Both images:
 
 All commands can be run with `uv run` or directly if you've activated the virtual environment.
 
-### Process all podcasts in media directory:
+### Run the processing pipeline:
 ```bash
-uv run python src/file_manager.py
-# Or with venv activated:
-python src/file_manager.py
-```
-
-### Run scheduled processing (every hour):
-```bash
+# Run the pipeline (continuous processing optimized for GPU)
 uv run python src/scheduler.py
+
+# Or using the CLI
+uv run python -m src.cli podcast pipeline
 ```
 
-### Perform a dry run:
+### Check status:
 ```bash
-uv run python src/file_manager.py --dry-run
-```
-
-### Skip vector database operations:
-```bash
-uv run python src/file_manager.py --skip-vectordb
+uv run python -m src.cli podcast status
 ```
 
 ### Query the RAG system:
@@ -254,17 +246,17 @@ The tool uses Python's built-in logging for tracking progress and errors. By def
 ### Set log level:
 ```bash
 # Available levels: DEBUG, INFO, WARNING, ERROR
-python src/file_manager.py --log-level DEBUG
+python src/scheduler.py --log-level DEBUG
 python -m src.rag --query "your question" --log-level ERROR
 ```
 
 ## Error Reporting
-When processing fails for any files, the file_manager will print a detailed error report at the end showing:
-- Files that failed to transcribe (with file paths)
-- Files that failed metadata extraction (categorized by error type)
-- Recommended actions to resolve each type of error
+When processing fails for any episodes, the pipeline will log detailed error information showing:
+- Episodes that failed to transcribe
+- Episodes that failed metadata extraction
+- Episodes that failed indexing
 
-This makes it easy to identify and fix problematic files.
+Use `python -m src.cli podcast status` to view current processing status and any failures.
 
 ## Testing
 Unit tests can be run using `pytest`. To install `pytest`:

@@ -25,26 +25,31 @@ User Query → Vector Search → Context Retrieval → Prompt Formatting → AI 
 ### Key Components
 
 1. **RAG Manager** (`src/rag.py`) - Orchestrates query processing pipeline
-2. **File Manager** (`src/file_manager.py`) - Central processor for transcription → metadata → indexing
-3. **Transcription Manager** (`src/transcribe_podcasts.py`) - Processes audio files with Whisper
-4. **Background Services:**
-   - `src/scheduler.py` - Scheduled transcription processing
-5. **Search & Storage:**
+2. **Workflow System** (`src/workflow/`) - Pipeline-oriented processing for transcription → metadata → indexing
+   - `orchestrator.py` - PipelineOrchestrator for continuous GPU-optimized processing
+   - `workers/` - Individual workers for sync, download, transcription, metadata, indexing, cleanup
+   - `post_processor.py` - Async post-processing thread pool
+3. **Scheduler** (`src/scheduler.py`) - Entry point for running the pipeline
+4. **Search & Storage:**
    - Gemini File Search - Semantic search with automatic chunking and embeddings
    - Local metadata cache - Fast lookups without API calls
-6. **MCP Server** (`src/mcp_server.py`) - Claude integration protocol
+5. **MCP Server** (`src/mcp_server.py`) - Claude integration protocol
 
 ### Project Structure
 
 ```
 /home/user/podcast-rag/
 ├── src/                    # Core application code
-│   ├── rag.py              # RAG pipeline orchestrator
+│   ├── rag.py              # RAG query orchestrator
 │   ├── config.py           # Configuration management
 │   ├── schemas.py          # Pydantic models for validation
-│   ├── file_manager.py     # Processing orchestrator
-│   ├── transcribe_podcasts.py  # Whisper transcription manager
-│   ├── scheduler.py        # Scheduled processing
+│   ├── scheduler.py        # Pipeline entry point
+│   │
+│   ├── workflow/           # Processing pipeline
+│   │   ├── orchestrator.py # PipelineOrchestrator
+│   │   ├── config.py       # PipelineConfig
+│   │   ├── post_processor.py # Async post-processing
+│   │   └── workers/        # Individual stage workers
 │   │
 │   ├── db/
 │   │   └── gemini_file_search.py  # Gemini File Search interface
@@ -68,9 +73,9 @@ User Query → Vector Search → Context Retrieval → Prompt Formatting → AI 
 | `src/config.py` | Environment variables, paths, settings | Adding new config options |
 | `src/rag.py` | Query processing, AI inference | Changing RAG logic |
 | `src/db/gemini_file_search.py` | Gemini File Search interface | File Search integration changes |
-| `src/file_manager.py` | Transcription + metadata pipeline | Processing workflow changes |
+| `src/workflow/orchestrator.py` | PipelineOrchestrator for processing | Processing workflow changes |
+| `src/workflow/workers/` | Individual processing stage workers | Adding/modifying processing stages |
 | `src/gemini_search.py` | Search manager using Gemini File Search | Search logic modifications |
-| `src/metadata_extractor.py` | AI-powered metadata parsing | Changing metadata fields |
 | `prompts/metadata_extraction.txt` | Metadata extraction prompt | Improving metadata quality |
 | `pyproject.toml` | Python dependencies (uv) | Adding/updating packages |
 
@@ -104,13 +109,16 @@ alembic upgrade head
 
 ### Common Tasks
 
-**Process Existing Podcasts:**
+**Process Podcasts:**
 ```bash
-# Process all podcasts in media directory
-python src/file_manager.py
-
-# Scheduled processing (runs every hour)
+# Run the processing pipeline (continuous, GPU-optimized)
 python src/scheduler.py
+
+# Or using the CLI
+python -m src.cli podcast pipeline
+
+# Check processing status
+python -m src.cli podcast status
 ```
 
 **Query & Search:**
@@ -131,7 +139,7 @@ python scripts/rebuild_cache.py
 pytest
 
 # Run specific test file
-pytest tests/test_file_manager.py
+pytest tests/test_workflow.py
 
 # Verbose output
 pytest -v
@@ -198,11 +206,12 @@ pytest --cov=src tests/
 - Test files mirror source structure (`test_*.py`)
 
 ### Coverage Areas
-- File processing pipeline (`test_file_manager.py`)
+- Workflow pipeline (`test_workflow.py`)
+- Worker database storage (`test_workers_db_storage.py`)
 - Gemini File Search integration (`test_gemini_file_search.py`)
 - Metadata utilities (`test_metadata_utils.py`)
 - RAG query processing (`test_rag.py`)
-- Transcription workflow (`test_transcribe_podcasts.py`)
+- Repository operations (`test_repository.py`)
 
 ### Writing New Tests
 ```python
