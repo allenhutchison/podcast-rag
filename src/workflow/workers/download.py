@@ -9,7 +9,6 @@ from typing import Optional
 from src.config import Config
 from src.db.repository import PodcastRepositoryInterface
 from src.podcast.downloader import EpisodeDownloader
-from src.workflow.config import WorkflowConfig
 from src.workflow.workers.base import WorkerInterface, WorkerResult
 
 logger = logging.getLogger(__name__)
@@ -25,19 +24,31 @@ class DownloadWorker(WorkerInterface):
     def __init__(
         self,
         config: Config,
-        workflow_config: WorkflowConfig,
         repository: PodcastRepositoryInterface,
+        download_workers: int = 5,
     ):
         """Initialize the download worker.
 
         Args:
             config: Application configuration.
-            workflow_config: Workflow-specific configuration.
             repository: Database repository for episode operations.
+            download_workers: Number of concurrent download workers. Must be > 0.
+
+        Raises:
+            ValueError: If download_workers is not a positive integer.
         """
+        if not isinstance(download_workers, int):
+            raise ValueError(
+                f"download_workers must be an integer, got {type(download_workers).__name__}"
+            )
+        if download_workers <= 0:
+            raise ValueError(
+                f"download_workers must be greater than zero, got {download_workers}"
+            )
+
         self.config = config
-        self.workflow_config = workflow_config
         self.repository = repository
+        self._download_workers = download_workers
         self._downloader: Optional[EpisodeDownloader] = None
 
     @property
@@ -52,7 +63,7 @@ class DownloadWorker(WorkerInterface):
             self._downloader = EpisodeDownloader(
                 repository=self.repository,
                 download_directory=self.config.PODCAST_DOWNLOAD_DIRECTORY,
-                max_concurrent=self.workflow_config.download_workers,
+                max_concurrent=self._download_workers,
                 retry_attempts=self.config.PODCAST_DOWNLOAD_RETRY_ATTEMPTS,
                 timeout=self.config.PODCAST_DOWNLOAD_TIMEOUT,
             )

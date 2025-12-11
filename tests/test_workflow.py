@@ -6,12 +6,10 @@ from unittest.mock import Mock, MagicMock, patch
 
 from src.db.factory import create_repository
 from src.db.models import Episode
-from src.workflow.config import PipelineConfig, WorkflowConfig
+from src.workflow.config import PipelineConfig
 from src.workflow.orchestrator import (
     PipelineOrchestrator,
     PipelineStats,
-    WorkflowOrchestrator,
-    OrchestratorResult,
 )
 from src.workflow.post_processor import PostProcessor, PostProcessingStats
 from src.workflow.workers.base import WorkerInterface, WorkerResult
@@ -38,20 +36,6 @@ def mock_config():
     config.GEMINI_MODEL = "gemini-2.5-flash"
     config.TRANSCRIPTION_OUTPUT_SUFFIX = "_transcription.txt"
     return config
-
-
-@pytest.fixture
-def workflow_config():
-    """Create a default workflow config for testing."""
-    return WorkflowConfig(
-        run_interval_seconds=3600,
-        download_batch_size=10,
-        download_workers=2,
-        transcription_batch_size=2,
-        metadata_batch_size=5,
-        indexing_batch_size=5,
-        cleanup_batch_size=10,
-    )
 
 
 @pytest.fixture
@@ -91,40 +75,6 @@ def sample_episode(repository, sample_podcast):
     )
 
 
-class TestWorkflowConfig:
-    """Tests for WorkflowConfig."""
-
-    def test_default_values(self):
-        """Test default configuration values."""
-        config = WorkflowConfig()
-
-        assert config.run_interval_seconds == 3600
-        assert config.download_batch_size == 50
-        assert config.download_workers == 10
-        assert config.transcription_batch_size == 3
-        assert config.metadata_batch_size == 9
-        assert config.indexing_batch_size == 10
-        assert config.cleanup_batch_size == 20
-
-    def test_from_env(self):
-        """Test loading configuration from environment variables."""
-        with patch.dict(
-            "os.environ",
-            {
-                "WORKFLOW_RUN_INTERVAL_SECONDS": "7200",
-                "WORKFLOW_DOWNLOAD_BATCH_SIZE": "100",
-                "WORKFLOW_TRANSCRIPTION_BATCH_SIZE": "5",
-            },
-        ):
-            config = WorkflowConfig.from_env()
-
-            assert config.run_interval_seconds == 7200
-            assert config.download_batch_size == 100
-            assert config.transcription_batch_size == 5
-            # Other values should be defaults
-            assert config.download_workers == 10
-
-
 class TestWorkerResult:
     """Tests for WorkerResult."""
 
@@ -150,49 +100,6 @@ class TestWorkerResult:
         assert result.failed == 2
         assert result.skipped == 3
         assert len(result.errors) == 2
-
-
-class TestOrchestratorResult:
-    """Tests for OrchestratorResult."""
-
-    def test_default_values(self):
-        """Test default orchestrator result values."""
-        result = OrchestratorResult()
-
-        assert result.started_at is not None
-        assert result.completed_at is None
-        assert result.stage_results == {}
-        assert result.success is True
-
-    def test_duration_seconds(self):
-        """Test duration calculation."""
-        result = OrchestratorResult()
-        result.completed_at = datetime.now(UTC)
-
-        # Duration should be non-negative
-        assert result.duration_seconds >= 0
-
-    def test_total_processed(self):
-        """Test total processed calculation."""
-        result = OrchestratorResult()
-        result.stage_results = {
-            "sync": WorkerResult(processed=2),
-            "download": WorkerResult(processed=5),
-            "transcription": WorkerResult(processed=3),
-        }
-
-        assert result.total_processed == 10
-
-    def test_total_failed(self):
-        """Test total failed calculation."""
-        result = OrchestratorResult()
-        result.stage_results = {
-            "sync": WorkerResult(failed=0),
-            "download": WorkerResult(failed=2),
-            "transcription": WorkerResult(failed=1),
-        }
-
-        assert result.total_failed == 3
 
 
 class TestWorkerInterface:
@@ -222,95 +129,6 @@ class TestWorkerInterface:
         assert "5" in caplog.text
 
 
-class TestWorkflowOrchestrator:
-    """Tests for WorkflowOrchestrator."""
-
-    def test_stage_order(self, mock_config, workflow_config, repository):
-        """Test that stage order is correctly defined."""
-        orchestrator = WorkflowOrchestrator(
-            config=mock_config,
-            workflow_config=workflow_config,
-            repository=repository,
-        )
-
-        assert orchestrator.STAGE_ORDER == [
-            "sync",
-            "download",
-            "transcription",
-            "metadata",
-            "indexing",
-            "cleanup",
-        ]
-
-    def test_get_batch_size(self, mock_config, workflow_config, repository):
-        """Test getting batch sizes for different stages."""
-        orchestrator = WorkflowOrchestrator(
-            config=mock_config,
-            workflow_config=workflow_config,
-            repository=repository,
-        )
-
-        assert orchestrator._get_batch_size("sync") == 0  # Sync processes all
-        assert orchestrator._get_batch_size("download") == 10
-        assert orchestrator._get_batch_size("transcription") == 2
-        assert orchestrator._get_batch_size("metadata") == 5
-        assert orchestrator._get_batch_size("indexing") == 5
-        assert orchestrator._get_batch_size("cleanup") == 10
-
-    def test_run_stage_unknown(self, mock_config, workflow_config, repository):
-        """Test running an unknown stage raises error."""
-        orchestrator = WorkflowOrchestrator(
-            config=mock_config,
-            workflow_config=workflow_config,
-            repository=repository,
-        )
-
-        with pytest.raises(ValueError, match="Unknown stage"):
-            orchestrator.run_stage("unknown_stage")
-
-    def test_run_once_empty(self, mock_config, workflow_config, repository):
-        """Test running workflow with no pending items."""
-        orchestrator = WorkflowOrchestrator(
-            config=mock_config,
-            workflow_config=workflow_config,
-            repository=repository,
-        )
-
-        result = orchestrator.run_once()
-
-        assert result.completed_at is not None
-        assert result.total_processed == 0
-        assert result.total_failed == 0
-
-    def test_run_once_specific_stages(self, mock_config, workflow_config, repository):
-        """Test running specific stages only."""
-        orchestrator = WorkflowOrchestrator(
-            config=mock_config,
-            workflow_config=workflow_config,
-            repository=repository,
-        )
-
-        result = orchestrator.run_once(stages=["sync"])
-
-        assert "sync" in result.stage_results
-        assert "download" not in result.stage_results
-
-    def test_get_status(self, mock_config, workflow_config, repository):
-        """Test getting workflow status."""
-        orchestrator = WorkflowOrchestrator(
-            config=mock_config,
-            workflow_config=workflow_config,
-            repository=repository,
-        )
-
-        status = orchestrator.get_status()
-
-        # All stages should have a count (may be 0)
-        for stage in orchestrator.STAGE_ORDER:
-            assert stage in status
-            assert isinstance(status[stage], int)
-
-
 class TestSyncWorker:
     """Tests for SyncWorker."""
 
@@ -334,25 +152,25 @@ class TestSyncWorker:
 class TestDownloadWorker:
     """Tests for DownloadWorker."""
 
-    def test_name(self, mock_config, workflow_config, repository):
+    def test_name(self, mock_config, repository):
         """Test worker name."""
         from src.workflow.workers.download import DownloadWorker
 
         worker = DownloadWorker(
             config=mock_config,
-            workflow_config=workflow_config,
             repository=repository,
+            download_workers=2,
         )
         assert worker.name == "Download"
 
-    def test_get_pending_count_empty(self, mock_config, workflow_config, repository):
+    def test_get_pending_count_empty(self, mock_config, repository):
         """Test getting pending count with no pending downloads."""
         from src.workflow.workers.download import DownloadWorker
 
         worker = DownloadWorker(
             config=mock_config,
-            workflow_config=workflow_config,
             repository=repository,
+            download_workers=2,
         )
         count = worker.get_pending_count()
 
