@@ -257,7 +257,7 @@ echo "Open: $URL"
 
 ## Support
 
-- **Documentation**: See `README_WEB.md`
+- **Documentation**: See [web-app.md](web-app.md)
 - **Issues**: https://github.com/allenhutchison/podcast-rag/issues
 - **Cloud Run Docs**: https://cloud.google.com/run/docs
 

@@ -84,11 +84,11 @@ docker compose down
 ### Running One-Time Processing
 
 ```bash
-# Process all podcasts once
-docker compose run --rm podcast-rag python src/file_manager.py
+# Run the processing pipeline
+docker compose run --rm podcast-rag python src/scheduler.py
 
-# Dry run
-docker compose run --rm podcast-rag python src/file_manager.py --dry-run
+# Or using the CLI
+docker compose run --rm podcast-rag python -m src.cli podcast pipeline
 ```
 
 ### Running a RAG Query
