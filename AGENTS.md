@@ -1,4 +1,4 @@
-# CLAUDE.md - AI Assistant Context for Podcast RAG System
+# AGENTS.md - AI Assistant Context for Podcast RAG System
 
 This document provides context for AI assistants working with this codebase.
 
@@ -53,6 +53,16 @@ User Query → Vector Search → Context Retrieval → Prompt Formatting → AI 
 │   │
 │   ├── db/
 │   │   └── gemini_file_search.py  # Gemini File Search interface
+│   │
+│   ├── agents/             # Google ADK multi-agent system (web app)
+│   │   ├── orchestrator.py # SequentialAgent + ParallelAgent setup
+│   │   ├── podcast_search.py # PodcastSearchAgent with File Search
+│   │   ├── web_search.py   # WebSearchAgent with google_search
+│   │   └── synthesizer.py  # SynthesizerAgent for combining results
+│   │
+│   └── web/                # FastAPI web application
+│       ├── app.py          # Main app with ADK integration
+│       └── static/         # Frontend (Tailwind CSS + vanilla JS)
 │
 ├── scripts/
 │   ├── file_search_utils.py      # File Search management utilities
@@ -60,6 +70,12 @@ User Query → Vector Search → Context Retrieval → Prompt Formatting → AI 
 │
 ├── prompts/                # AI prompt templates
 │   └── metadata_extraction.txt   # Metadata extraction
+│
+├── docs/                   # Documentation
+│   ├── docker.md           # Docker deployment guide
+│   ├── web-app.md          # Web application guide
+│   ├── deploy-quick-start.md  # Cloud Run quick start
+│   └── faster-whisper-benchmark.md  # Benchmark analysis
 │
 ├── tests/                  # pytest test suite
 ├── pyproject.toml          # Project config and dependencies (uv)
@@ -76,6 +92,8 @@ User Query → Vector Search → Context Retrieval → Prompt Formatting → AI 
 | `src/workflow/orchestrator.py` | PipelineOrchestrator for processing | Processing workflow changes |
 | `src/workflow/workers/` | Individual processing stage workers | Adding/modifying processing stages |
 | `src/gemini_search.py` | Search manager using Gemini File Search | Search logic modifications |
+| `src/agents/` | Google ADK multi-agent system | Web app agent behavior |
+| `src/web/app.py` | FastAPI web application | Web interface changes |
 | `prompts/metadata_extraction.txt` | Metadata extraction prompt | Improving metadata quality |
 | `pyproject.toml` | Python dependencies (uv) | Adding/updating packages |
 
@@ -123,8 +141,11 @@ python -m src.cli podcast status
 
 **Query & Search:**
 ```bash
-# RAG query with Gemini File Search
+# RAG query with Gemini File Search (CLI)
 python -m src.rag --query "your question"
+
+# Web application (ADK multi-agent with web search)
+uvicorn src.web.app:app --reload --port 8080
 
 # Manage File Search store (list, find duplicates, delete)
 python scripts/file_search_utils.py --action list
@@ -282,9 +303,12 @@ Check current branch with: `git branch --show-current`
 
 ## Resources
 
-- **Primary Docs:** `/home/user/podcast-rag/README.md`
-- **Technical Guide:** `/home/user/podcast-rag/GEMINI.md`
-- **License:** Apache 2.0 (`/home/user/podcast-rag/LICENSE`)
+- **Primary Docs:** `README.md`
+- **Web App Guide:** `docs/web-app.md`
+- **Web Architecture:** `docs/WEB_ARCHITECTURE.md`
+- **Docker Deployment:** `docs/docker.md`
+- **Cloud Run Quick Start:** `docs/deploy-quick-start.md`
+- **License:** Apache 2.0 (`LICENSE`)
 
 ## Code Modification Guidelines
 
@@ -296,7 +320,7 @@ Check current branch with: `git branch --show-current`
 5. Add new dependencies with `uv add <package>` (updates pyproject.toml and uv.lock)
 6. Run full test suite: `pytest`
 7. Run code review: `coderabbit --prompt-only` and address findings
-8. Document in README.md or GEMINI.md
+8. Document in README.md or docs/
 9. Commit changes
 
 ### When Fixing Bugs
@@ -318,7 +342,7 @@ Check current branch with: `git branch --show-current`
 
 ---
 
-**Last Updated:** 2025-12-07
+**Last Updated:** 2025-12-10
 **Project Version:** See `git log -1` for latest commit
 **Python Version:** 3.11+
 **License:** Apache 2.0

@@ -2,96 +2,115 @@
 
 ## System Overview
 
+The web application uses Google ADK (Agent Development Kit) to orchestrate parallel search across podcast transcripts and the web, then synthesize results into a unified response.
+
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         User's Browser                          │
-│                                                                 │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │  Chat Interface (index.html + Tailwind CSS)              │  │
-│  │  • Message bubbles (user/assistant)                      │  │
-│  │  • Citation cards (metadata only)                        │  │
-│  │  • Typing indicators & animations                        │  │
-│  └────────────────────────┬─────────────────────────────────┘  │
-│                           │                                     │
-│  ┌────────────────────────▼─────────────────────────────────┐  │
-│  │  Frontend Logic (chat.js - Vanilla JS)                   │  │
-│  │  • Form handling                                         │  │
-│  │  • EventSource for SSE streaming                         │  │
-│  │  • Word-by-word rendering                                │  │
-│  │  • Citation card rendering                               │  │
-│  └────────────────────────┬─────────────────────────────────┘  │
-└───────────────────────────┼──────────────────────────────────────┘
-                            │
-                            │ HTTP/SSE (Port 8080)
-                            │
-┌───────────────────────────▼──────────────────────────────────────┐
-│              Google Cloud Run (Serverless Container)             │
-│                                                                  │
-│  ┌────────────────────────────────────────────────────────────┐ │
-│  │  FastAPI Application (app.py)                             │ │
-│  │                                                            │ │
-│  │  ┌──────────────────┐    ┌────────────────────────────┐  │ │
-│  │  │  /api/chat       │    │  /health                   │  │ │
-│  │  │  (SSE streaming) │    │  (health check)            │  │ │
-│  │  └────────┬─────────┘    └────────────────────────────┘  │ │
-│  │           │                                                │ │
-│  │           │                                                │ │
-│  │  ┌────────▼─────────────────────────────────────────────┐ │ │
-│  │  │  async generate_streaming_response()                 │ │ │
-│  │  │  • Yields SSE events (token, citations, done)        │ │ │
-│  │  │  • 50ms delay between words for streaming effect     │ │ │
-│  │  └────────┬─────────────────────────────────────────────┘ │ │
-│  └───────────┼────────────────────────────────────────────────┘ │
-│              │                                                   │
-│  ┌───────────▼────────────────────────────────────────────────┐ │
-│  │  RAG Manager (src/rag.py - Existing Code!)                │ │
-│  │                                                            │ │
-│  │  ┌──────────────────────────────────────────────────────┐ │ │
-│  │  │  query(user_question) -> answer_with_citations       │ │ │
-│  │  └────────┬─────────────────────────────────────────────┘ │ │
-│  │           │                                                │ │
-│  │  ┌────────▼─────────────────────────────────────────────┐ │ │
-│  │  │  get_citations() -> List[Citation]                   │ │ │
-│  │  └────────┬─────────────────────────────────────────────┘ │ │
-│  └───────────┼────────────────────────────────────────────────┘ │
-│              │                                                   │
-│  ┌───────────▼────────────────────────────────────────────────┐ │
-│  │  GeminiFileSearchManager (src/db/gemini_file_search.py)   │ │
-│  │                                                            │ │
-│  │  ┌──────────────────────────────────────────────────────┐ │ │
-│  │  │  get_document_metadata_from_cache(filename)          │ │ │
-│  │  │  • Instant lookup from .file_search_cache.json       │ │ │
-│  │  │  • No API calls! ⚡                                   │ │ │
-│  │  └──────────────────────────────────────────────────────┘ │ │
-│  └────────────────────────────────────────────────────────────┘ │
-│                                                                  │
-│  ┌────────────────────────────────────────────────────────────┐ │
-│  │  Environment Variables                                     │ │
-│  │  • GEMINI_API_KEY (from Cloud Run config)                 │ │
-│  │  • GEMINI_MODEL (gemini-2.5-flash)                        │ │
-│  │  • GEMINI_FILE_SEARCH_STORE_NAME (podcast-transcripts)    │ │
-│  └────────────────────────────────────────────────────────────┘ │
-└────────────────────────────┬─────────────────────────────────────┘
-                             │
-                             │ HTTPS API Calls
-                             │
-┌────────────────────────────▼─────────────────────────────────────┐
-│                    Google Gemini API                             │
-│                                                                  │
-│  ┌────────────────────────────────────────────────────────────┐ │
-│  │  File Search Service                                       │ │
-│  │  • Semantic search over podcast transcripts                │ │
-│  │  • Automatic chunking & embedding                          │ │
-│  │  • Returns relevant passages with scores                   │ │
-│  └────────────────────────────────────────────────────────────┘ │
-│                                                                  │
-│  ┌────────────────────────────────────────────────────────────┐ │
-│  │  Gemini 2.5 Flash Model                                    │ │
-│  │  • Generates answers from retrieved context                │ │
-│  │  • Includes inline citations [1][2]                        │ │
-│  │  • Returns grounding metadata                              │ │
-│  └────────────────────────────────────────────────────────────┘ │
-└──────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              User's Browser                                  │
+│                                                                             │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │  Chat Interface (index.html + Tailwind CSS)                           │  │
+│  │  • Message bubbles (user/assistant)                                   │  │
+│  │  • Citation cards (podcast + web sources)                             │  │
+│  │  • Real-time status updates during agent execution                    │  │
+│  └─────────────────────────────────┬─────────────────────────────────────┘  │
+│                                    │                                         │
+│  ┌─────────────────────────────────▼─────────────────────────────────────┐  │
+│  │  Frontend Logic (chat.js - Vanilla JS)                                │  │
+│  │  • Form handling                                                      │  │
+│  │  • EventSource for SSE streaming                                      │  │
+│  │  • Status event rendering                                             │  │
+│  │  • Citation card rendering (P1, W1 prefixes)                          │  │
+│  └─────────────────────────────────┬─────────────────────────────────────┘  │
+└─────────────────────────────────────┼────────────────────────────────────────┘
+                                      │
+                                      │ HTTP/SSE (Port 8080)
+                                      │
+┌─────────────────────────────────────▼────────────────────────────────────────┐
+│                  Google Cloud Run (Serverless Container)                      │
+│                                                                              │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │  FastAPI Application (src/web/app.py)                                  │ │
+│  │                                                                        │ │
+│  │  ┌─────────────────────┐    ┌──────────────────────────────────────┐  │ │
+│  │  │  /api/chat          │    │  /health                             │  │ │
+│  │  │  (POST, SSE stream) │    │  (health check)                      │  │ │
+│  │  └──────────┬──────────┘    └──────────────────────────────────────┘  │ │
+│  │             │                                                          │ │
+│  │  ┌──────────▼──────────────────────────────────────────────────────┐  │ │
+│  │  │  Session Management                                             │  │ │
+│  │  │  • X-Session-ID header validation                               │  │ │
+│  │  │  • Per-session ADK Runner instances                             │  │ │
+│  │  │  • Thread-safe citation storage                                 │  │ │
+│  │  └──────────┬──────────────────────────────────────────────────────┘  │ │
+│  │             │                                                          │ │
+│  │  ┌──────────▼──────────────────────────────────────────────────────┐  │ │
+│  │  │  Rate Limiter (slowapi)                                         │  │ │
+│  │  │  • Configurable via WEB_RATE_LIMIT                              │  │ │
+│  │  └──────────┬──────────────────────────────────────────────────────┘  │ │
+│  └─────────────┼──────────────────────────────────────────────────────────┘ │
+│                │                                                             │
+│  ┌─────────────▼──────────────────────────────────────────────────────────┐ │
+│  │  Google ADK Runner                                                     │ │
+│  │  • InMemorySessionService for conversation state                       │ │
+│  │  • Async event streaming via run_async()                               │ │
+│  └─────────────┬──────────────────────────────────────────────────────────┘ │
+│                │                                                             │
+│  ┌─────────────▼──────────────────────────────────────────────────────────┐ │
+│  │  SequentialAgent (PodcastRAGOrchestrator)                              │ │
+│  │                                                                        │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  Step 1: ParallelAgent (ParallelSearchAgent)                     │ │ │
+│  │  │  Runs both search agents SIMULTANEOUSLY                          │ │ │
+│  │  │                                                                  │ │ │
+│  │  │  ┌───────────────────────┐    ┌───────────────────────────────┐ │ │ │
+│  │  │  │  PodcastSearchAgent   │    │  WebSearchAgent               │ │ │ │
+│  │  │  │                       │    │                               │ │ │ │
+│  │  │  │  Tools:               │    │  Tools:                       │ │ │ │
+│  │  │  │  • search_podcasts    │    │  • google_search (built-in)   │ │ │ │
+│  │  │  │    (custom tool)      │    │  • url_context (built-in)     │ │ │ │
+│  │  │  │                       │    │                               │ │ │ │
+│  │  │  │  Output:              │    │  Output:                      │ │ │ │
+│  │  │  │  {podcast_results}    │    │  {web_results}                │ │ │ │
+│  │  │  └───────────────────────┘    └───────────────────────────────┘ │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  │                                    │                                   │ │
+│  │                                    ▼                                   │ │
+│  │  ┌──────────────────────────────────────────────────────────────────┐ │ │
+│  │  │  Step 2: SynthesizerAgent                                        │ │ │
+│  │  │                                                                  │ │ │
+│  │  │  Inputs:                                                         │ │ │
+│  │  │  • {podcast_results} from PodcastSearchAgent                     │ │ │
+│  │  │  • {web_results} from WebSearchAgent                             │ │ │
+│  │  │                                                                  │ │ │
+│  │  │  Behavior:                                                       │ │ │
+│  │  │  • Weighs both sources equally                                   │ │ │
+│  │  │  • Notes agreements/conflicts                                    │ │ │
+│  │  │  • Outputs HTML-formatted response                               │ │ │
+│  │  │                                                                  │ │ │
+│  │  │  Output: {final_response}                                        │ │ │
+│  │  └──────────────────────────────────────────────────────────────────┘ │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │  Environment Variables                                                 │ │
+│  │  • GEMINI_API_KEY (from Secret Manager)                               │ │
+│  │  • GEMINI_MODEL (gemini-2.0-flash required for web search)            │ │
+│  │  • GEMINI_FILE_SEARCH_STORE_NAME (podcast-transcripts)                │ │
+│  │  • ADK_PARALLEL_TIMEOUT (60s default)                                 │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────────────────┘
+                    │                                      │
+                    │                                      │
+                    ▼                                      ▼
+┌───────────────────────────────────┐    ┌────────────────────────────────────┐
+│       Gemini File Search          │    │         Google Search API          │
+│                                   │    │                                    │
+│  • Podcast transcript store       │    │  • google_search tool              │
+│  • Automatic chunking/embedding   │    │  • url_context for page content    │
+│  • Returns grounding_chunks       │    │  • Returns grounding_metadata      │
+│  • Citation metadata from cache   │    │  • Web source URLs                 │
+└───────────────────────────────────┘    └────────────────────────────────────┘
 ```
 
 ## Request Flow
@@ -99,72 +118,126 @@
 ### 1. User Submits Query
 
 ```
-User types: "What topics are discussed in recent episodes?"
+User types: "What's happening with AI regulation?"
          ↓
 chat.js captures form submission
          ↓
 Creates EventSource connection:
-GET /api/chat?query=What%20topics%20are%20discussed...
+POST /api/chat
+Body: {"query": "What's happening with AI regulation?"}
+Header: X-Session-ID: <uuid>
 ```
 
-### 2. Backend Processing
+### 2. Session Setup
 
 ```
 FastAPI app.py receives request
          ↓
-Validates query (ChatRequest model)
+Validates session ID (sanitizes, generates if needed)
          ↓
-Calls: answer = rag_manager.query(query)
+Gets or creates session-specific ADK Runner
+  • Each session gets its own orchestrator instance
+  • Ensures thread-safe citation storage
          ↓
-RAG Manager sends query to Gemini File Search
-         ↓
-Gemini API:
-  1. Searches vector store for relevant chunks
-  2. Generates answer with inline citations
-  3. Returns grounding metadata
-         ↓
-RAG Manager returns: "Topics include AI[1], ML[2]..."
+Gets or creates ADK InMemorySessionService
 ```
 
-### 3. Citation Enrichment
+### 3. ADK Orchestration
 
 ```
-get_citations() extracts citation metadata
+Runner.run_async() starts event stream
          ↓
-For each citation:
-  - Get filename (e.g., "episode5_transcription.txt")
-  - Lookup in cache: get_document_metadata_from_cache()
-  - Extract metadata: {podcast, episode, release_date}
+SequentialAgent (PodcastRAGOrchestrator) begins
          ↓
-Build enriched_citations list
+┌─────────────────────────────────────────────────────┐
+│  ParallelAgent executes BOTH agents simultaneously  │
+│                                                     │
+│  PodcastSearchAgent          WebSearchAgent         │
+│  │                           │                      │
+│  ├─ Calls search_podcasts    ├─ Calls google_search │
+│  │  tool with query          │  with query          │
+│  │                           │                      │
+│  ├─ File Search returns      ├─ Returns web results │
+│  │  grounding_chunks         │  with URLs           │
+│  │                           │                      │
+│  ├─ Enriches with metadata   ├─ May call url_context│
+│  │  from local cache         │  for deeper content  │
+│  │                           │                      │
+│  └─ Stores citations in      └─ Returns with        │
+│     session storage             grounding_metadata  │
+└─────────────────────────────────────────────────────┘
+         ↓
+SynthesizerAgent receives:
+  • {podcast_results}: Text + citations from podcast search
+  • {web_results}: Text + grounding from web search
+         ↓
+Synthesizer creates unified HTML response
+  • Equal weight to both sources
+  • Notes agreements/conflicts
+  • No inline citation brackets
 ```
 
-### 4. Streaming Response
+### 4. Event Streaming
 
 ```
 generate_streaming_response() yields SSE events:
 
-Event 1: {"event": "token", "data": {"token": "Topics "}}
-Event 2: {"event": "token", "data": {"token": "include "}}
-Event 3: {"event": "token", "data": {"token": "AI[1] "}}
+Phase: Searching
+Event 1: {"event": "status", "data": {"phase": "searching"}}
+Event 2: {"event": "status", "data": {"agent": "podcast", "status": "started"}}
+Event 3: {"event": "status", "data": {"agent": "web", "status": "started"}}
+Event 4: {"event": "status", "data": {"tool": "search_podcasts", "message": "..."}}
+Event 5: {"event": "status", "data": {"tool": "google_search", "message": "..."}}
+Event 6: {"event": "status", "data": {"agent": "podcast", "status": "complete"}}
+Event 7: {"event": "status", "data": {"agent": "web", "status": "complete"}}
+
+Phase: Responding
+Event 8: {"event": "status", "data": {"phase": "responding"}}
+Event 9: {"event": "token", "data": {"token": "Based "}}
+Event 10: {"event": "token", "data": {"token": "on "}}
 ...
 Event N: {"event": "citations", "data": {"citations": [...]}}
 Event N+1: {"event": "done", "data": {"status": "complete"}}
 ```
 
-### 5. Frontend Rendering
+### 5. Citation Assembly
+
+```
+After orchestration completes:
+         ↓
+Get podcast citations from session storage
+  (set by search_podcasts tool during execution)
+         ↓
+Get web citations from grounding_metadata
+  (extracted from google_search responses)
+         ↓
+_combine_citations() merges both:
+  [
+    {ref_id: "P1", source_type: "podcast", metadata: {...}},
+    {ref_id: "P2", source_type: "podcast", metadata: {...}},
+    {ref_id: "W1", source_type: "web", metadata: {url: "..."}},
+    {ref_id: "W2", source_type: "web", metadata: {url: "..."}}
+  ]
+```
+
+### 6. Frontend Rendering
 
 ```
 chat.js EventSource handlers:
 
+on 'status' event:
+  - Update status indicator
+  - Show "Searching podcasts...", "Searching web...", etc.
+
 on 'token' event:
-  - Append word to text container
+  - Append word to message bubble
   - Auto-scroll to bottom
 
 on 'citations' event:
-  - Render citation cards:
-    [1] Tech Talk - AI Advances (2024-01-15)
-    [2] Data Science - ML Basics (2024-02-01)
+  - Render podcast citations:
+    [P1] Podcast Name - Episode Title (YYYY-MM-DD)
+  - Render web citations:
+    [W1] Page Title - https://example.com
 
 on 'done' event:
   - Close EventSource
@@ -172,130 +245,101 @@ on 'done' event:
   - Focus on query input
 ```
 
-## Data Flow Diagram
-
-```
-Query String
-    ↓
-FastAPI (validation)
-    ↓
-RagManager.query()
-    ↓
-Gemini File Search API ──────────→ Vector Store
-    │                               (podcast transcripts)
-    │                                      │
-    ↓                                      │
-Generate answer ←──────────────────────────┘
-with citations                   (retrieved chunks)
-    │
-    ├─→ Answer text: "Topics include AI[1]..."
-    │
-    └─→ Grounding metadata:
-        {
-          grounding_chunks: [
-            {title: "ep5.txt", text: "...", ...}
-          ],
-          grounding_supports: [
-            {segment: {end_index: 25}, chunk_indices: [0]}
-          ]
-        }
-    ↓
-RagManager.get_citations()
-    ↓
-For each chunk:
-  - Extract title (filename)
-  - Lookup metadata from cache ──→ .file_search_cache.json
-    {                               (instant, no API!)
-      "ep5.txt": {
-        "metadata": {
-          "podcast": "Tech Talk",
-          "episode": "AI Advances",
-          "release_date": "2024-01-15"
-        }
-      }
-    }
-    ↓
-Enriched citations:
-[
-  {
-    "index": 1,
-    "metadata": {
-      "podcast": "Tech Talk",
-      "episode": "AI Advances",
-      "release_date": "2024-01-15"
-    }
-  }
-]
-    ↓
-Stream to browser via SSE
-    ↓
-Rendered as citation cards
-(NO text excerpt, only metadata!)
-```
-
 ## Key Components
 
+### Agent Architecture (src/agents/)
+
+| File | Agent | Purpose |
+|------|-------|---------|
+| `orchestrator.py` | PodcastRAGOrchestrator | SequentialAgent coordinating search → synthesis |
+| `podcast_search.py` | PodcastSearchAgent | LlmAgent with custom File Search tool |
+| `web_search.py` | WebSearchAgent | LlmAgent with google_search + url_context |
+| `synthesizer.py` | SynthesizerAgent | LlmAgent that combines results |
+
+### Citation Storage
+
+Podcast citations use thread-safe session-based storage:
+
+```python
+# In podcast_search.py
+_session_citations: Dict[str, Dict] = {}  # {session_id: {citations: [...], timestamp: ...}}
+_citations_lock = threading.Lock()
+
+# Tool stores citations during execution
+set_podcast_citations(session_id, citations)
+
+# Web app retrieves after orchestration
+get_podcast_citations(session_id)
+```
+
 ### Frontend Stack
-- **HTML/CSS**: Tailwind CSS via CDN (no build step!)
+- **HTML/CSS**: Tailwind CSS via CDN (no build step)
 - **JavaScript**: Vanilla JS with EventSource API
 - **No frameworks**: Simple, lightweight, fast loading
 
 ### Backend Stack
 - **FastAPI**: Modern async Python web framework
 - **uvicorn**: ASGI server with auto-reload
-- **sse-starlette**: Server-Sent Events support
+- **Google ADK**: Multi-agent orchestration
+- **slowapi**: Rate limiting
 - **Pydantic**: Request/response validation
 
 ### Infrastructure
-- **Docker**: Multi-stage build, ~200MB image
+- **Docker**: Multi-stage build, ~500MB image
 - **Cloud Run**: Serverless, auto-scaling, scale-to-zero
 - **Cloud Build**: CI/CD from GitHub
 - **Secret Manager**: API key storage
 
 ### External Services
-- **Gemini API**: LLM and File Search
-- **File Search**: Hosted vector database
-- **No additional databases**: Stateless application
+- **Gemini API**: LLM for all agents
+- **Gemini File Search**: Podcast transcript vector store
+- **Google Search**: Real-time web search (via built-in tool)
 
 ## Performance Characteristics
 
 ### Cold Start
-- **Time**: 2-5 seconds
-- **Factors**: Python interpreter, dependency loading
+- **Time**: 3-8 seconds
+- **Factors**: Python interpreter, ADK initialization, dependency loading
 - **Optimization**: Minimal dependencies, multi-stage build
 
 ### Query Latency
 - **SSE Connection**: ~100ms
-- **First Token**: 1-3 seconds (Gemini API)
+- **Parallel Search Phase**: 2-10 seconds (both run simultaneously)
+- **Synthesis Phase**: 1-3 seconds
 - **Streaming**: 50ms per word (configurable)
-- **Total**: 3-10 seconds depending on answer length
+- **Total**: 5-15 seconds depending on query complexity
 
 ### Resource Usage
-- **Memory**: 200-300MB (512MB allocated)
-- **CPU**: Burst during query, idle otherwise
-- **Network**: ~5-50KB per query (compressed)
+- **Memory**: 300-500MB (512MB allocated)
+- **CPU**: Burst during agent execution, idle otherwise
+- **Network**: ~10-100KB per query
 
 ### Scalability
 - **Concurrent requests**: Limited by Gemini API quotas
 - **Max instances**: 10 (configurable)
 - **Scale to zero**: Yes (saves costs)
-- **Stateless**: No session storage required
+- **Stateless**: Session storage is per-instance (not shared)
 
 ## Security Considerations
 
-### Authentication
-- **Public access**: No auth required (demo app)
-- **Consider adding**: Rate limiting, API keys for production
+### Query Sanitization
+- Control characters stripped
+- Length limited to 2000 characters
+- Prompt injection patterns logged (defense-in-depth)
+
+### Session Validation
+- Max 64 characters
+- Alphanumeric, hyphens, underscores only
+- Invalid sessions get new UUID
+
+### Rate Limiting
+- Configurable via `WEB_RATE_LIMIT`
+- Default: 10 requests/minute per IP
 
 ### API Key Protection
 - **Storage**: Google Secret Manager
 - **Access**: Cloud Run service account only
 - **Never exposed**: Not sent to frontend
-
-### Input Validation
-- **Query length**: Max 1000 characters (Pydantic validation)
-- **XSS prevention**: HTML escaping in chat.js
-- **CORS**: Configurable in app.py
 
 ### HTTPS
 - **Cloud Run**: Automatic HTTPS with managed certificates
@@ -307,6 +351,7 @@ Rendered as citation cards
 - **Application logs**: Python logging to stdout
 - **Cloud Logging**: Automatic collection
 - **Log levels**: INFO, WARNING, ERROR
+- **Debug logging**: Agent events, citation counts, tool calls
 
 ### Metrics (Cloud Run)
 - **Request count**: Automatic
@@ -322,80 +367,48 @@ Rendered as citation cards
 
 ## Cost Breakdown
 
-### Per Query
+### Per Query (Estimate)
 ```
-Gemini API:
-  Input tokens (5K):   $0.000375
-  Output tokens (500): $0.000150
-  Subtotal:            ~$0.0005
+Gemini API (parallel agents):
+  PodcastSearchAgent:     ~$0.001
+  WebSearchAgent:         ~$0.001
+  SynthesizerAgent:       ~$0.001
+  Subtotal:               ~$0.003
 
 Cloud Run:
-  Request:             $0.0000004
-  CPU-seconds (2s):    $0.000048
-  Memory GB-sec (1GB): $0.0000025
-  Subtotal:            ~$0.00005
+  Request:                $0.0000004
+  CPU-seconds (5s):       $0.00012
+  Memory GB-sec (2.5GB):  $0.0000063
+  Subtotal:               ~$0.0001
 
-Total per query:       ~$0.00055 (0.055 cents)
+Total per query:          ~$0.003 (0.3 cents)
 ```
 
 ### Monthly (1,000 queries)
 ```
-Gemini API:  $0.50
-Cloud Run:   $0.05
-Total:       ~$0.55/month
-
-(Likely within free tiers!)
+Gemini API:  $3.00
+Cloud Run:   $0.10
+Total:       ~$3.10/month
 ```
-
-## Deployment Options
-
-### Option 1: Manual Deploy
-```bash
-docker build -f Dockerfile.web -t gcr.io/PROJECT/app .
-docker push gcr.io/PROJECT/app
-gcloud run deploy app --image gcr.io/PROJECT/app
-```
-**Pros**: Simple, full control
-**Cons**: Manual process
-
-### Option 2: Cloud Build (Automated)
-```bash
-git push origin main
-# Triggers automatic build & deploy
-```
-**Pros**: Hands-free, CI/CD
-**Cons**: Initial setup required
-
-### Option 3: Local Docker
-```bash
-docker run -p 8080:8080 -e GEMINI_API_KEY=key app
-```
-**Pros**: Local testing, debugging
-**Cons**: Not publicly accessible
 
 ## Future Enhancements
 
 ### Near-term
-- [ ] Rate limiting per IP
-- [ ] Request logging/analytics
+- [ ] Conversation history integration with ADK sessions
+- [ ] Response caching for repeated queries
 - [ ] Custom 404/500 error pages
-- [ ] Metrics dashboard
 
 ### Medium-term
-- [ ] Conversation history (session storage)
-- [ ] Response caching (Redis)
-- [ ] User feedback (thumbs up/down)
-- [ ] Query suggestions/autocomplete
+- [ ] Additional search agents (academic papers, news)
+- [ ] User feedback collection
+- [ ] Query analytics dashboard
 
 ### Long-term
 - [ ] Multi-language support
 - [ ] Voice input/output
-- [ ] Export chat to PDF
-- [ ] Admin dashboard
-- [ ] A/B testing framework
+- [ ] Admin dashboard for agent tuning
 
 ---
 
-**Architecture Status**: ✅ Production Ready
-
-**Last Updated**: 2025-11-17
+**Architecture Status**: Production Ready
+**Last Updated**: 2025-12-10
