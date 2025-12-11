@@ -44,7 +44,7 @@ class GeminiFileSearchManager:
     - Batch upload existing transcripts
     """
 
-    # Cache file name used for both local and GCS storage
+    # Cache file name for local storage
     CACHE_FILE_NAME = '.file_search_cache.json'
 
     # Gemini API maximum documents per page for list operations
@@ -64,21 +64,8 @@ class GeminiFileSearchManager:
         self.store_name = None
         self._store_cache = None
         self._document_metadata_cache = {}  # Cache for document metadata lookups
-        self._gcs_client = None  # Cached GCS storage client
 
         logging.info("Gemini File Search Manager initialized")
-
-    def _get_gcs_client(self):
-        """
-        Get or create a cached GCS storage client.
-
-        Returns:
-            Google Cloud Storage client instance
-        """
-        if self._gcs_client is None:
-            from google.cloud import storage
-            self._gcs_client = storage.Client()
-        return self._gcs_client
 
     def _retry_with_backoff(
         self,
@@ -648,55 +635,6 @@ class GeminiFileSearchManager:
         # Otherwise use project root (local development)
         return os.path.join(project_root, self.CACHE_FILE_NAME)
 
-    def _read_from_gcs(self, bucket_name: str, blob_name: str) -> Optional[str]:
-        """Read content from GCS bucket."""
-        try:
-            storage_client = self._get_gcs_client()
-            bucket = storage_client.bucket(bucket_name)
-            blob = bucket.blob(blob_name)
-            if not blob.exists():
-                logging.warning(f"GCS blob not found: '{blob_name}' in bucket '{bucket_name}'")
-                return None
-
-            content = blob.download_as_text()
-            logging.info(f"Successfully read {len(content)} bytes from GCS: {bucket_name}/{blob_name}")
-            return content
-        except ImportError as e:
-            logging.error(f"google-cloud-storage not installed: {e}")
-            return None
-        except Exception as e:
-            # Check for common GCS exceptions
-            error_type = type(e).__name__
-            if 'NotFound' in error_type:
-                logging.warning(f"GCS blob not found: '{blob_name}' in bucket '{bucket_name}'")
-            elif 'Forbidden' in error_type or 'PermissionDenied' in error_type:
-                logging.error(f"Permission denied accessing GCS bucket '{bucket_name}': {e}")
-            else:
-                logging.error(f"Failed to read from GCS bucket '{bucket_name}', blob '{blob_name}': {e}")
-            return None
-
-    def _write_to_gcs(self, bucket_name: str, blob_name: str, content: str) -> bool:
-        """Write content to GCS bucket."""
-        try:
-            storage_client = self._get_gcs_client()
-            bucket = storage_client.bucket(bucket_name)
-            blob = bucket.blob(blob_name)
-            blob.upload_from_string(content)
-            return True
-        except ImportError as e:
-            logging.error(f"google-cloud-storage not installed: {e}")
-            return False
-        except Exception as e:
-            # Check for common GCS exceptions
-            error_type = type(e).__name__
-            if 'NotFound' in error_type:
-                logging.error(f"GCS bucket not found: '{bucket_name}'")
-            elif 'Forbidden' in error_type or 'PermissionDenied' in error_type:
-                logging.error(f"Permission denied writing to GCS bucket '{bucket_name}': {e}")
-            else:
-                logging.error(f"Failed to write to GCS bucket '{bucket_name}', blob '{blob_name}': {e}")
-            return False
-
     def _load_cache(self, store_name: str) -> Optional[Dict[str, str]]:
         """
         Load existing files list from local cache.
@@ -709,28 +647,16 @@ class GeminiFileSearchManager:
         """
         cache_path = self._get_cache_path()
 
-        # Handle GCS path
-        if self.config.GCS_METADATA_BUCKET:
-            logging.info(f"Loading cache from GCS bucket: {self.config.GCS_METADATA_BUCKET}")
-            content = self._read_from_gcs(self.config.GCS_METADATA_BUCKET, self.CACHE_FILE_NAME)
-            if not content:
-                logging.info("No cache found in GCS, will fetch from remote")
-                return None
-            try:
-                cache_data = json.loads(content)
-            except json.JSONDecodeError:
-                logging.warning("Failed to parse GCS cache JSON")
-                return None
-        elif not os.path.exists(cache_path):
+        if not os.path.exists(cache_path):
             logging.info("No local cache found, will fetch from remote")
             return None
-        else:
-            try:
-                with open(cache_path, 'r') as f:
-                    cache_data = json.load(f)
-            except Exception as e:
-                logging.warning(f"Failed to load local cache: {e}")
-                return None
+
+        try:
+            with open(cache_path, 'r') as f:
+                cache_data = json.load(f)
+        except Exception as e:
+            logging.warning(f"Failed to load local cache: {e}")
+            return None
 
         try:
             from datetime import UTC, datetime
@@ -776,24 +702,15 @@ class GeminiFileSearchManager:
             Dictionary with cache data (files, last_sync, etc.) or None if not found/invalid
         """
         cache_path = self._get_cache_path()
-        cache_data = None
 
-        # Handle GCS path
-        if self.config.GCS_METADATA_BUCKET:
-            content = self._read_from_gcs(self.config.GCS_METADATA_BUCKET, self.CACHE_FILE_NAME)
-            if content:
-                try:
-                    cache_data = json.loads(content)
-                except json.JSONDecodeError:
-                    pass
-        elif os.path.exists(cache_path):
+        if os.path.exists(cache_path):
             try:
                 with open(cache_path, 'r') as f:
-                    cache_data = json.load(f)
+                    return json.load(f)
             except Exception:
                 pass
-        
-        return cache_data
+
+        return None
 
     def _save_cache(self, store_name: str, files: Dict[str, str]) -> None:
         """
@@ -823,22 +740,13 @@ class GeminiFileSearchManager:
 
             # Atomic write: write to temp file then rename
             # Create temp file in the same directory to ensure atomic rename works
-            
-            if self.config.GCS_METADATA_BUCKET:
-                logging.info(f"Saving cache to GCS bucket: {self.config.GCS_METADATA_BUCKET}")
-                self._write_to_gcs(
-                    self.config.GCS_METADATA_BUCKET,
-                    self.CACHE_FILE_NAME,
-                    json.dumps(cache_data, indent=2)
-                )
-            else:
-                cache_dir = os.path.dirname(cache_path)
-                with tempfile.NamedTemporaryFile(mode='w', dir=cache_dir, delete=False) as tmp_file:
-                    json.dump(cache_data, tmp_file, indent=2)
-                    tmp_path = tmp_file.name
+            cache_dir = os.path.dirname(cache_path)
+            with tempfile.NamedTemporaryFile(mode='w', dir=cache_dir, delete=False) as tmp_file:
+                json.dump(cache_data, tmp_file, indent=2)
+                tmp_path = tmp_file.name
 
-                # Atomic rename
-                os.replace(tmp_path, cache_path)
+            # Atomic rename
+            os.replace(tmp_path, cache_path)
 
             logging.debug(f"Saved cache with {len(files)} files")
         except Exception as e:
@@ -878,22 +786,13 @@ class GeminiFileSearchManager:
 
             # Atomic write: write to temp file then rename
             # Create temp file in the same directory to ensure atomic rename works
-            
-            if self.config.GCS_METADATA_BUCKET:
-                logging.info(f"Saving cache with metadata to GCS bucket: {self.config.GCS_METADATA_BUCKET}")
-                self._write_to_gcs(
-                    self.config.GCS_METADATA_BUCKET,
-                    self.CACHE_FILE_NAME,
-                    json.dumps(cache_data, indent=2)
-                )
-            else:
-                cache_dir = os.path.dirname(cache_path)
-                with tempfile.NamedTemporaryFile(mode='w', dir=cache_dir, delete=False) as tmp_file:
-                    json.dump(cache_data, tmp_file, indent=2)
-                    tmp_path = tmp_file.name
+            cache_dir = os.path.dirname(cache_path)
+            with tempfile.NamedTemporaryFile(mode='w', dir=cache_dir, delete=False) as tmp_file:
+                json.dump(cache_data, tmp_file, indent=2)
+                tmp_path = tmp_file.name
 
-                # Atomic rename
-                os.replace(tmp_path, cache_path)
+            # Atomic rename
+            os.replace(tmp_path, cache_path)
 
             logging.info(f"Saved cache with {len(files_with_metadata)} files and metadata")
         except Exception as e:
@@ -924,14 +823,7 @@ class GeminiFileSearchManager:
 
             # Load existing cache or create new
             cache_data = {}
-            if self.config.GCS_METADATA_BUCKET:
-                content = self._read_from_gcs(self.config.GCS_METADATA_BUCKET, self.CACHE_FILE_NAME)
-                if content:
-                    try:
-                        cache_data = json.loads(content)
-                    except json.JSONDecodeError:
-                        pass
-            elif os.path.exists(cache_path):
+            if os.path.exists(cache_path):
                 with open(cache_path, 'r') as f:
                     cache_data = json.load(f)
             else:
@@ -947,15 +839,8 @@ class GeminiFileSearchManager:
             cache_data['last_update'] = datetime.now(UTC).isoformat() + 'Z'
 
             # Save updated cache
-            if self.config.GCS_METADATA_BUCKET:
-                self._write_to_gcs(
-                    self.config.GCS_METADATA_BUCKET,
-                    self.CACHE_FILE_NAME,
-                    json.dumps(cache_data, indent=2)
-                )
-            else:
-                with open(cache_path, 'w') as f:
-                    json.dump(cache_data, f, indent=2)
+            with open(cache_path, 'w') as f:
+                json.dump(cache_data, f, indent=2)
 
             logging.debug(f"Updated cache entry: {display_name}")
         except Exception as e:

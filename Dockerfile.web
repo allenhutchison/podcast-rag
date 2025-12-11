@@ -42,9 +42,8 @@ COPY --from=builder --chown=podcast:podcast /app/.venv /app/.venv
 COPY --chown=podcast:podcast src/ ./src/
 COPY --chown=podcast:podcast prompts/ ./prompts/
 
-# Note: .file_search_cache.json is NOT included in the image
-# The web app will use a shared cache volume in homelab deployments
-# or build the cache on first query if not available
+# Note: The web app requires a database connection for episode metadata lookups.
+# Configure DATABASE_URL environment variable at runtime.
 
 # Switch to non-root user
 USER podcast

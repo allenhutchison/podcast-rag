@@ -158,11 +158,28 @@ class PodcastRepositoryInterface(ABC):
     def get_episode_by_guid(self, podcast_id: str, guid: str) -> Optional[Episode]:
         """
         Retrieve an episode by its GUID within the specified podcast.
-        
+
         Parameters:
             podcast_id (str): The podcast's primary identifier.
             guid (str): The episode GUID as provided by the podcast feed.
-        
+
+        Returns:
+            Optional[Episode]: The matching Episode if found, `None` otherwise.
+        """
+        pass
+
+    @abstractmethod
+    def get_episode_by_file_search_display_name(
+        self, display_name: str
+    ) -> Optional[Episode]:
+        """
+        Retrieve an episode by its File Search display name.
+
+        Used by the web app to look up episode metadata for citations.
+
+        Parameters:
+            display_name (str): The file_search_display_name (e.g., "episode_transcription.txt")
+
         Returns:
             Optional[Episode]: The matching Episode if found, `None` otherwise.
         """
@@ -868,7 +885,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
     def get_episode_by_guid(self, podcast_id: str, guid: str) -> Optional[Episode]:
         """
         Retrieve an episode by its GUID for the specified podcast.
-        
+
         @returns The Episode if found, `None` otherwise.
         """
         with self._get_session() as session:
@@ -876,6 +893,24 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 Episode.podcast_id == podcast_id, Episode.guid == guid
             )
             return session.scalar(stmt)
+
+    def get_episode_by_file_search_display_name(
+        self, display_name: str
+    ) -> Optional[Episode]:
+        """
+        Retrieve an episode by its File Search display name.
+
+        Used by the web app to look up episode metadata for citations.
+
+        @returns The Episode if found, `None` otherwise.
+        """
+        with self._get_session() as session:
+            stmt = (
+                select(Episode)
+                .options(joinedload(Episode.podcast))
+                .where(Episode.file_search_display_name == display_name)
+            )
+            return session.scalars(stmt).unique().first()
 
     def list_episodes(
         self,

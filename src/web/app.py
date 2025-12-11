@@ -23,6 +23,7 @@ from slowapi.util import get_remote_address
 
 from src.agents import create_orchestrator, get_podcast_citations, clear_podcast_citations
 from src.config import Config
+from src.db.factory import create_repository
 from src.web.models import ChatRequest
 
 # Configure logging
@@ -34,6 +35,9 @@ logger = logging.getLogger(__name__)
 
 # Initialize configuration
 config = Config()
+
+# Initialize repository for database access
+_repository = create_repository(config.DATABASE_URL)
 
 # Initialize rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -103,7 +107,7 @@ def _get_runner_for_session(session_id: str):
             from google.adk.runners import Runner
 
             logger.info(f"Creating ADK runner for session: {session_id}")
-            orchestrator = create_orchestrator(config, session_id)
+            orchestrator = create_orchestrator(config, _repository, session_id)
             runner = Runner(
                 agent=orchestrator,
                 session_service=_get_session_service(),

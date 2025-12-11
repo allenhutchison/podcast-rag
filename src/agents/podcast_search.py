@@ -15,6 +15,7 @@ from google.adk.agents import LlmAgent
 
 from src.config import Config
 from src.db.gemini_file_search import GeminiFileSearchManager
+from src.db.repository import PodcastRepositoryInterface
 
 logger = logging.getLogger(__name__)
 
@@ -151,13 +152,19 @@ def get_latest_podcast_citations() -> List[Dict]:
     return get_podcast_citations("_default")
 
 
-def create_podcast_search_tool(config: Config, file_search_manager: GeminiFileSearchManager, session_id: str = "_default"):
+def create_podcast_search_tool(
+    config: Config,
+    file_search_manager: GeminiFileSearchManager,
+    repository: PodcastRepositoryInterface,
+    session_id: str = "_default"
+):
     """
     Create a custom tool that wraps Gemini File Search for podcast transcripts.
 
     Args:
         config: Application configuration
         file_search_manager: Initialized GeminiFileSearchManager instance
+        repository: Repository for database metadata lookups
         session_id: Session identifier for thread-safe citation storage
 
     Returns:
@@ -200,8 +207,8 @@ def create_podcast_search_tool(config: Config, file_search_manager: GeminiFileSe
                 )
             )
 
-            # Extract citations with metadata enrichment from cache
-            citations = _extract_citations(response, file_search_manager)
+            # Extract citations with metadata enrichment from database
+            citations = _extract_citations(response, repository)
 
             # Store citations in session-specific storage for retrieval
             set_podcast_citations(session_id, citations)
@@ -231,17 +238,17 @@ def create_podcast_search_tool(config: Config, file_search_manager: GeminiFileSe
 
 def _extract_citations(
     response,
-    file_search_manager: GeminiFileSearchManager
+    repository: PodcastRepositoryInterface
 ) -> List[Dict]:
     """
     Extract citations from Gemini response with metadata enrichment.
 
     Deduplicates citations by title to avoid showing the same source multiple times.
-    Metadata is retrieved from the local file cache (built by scripts/rebuild_cache.py).
+    Metadata is retrieved from the database via the repository.
 
     Args:
         response: Gemini API response
-        file_search_manager: Manager for metadata cache lookups
+        repository: Repository for database lookups
 
     Returns:
         List of citation dictionaries with enriched metadata (deduplicated)
@@ -268,24 +275,22 @@ def _extract_citations(
         title = getattr(ctx, 'title', 'Unknown')
         text = getattr(ctx, 'text', '')
 
-
         # Skip duplicates
         if title in seen_titles:
             continue
         seen_titles.add(title)
 
-        # Try to get metadata from the file cache
+        # Try to get metadata from the database
         metadata = {}
-        doc_info = file_search_manager.get_document_metadata_from_cache(title)
-        if doc_info and doc_info.get('metadata'):
-            meta = doc_info['metadata']
+        episode = repository.get_episode_by_file_search_display_name(title)
+        if episode:
             metadata = {
-                'podcast': meta.get('podcast', ''),
-                'episode': meta.get('episode', ''),
-                'release_date': meta.get('release_date', ''),
-                'hosts': meta.get('hosts', '')
+                'podcast': episode.podcast.title if episode.podcast else '',
+                'episode': episode.title or '',
+                'release_date': episode.published_date.strftime('%Y-%m-%d') if episode.published_date else '',
+                'hosts': episode.ai_hosts or ''
             }
-            logger.debug(f"Found cache metadata for '{title}'")
+            logger.debug(f"Found database metadata for '{title}'")
 
         if not any(metadata.values()):
             logger.warning(f"No metadata found for: '{title}'")
@@ -302,18 +307,23 @@ def _extract_citations(
     return citations
 
 
-def create_podcast_search_agent(config: Config, session_id: str = "_default") -> LlmAgent:
+def create_podcast_search_agent(
+    config: Config,
+    repository: PodcastRepositoryInterface,
+    session_id: str = "_default"
+) -> LlmAgent:
     """
     Create the PodcastSearchAgent with custom File Search tool.
 
     Args:
         config: Application configuration
+        repository: Repository for database metadata lookups
         session_id: Session identifier for thread-safe citation storage
 
     Returns:
         Configured LlmAgent for podcast search
     """
-    # Initialize file search manager (will be shared via closure)
+    # Initialize file search manager for File Search store operations
     file_search_manager = GeminiFileSearchManager(config=config)
 
     return LlmAgent(
@@ -332,6 +342,6 @@ When you receive results:
 
 Be thorough but concise. Focus on factual information from the transcripts.""",
         description="Searches podcast transcripts using Gemini File Search",
-        tools=[create_podcast_search_tool(config, file_search_manager, session_id)],
+        tools=[create_podcast_search_tool(config, file_search_manager, repository, session_id)],
         output_key="podcast_results"
     )
