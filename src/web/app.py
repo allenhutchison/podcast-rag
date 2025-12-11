@@ -586,20 +586,40 @@ async def health():
 
 
 @app.get("/api/podcasts")
-async def list_podcasts():
+async def list_podcasts(include_stats: bool = False):
     """
     Get list of subscribed podcasts for filtering.
 
+    Args:
+        include_stats: If True, include image_url, author, and episode counts
+
     Returns:
-        List of podcasts with id and title
+        List of podcasts with id, title, and optionally more metadata
     """
     podcasts = _repository.list_podcasts(subscribed_only=True)
-    return {
-        "podcasts": [
-            {"id": p.id, "title": p.title}
-            for p in podcasts
-        ]
-    }
+
+    if not include_stats:
+        # Simple response for filter dropdown
+        return {
+            "podcasts": [
+                {"id": p.id, "title": p.title}
+                for p in podcasts
+            ]
+        }
+
+    # Extended response with stats for podcasts grid page
+    podcast_list = []
+    for p in podcasts:
+        stats = _repository.get_podcast_stats(p.id)
+        podcast_list.append({
+            "id": p.id,
+            "title": p.title,
+            "author": p.itunes_author or p.author,
+            "image_url": p.image_url,
+            "episode_count": stats.get("total_episodes", 0)
+        })
+
+    return {"podcasts": podcast_list}
 
 
 # Mount static files (must be last to avoid route conflicts)

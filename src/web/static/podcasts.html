@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Podcasts - Podcast RAG</title>
+
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Custom configuration for Tailwind -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#2563eb',
+                        secondary: '#64748b',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Hover effect for podcast cards */
+        .podcast-card {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .podcast-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+        }
+
+        /* Placeholder for missing images */
+        .placeholder-image {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        /* Loading skeleton animation */
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        .skeleton {
+            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-gray-200 px-6 py-4 shadow-sm">
+        <div class="max-w-6xl mx-auto flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-900">Podcasts</h1>
+                <p class="text-sm text-gray-600 mt-1">Browse your podcast library</p>
+            </div>
+            <a
+                href="/"
+                class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm"
+            >
+                Back to Chat
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-8">
+        <!-- Stats -->
+        <div id="statsBar" class="mb-6 text-sm text-gray-600">
+            Loading podcasts...
+        </div>
+
+        <!-- Podcast Grid -->
+        <div id="podcastGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+            <!-- Skeleton loaders -->
+            <div class="skeleton rounded-lg aspect-square"></div>
+            <div class="skeleton rounded-lg aspect-square"></div>
+            <div class="skeleton rounded-lg aspect-square"></div>
+            <div class="skeleton rounded-lg aspect-square"></div>
+            <div class="skeleton rounded-lg aspect-square"></div>
+            <div class="skeleton rounded-lg aspect-square"></div>
+        </div>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="hidden text-center py-16">
+            <div class="text-6xl mb-4">🎙️</div>
+            <h2 class="text-xl font-semibold text-gray-700 mb-2">No Podcasts Found</h2>
+            <p class="text-gray-500">Subscribe to some podcasts to see them here.</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="errorState" class="hidden text-center py-16">
+            <div class="text-6xl mb-4">⚠️</div>
+            <h2 class="text-xl font-semibold text-red-700 mb-2">Error Loading Podcasts</h2>
+            <p id="errorMessage" class="text-gray-500"></p>
+            <button
+                onclick="loadPodcasts()"
+                class="mt-4 px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+                Try Again
+            </button>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-gray-200 px-6 py-3">
+        <div class="max-w-6xl mx-auto text-center text-sm text-gray-600">
+            Powered by Gemini &amp; ADK Multi-Agent Search
+        </div>
+    </footer>
+
+    <script>
+        const podcastGrid = document.getElementById('podcastGrid');
+        const statsBar = document.getElementById('statsBar');
+        const emptyState = document.getElementById('emptyState');
+        const errorState = document.getElementById('errorState');
+        const errorMessage = document.getElementById('errorMessage');
+
+        /**
+         * Escape HTML to prevent XSS
+         */
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        /**
+         * Create a podcast card element
+         */
+        function createPodcastCard(podcast) {
+            const card = document.createElement('div');
+            card.className = 'podcast-card bg-white rounded-lg shadow-md overflow-hidden cursor-pointer';
+            card.title = podcast.title;
+
+            const imageHtml = podcast.image_url
+                ? `<img src="${escapeHtml(podcast.image_url)}" alt="${escapeHtml(podcast.title)}" class="w-full aspect-square object-cover" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'placeholder-image w-full aspect-square flex items-center justify-center\\'><span class=\\'text-4xl\\'>🎙️</span></div>'">`
+                : `<div class="placeholder-image w-full aspect-square flex items-center justify-center"><span class="text-4xl">🎙️</span></div>`;
+
+            card.innerHTML = `
+                ${imageHtml}
+                <div class="p-3">
+                    <h3 class="font-semibold text-sm text-gray-900 line-clamp-2">${escapeHtml(podcast.title)}</h3>
+                    ${podcast.author ? `<p class="text-xs text-gray-500 mt-1 truncate">${escapeHtml(podcast.author)}</p>` : ''}
+                    ${podcast.episode_count !== undefined ? `<p class="text-xs text-gray-400 mt-1">${podcast.episode_count} episodes</p>` : ''}
+                </div>
+            `;
+
+            // Click to filter chat by this podcast
+            card.addEventListener('click', () => {
+                window.location.href = `/?podcast=${podcast.id}`;
+            });
+
+            return card;
+        }
+
+        /**
+         * Load and display podcasts
+         */
+        async function loadPodcasts() {
+            // Reset states
+            podcastGrid.classList.remove('hidden');
+            emptyState.classList.add('hidden');
+            errorState.classList.add('hidden');
+
+            try {
+                const response = await fetch('/api/podcasts?include_stats=true');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                const podcasts = data.podcasts || [];
+
+                // Clear grid
+                podcastGrid.innerHTML = '';
+
+                if (podcasts.length === 0) {
+                    podcastGrid.classList.add('hidden');
+                    emptyState.classList.remove('hidden');
+                    statsBar.textContent = 'No podcasts in library';
+                    return;
+                }
+
+                // Update stats
+                const totalEpisodes = podcasts.reduce((sum, p) => sum + (p.episode_count || 0), 0);
+                statsBar.textContent = `${podcasts.length} podcast${podcasts.length !== 1 ? 's' : ''} · ${totalEpisodes} total episodes`;
+
+                // Render podcast cards
+                podcasts.forEach(podcast => {
+                    podcastGrid.appendChild(createPodcastCard(podcast));
+                });
+
+            } catch (error) {
+                console.error('Error loading podcasts:', error);
+                podcastGrid.classList.add('hidden');
+                errorState.classList.remove('hidden');
+                errorMessage.textContent = error.message || 'Failed to load podcasts';
+                statsBar.textContent = '';
+            }
+        }
+
+        // Load podcasts on page load
+        loadPodcasts();
+    </script>
+</body>
+</html>

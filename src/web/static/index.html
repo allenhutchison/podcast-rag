@@ -141,13 +141,22 @@
                 <h1 class="text-2xl font-bold text-gray-900">Podcast RAG Chat</h1>
                 <p class="text-sm text-gray-600 mt-1">Ask questions about podcast episodes and get answers with citations</p>
             </div>
-            <button
-                id="newChatBtn"
-                class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-300 transition-colors font-medium text-sm"
-                title="Start a new conversation"
-            >
-                New Chat
-            </button>
+            <div class="flex gap-2">
+                <a
+                    href="/podcasts.html"
+                    class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-300 transition-colors font-medium text-sm"
+                    title="Browse podcasts"
+                >
+                    Podcasts
+                </a>
+                <button
+                    id="newChatBtn"
+                    class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-300 transition-colors font-medium text-sm"
+                    title="Start a new conversation"
+                >
+                    New Chat
+                </button>
+            </div>
         </div>
     </header>
 
@@ -211,7 +220,7 @@
     </footer>
 
     <!-- JavaScript -->
-    <script src="/chat.js?v=7"></script>
+    <script src="/chat.js?v=8"></script>
 
 </body>
 </html>

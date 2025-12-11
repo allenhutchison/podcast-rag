@@ -507,6 +507,30 @@ if (newChatBtn) {
     });
 }
 
-// Load podcasts and focus input on page load
-loadPodcasts();
-queryInput.focus();
+/**
+ * Get URL parameter by name
+ */
+function getUrlParam(name) {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get(name);
+}
+
+/**
+ * Initialize page: load podcasts and set filter from URL if present
+ */
+async function initPage() {
+    await loadPodcasts();
+
+    // Check for podcast filter in URL (from podcasts grid page)
+    const podcastId = getUrlParam('podcast');
+    if (podcastId) {
+        podcastFilter.value = podcastId;
+        // Clear the URL parameter
+        window.history.replaceState({}, '', '/');
+    }
+
+    queryInput.focus();
+}
+
+// Initialize on page load
+initPage();
