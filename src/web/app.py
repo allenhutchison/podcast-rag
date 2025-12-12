@@ -305,7 +305,7 @@ async def generate_streaming_response(
     Args:
         query: User's question
         session_id: Session identifier
-        history: Optional conversation history
+        _history: Optional conversation history (unused, reserved for future ADK integration)
         podcast_id: Optional podcast ID to filter results
 
     Yields:
