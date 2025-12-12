@@ -21,8 +21,9 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from src.agents import create_orchestrator, get_podcast_citations, clear_podcast_citations
+from src.agents import create_orchestrator, get_podcast_citations, clear_podcast_citations, set_podcast_filter
 from src.config import Config
+from src.db.factory import create_repository
 from src.web.models import ChatRequest
 
 # Configure logging
@@ -34,6 +35,9 @@ logger = logging.getLogger(__name__)
 
 # Initialize configuration
 config = Config()
+
+# Initialize repository for database access
+_repository = create_repository(config.DATABASE_URL)
 
 # Initialize rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -103,7 +107,7 @@ def _get_runner_for_session(session_id: str):
             from google.adk.runners import Runner
 
             logger.info(f"Creating ADK runner for session: {session_id}")
-            orchestrator = create_orchestrator(config, session_id)
+            orchestrator = create_orchestrator(config, _repository, session_id)
             runner = Runner(
                 agent=orchestrator,
                 session_service=_get_session_service(),
@@ -220,13 +224,18 @@ def _extract_search_entry_point(grounding_metadata) -> str:
         return ""
 
 
-def _combine_citations(podcast_results: dict, web_results: dict) -> List[dict]:
+def _combine_citations(
+    podcast_results: dict,
+    web_results: dict,
+    podcast_filter_name: Optional[str] = None
+) -> List[dict]:
     """
     Combine citations from podcast and web search results.
 
     Args:
         podcast_results: Results from PodcastSearchAgent containing 'citations' list
         web_results: Results from WebSearchAgent containing 'grounding_chunks' list
+        podcast_filter_name: Optional podcast name to filter citations
 
     Returns:
         List[dict]: Unified citations list where each citation dict contains:
@@ -239,17 +248,25 @@ def _combine_citations(podcast_results: dict, web_results: dict) -> List[dict]:
                 - For web: url
     """
     combined = []
+    podcast_index = 1
 
     # Add podcast citations with P prefix
     if podcast_results and 'citations' in podcast_results:
         for citation in podcast_results['citations']:
+            # Filter by podcast name if specified
+            if podcast_filter_name:
+                citation_podcast = citation.get('metadata', {}).get('podcast', '')
+                if citation_podcast and podcast_filter_name.lower() not in citation_podcast.lower():
+                    continue
+
             combined.append({
-                'ref_id': f"P{citation.get('index', len(combined) + 1)}",
+                'ref_id': f"P{podcast_index}",
                 'source_type': 'podcast',
                 'title': citation.get('title', ''),
                 'text': citation.get('text', ''),
                 'metadata': citation.get('metadata', {})
             })
+            podcast_index += 1
 
     # Add web citations with W prefix
     if web_results and isinstance(web_results, dict):
@@ -272,7 +289,8 @@ def _combine_citations(podcast_results: dict, web_results: dict) -> List[dict]:
 async def generate_streaming_response(
     query: str,
     session_id: str,
-    history: Optional[List[dict]] = None  # TODO: Integrate with ADK session context
+    _history: Optional[List[dict]] = None,  # TODO: Integrate with ADK session context
+    podcast_id: Optional[int] = None,
 ) -> AsyncGenerator[str, None]:
     """
     Generate streaming response from ADK multi-agent pipeline.
@@ -287,12 +305,21 @@ async def generate_streaming_response(
     Args:
         query: User's question
         session_id: Session identifier
-        history: Optional conversation history
+        _history: Optional conversation history (unused, reserved for future ADK integration)
+        podcast_id: Optional podcast ID to filter results
 
     Yields:
         SSE formatted events
     """
     from google.genai import types
+
+    # Get podcast name for filtering if specified
+    podcast_filter_name: Optional[str] = None
+    if podcast_id is not None:
+        podcast = _repository.get_podcast(podcast_id)
+        if podcast:
+            podcast_filter_name = podcast.title
+            logger.info(f"Filtering search to podcast: {podcast_filter_name}")
 
     try:
         # Get session-specific runner (ensures thread-safe citation storage)
@@ -318,10 +345,17 @@ async def generate_streaming_response(
         # Clear any previous podcast citations for this session
         clear_podcast_citations(session_id)
 
-        # Build message content
+        # Set podcast filter for the search tool
+        set_podcast_filter(session_id, podcast_filter_name)
+
+        # Build message content with optional podcast filter
+        query_text = query
+        if podcast_filter_name:
+            query_text = f"[Focus only on the podcast '{podcast_filter_name}'] {query}"
+
         content = types.Content(
             role='user',
-            parts=[types.Part(text=query)]
+            parts=[types.Part(text=query_text)]
         )
 
         # Track search completion for status updates
@@ -472,7 +506,7 @@ async def generate_streaming_response(
             web_results['grounding_chunks'] = grounding_chunks
             logger.debug(f"Adding {len(grounding_chunks)} grounding chunks to web results")
 
-        citations = _combine_citations(podcast_results, web_results)
+        citations = _combine_citations(podcast_results, web_results, podcast_filter_name)
 
         # Log citation details for debugging
         podcast_count = len([c for c in citations if c.get('source_type') == 'podcast'])
@@ -535,7 +569,12 @@ async def chat(request: Request, chat_request: ChatRequest):
         history_dicts = [{"role": msg.role, "content": msg.content} for msg in chat_request.history]
 
     return StreamingResponse(
-        generate_streaming_response(chat_request.query, session_id, history_dicts),
+        generate_streaming_response(
+            chat_request.query,
+            session_id,
+            history_dicts,
+            chat_request.podcast_id
+        ),
         media_type="text/event-stream"
     )
 
@@ -544,6 +583,43 @@ async def chat(request: Request, chat_request: ChatRequest):
 async def health():
     """Health check endpoint for Cloud Run."""
     return {"status": "healthy", "service": "podcast-rag"}
+
+
+@app.get("/api/podcasts")
+async def list_podcasts(include_stats: bool = False):
+    """
+    Get list of subscribed podcasts for filtering.
+
+    Args:
+        include_stats: If True, include image_url, author, and episode counts
+
+    Returns:
+        List of podcasts with id, title, and optionally more metadata
+    """
+    podcasts = _repository.list_podcasts(subscribed_only=True)
+
+    if not include_stats:
+        # Simple response for filter dropdown
+        return {
+            "podcasts": [
+                {"id": p.id, "title": p.title}
+                for p in podcasts
+            ]
+        }
+
+    # Extended response with stats for podcasts grid page
+    podcast_list = []
+    for p in podcasts:
+        stats = _repository.get_podcast_stats(p.id)
+        podcast_list.append({
+            "id": p.id,
+            "title": p.title,
+            "author": p.itunes_author or p.author,
+            "image_url": p.image_url,
+            "episode_count": stats.get("total_episodes", 0)
+        })
+
+    return {"podcasts": podcast_list}
 
 
 # Mount static files (must be last to avoid route conflicts)

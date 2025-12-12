@@ -38,7 +38,6 @@ class Config:
 
         # Gemini File Search configuration
         self.GEMINI_FILE_SEARCH_STORE_NAME = os.getenv("GEMINI_FILE_SEARCH_STORE_NAME", "podcast-transcripts")
-        self.GCS_METADATA_BUCKET = os.getenv("GCS_METADATA_BUCKET")
 
         # File Search compatible models
         self.FILE_SEARCH_COMPATIBLE_MODELS = [

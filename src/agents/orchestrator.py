@@ -14,11 +14,16 @@ from src.agents.podcast_search import create_podcast_search_agent
 from src.agents.synthesizer import create_synthesizer_agent
 from src.agents.web_search import create_web_search_agent
 from src.config import Config
+from src.db.repository import PodcastRepositoryInterface
 
 logger = logging.getLogger(__name__)
 
 
-def create_orchestrator(config: Config, session_id: str = "_default") -> SequentialAgent:
+def create_orchestrator(
+    config: Config,
+    repository: PodcastRepositoryInterface,
+    session_id: str = "_default"
+) -> SequentialAgent:
     """
     Create the main orchestrator for podcast RAG with parallel search.
 
@@ -31,6 +36,7 @@ def create_orchestrator(config: Config, session_id: str = "_default") -> Sequent
 
     Args:
         config: Application configuration
+        repository: Repository for database metadata lookups
         session_id: Session identifier for thread-safe citation storage
 
     Returns:
@@ -39,7 +45,7 @@ def create_orchestrator(config: Config, session_id: str = "_default") -> Sequent
     logger.info(f"Creating podcast RAG orchestrator with parallel search (session: {session_id})")
 
     # Create individual search agents
-    podcast_agent = create_podcast_search_agent(config, session_id)
+    podcast_agent = create_podcast_search_agent(config, repository, session_id)
     web_agent = create_web_search_agent(config.GEMINI_MODEL)
 
     logger.debug(f"Created PodcastSearchAgent with model: {config.GEMINI_MODEL}")

@@ -176,6 +176,33 @@ class TestEpisodeOperations:
         assert retrieved is not None
         assert retrieved.guid == "episode-1"
 
+    def test_get_episode_by_file_search_display_name(self, repository, sample_podcast):
+        """Test getting an episode by File Search display name."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        # Update the episode with a file_search_display_name
+        repository.update_episode(episode.id, file_search_display_name="episode_1_transcription.txt")
+
+        # Test retrieval
+        retrieved = repository.get_episode_by_file_search_display_name("episode_1_transcription.txt")
+
+        assert retrieved is not None
+        assert retrieved.guid == "episode-1"
+        assert retrieved.file_search_display_name == "episode_1_transcription.txt"
+        assert retrieved.podcast is not None  # Eager loaded
+        assert retrieved.podcast.title == "Test Podcast"
+
+    def test_get_episode_by_file_search_display_name_not_found(self, repository):
+        """Test getting a non-existent episode by File Search display name."""
+        retrieved = repository.get_episode_by_file_search_display_name("nonexistent.txt")
+        assert retrieved is None
+
     def test_list_episodes(self, repository, sample_podcast):
         """Test listing episodes."""
         for i in range(3):
