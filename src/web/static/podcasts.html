@@ -133,8 +133,9 @@
          * Create a podcast card element
          */
         function createPodcastCard(podcast) {
-            const card = document.createElement('div');
-            card.className = 'podcast-card bg-white rounded-lg shadow-md overflow-hidden cursor-pointer';
+            const card = document.createElement('a');
+            card.href = `/?podcast=${encodeURIComponent(podcast.id)}`;
+            card.className = 'podcast-card bg-white rounded-lg shadow-md overflow-hidden cursor-pointer block';
             card.title = podcast.title;
 
             const imageHtml = podcast.image_url
@@ -149,11 +150,6 @@
                     ${podcast.episode_count !== undefined ? `<p class="text-xs text-gray-400 mt-1">${podcast.episode_count} episodes</p>` : ''}
                 </div>
             `;
-
-            // Click to filter chat by this podcast
-            card.addEventListener('click', () => {
-                window.location.href = `/?podcast=${podcast.id}`;
-            });
 
             return card;
         }

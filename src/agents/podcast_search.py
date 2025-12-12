@@ -76,8 +76,8 @@ _session_citations: Dict[str, Dict] = {}
 _citations_lock = threading.Lock()
 
 # Thread-safe session-based storage for podcast filter
-# Key: session_id, Value: podcast name string or None
-_session_podcast_filter: Dict[str, Optional[str]] = {}
+# Key: session_id, Value: {'filter': Optional[str], 'timestamp': float}
+_session_podcast_filter: Dict[str, Dict] = {}
 _filter_lock = threading.Lock()
 
 # Citation storage TTL (5 minutes) - entries older than this will be cleaned up
@@ -145,7 +145,8 @@ def get_podcast_filter(session_id: str) -> Optional[str]:
         Optional[str]: Podcast name to filter by, or None if no filter
     """
     with _filter_lock:
-        return _session_podcast_filter.get(session_id)
+        session_data = _session_podcast_filter.get(session_id, {})
+        return session_data.get('filter')
 
 
 def set_podcast_filter(session_id: str, podcast_name: Optional[str]):
@@ -158,9 +159,27 @@ def set_podcast_filter(session_id: str, podcast_name: Optional[str]):
     """
     with _filter_lock:
         if podcast_name:
-            _session_podcast_filter[session_id] = podcast_name
+            _session_podcast_filter[session_id] = {
+                'filter': podcast_name,
+                'timestamp': time.time()
+            }
         elif session_id in _session_podcast_filter:
             del _session_podcast_filter[session_id]
+        # Clean up old entries while we have the lock
+        _cleanup_old_filters()
+
+
+def _cleanup_old_filters():
+    """Remove filter entries older than TTL. Must be called with lock held."""
+    current_time = time.time()
+    expired_sessions = [
+        sid for sid, data in _session_podcast_filter.items()
+        if current_time - data.get('timestamp', 0) > _CITATION_TTL_SECONDS
+    ]
+    for sid in expired_sessions:
+        del _session_podcast_filter[sid]
+    if expired_sessions:
+        logger.debug(f"Cleaned up {len(expired_sessions)} expired filter sessions")
 
 
 def _cleanup_old_citations():

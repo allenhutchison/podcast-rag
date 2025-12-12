@@ -289,8 +289,8 @@ def _combine_citations(
 async def generate_streaming_response(
     query: str,
     session_id: str,
-    history: Optional[List[dict]] = None,  # TODO: Integrate with ADK session context
-    podcast_id: Optional[int] = None
+    _history: Optional[List[dict]] = None,  # TODO: Integrate with ADK session context
+    podcast_id: Optional[int] = None,
 ) -> AsyncGenerator[str, None]:
     """
     Generate streaming response from ADK multi-agent pipeline.
@@ -314,8 +314,8 @@ async def generate_streaming_response(
     from google.genai import types
 
     # Get podcast name for filtering if specified
-    podcast_filter_name = None
-    if podcast_id:
+    podcast_filter_name: Optional[str] = None
+    if podcast_id is not None:
         podcast = _repository.get_podcast(podcast_id)
         if podcast:
             podcast_filter_name = podcast.title
