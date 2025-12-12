@@ -139,7 +139,7 @@
             card.title = podcast.title;
 
             const imageHtml = podcast.image_url
-                ? `<img src="${escapeHtml(podcast.image_url)}" alt="${escapeHtml(podcast.title)}" class="w-full aspect-square object-cover" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'placeholder-image w-full aspect-square flex items-center justify-center\\'><span class=\\'text-4xl\\'>🎙️</span></div>'">`
+                ? `<img src="${escapeHtml(podcast.image_url)}" alt="${escapeHtml(podcast.title)}" class="w-full aspect-square object-cover" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.innerHTML='<div class=\\'placeholder-image w-full aspect-square flex items-center justify-center\\'><span class=\\'text-4xl\\'>🎙️</span></div>'">`
                 : `<div class="placeholder-image w-full aspect-square flex items-center justify-center"><span class="text-4xl">🎙️</span></div>`;
 
             card.innerHTML = `
