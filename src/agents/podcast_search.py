@@ -70,13 +70,57 @@ def sanitize_query(query: str) -> str:
 
     return sanitized.strip()
 
+
+# Maximum length for metadata filter values (defense against DoS)
+_MAX_FILTER_VALUE_LENGTH = 500
+
+
+def escape_filter_value(value: Optional[str]) -> Optional[str]:
+    """
+    Escape and validate a value for use in AIP-160 metadata filters.
+
+    This function provides defense-in-depth against filter injection by:
+    1. Limiting value length to prevent DoS
+    2. Escaping special characters (backslashes, quotes)
+    3. Rejecting values with control characters or null bytes
+
+    Args:
+        value: Raw filter value (e.g., podcast or episode name)
+
+    Returns:
+        Optional[str]: Escaped value safe for use in quoted filter strings,
+            or None if the value is invalid/rejected.
+    """
+    if not value:
+        return None
+
+    # Reject values with control characters or null bytes
+    if any(ord(char) < 32 and char not in '\t' for char in value):
+        logger.warning(f"Rejected filter value with control characters: {value[:50]}...")
+        return None
+
+    # Limit length to prevent DoS
+    if len(value) > _MAX_FILTER_VALUE_LENGTH:
+        logger.warning(
+            f"Filter value truncated from {len(value)} to {_MAX_FILTER_VALUE_LENGTH} chars"
+        )
+        value = value[:_MAX_FILTER_VALUE_LENGTH]
+
+    # Escape backslashes first (before escaping quotes which add backslashes)
+    escaped = value.replace('\\', '\\\\')
+    # Escape double quotes
+    escaped = escaped.replace('"', '\\"')
+
+    return escaped
+
+
 # Thread-safe session-based storage for podcast citations
 # Key: session_id, Value: {'citations': List[Dict], 'timestamp': float}
 _session_citations: Dict[str, Dict] = {}
 _citations_lock = threading.Lock()
 
-# Thread-safe session-based storage for podcast filter
-# Key: session_id, Value: {'filter': Optional[str], 'timestamp': float}
+# Thread-safe session-based storage for podcast/episode filter
+# Key: session_id, Value: {'podcast': Optional[str], 'episode': Optional[str], 'timestamp': float}
 _session_podcast_filter: Dict[str, Dict] = {}
 _filter_lock = threading.Lock()
 
@@ -146,21 +190,42 @@ def get_podcast_filter(session_id: str) -> Optional[str]:
     """
     with _filter_lock:
         session_data = _session_podcast_filter.get(session_id, {})
-        return session_data.get('filter')
+        return session_data.get('podcast')
 
 
-def set_podcast_filter(session_id: str, podcast_name: Optional[str]):
+def get_episode_filter(session_id: str) -> Optional[str]:
     """
-    Set the podcast filter for a specific session.
+    Get the episode filter for a specific session.
+
+    Args:
+        session_id: The session identifier
+
+    Returns:
+        Optional[str]: Episode name to filter by, or None if no filter
+    """
+    with _filter_lock:
+        session_data = _session_podcast_filter.get(session_id, {})
+        return session_data.get('episode')
+
+
+def set_podcast_filter(
+    session_id: str,
+    podcast_name: Optional[str],
+    episode_name: Optional[str] = None
+):
+    """
+    Set the podcast and episode filter for a specific session.
 
     Args:
         session_id: The session identifier
         podcast_name: Podcast name to filter by, or None to clear
+        episode_name: Episode name to filter by (optional)
     """
     with _filter_lock:
-        if podcast_name:
+        if podcast_name or episode_name:
             _session_podcast_filter[session_id] = {
-                'filter': podcast_name,
+                'podcast': podcast_name,
+                'episode': episode_name,
                 'timestamp': time.time()
             }
         elif session_id in _session_podcast_filter:
@@ -247,19 +312,33 @@ def create_podcast_search_tool(
             client = genai.Client(api_key=config.GEMINI_API_KEY)
             store_name = file_search_manager.create_or_get_store()
 
-            # Check for podcast filter
+            # Check for podcast and episode filters
             podcast_filter = get_podcast_filter(session_id)
+            episode_filter = get_episode_filter(session_id)
             file_search_config = types.FileSearch(
                 file_search_store_names=[store_name]
             )
 
-            # Add metadata filter if podcast filter is set
-            if podcast_filter:
-                file_search_config = types.FileSearch(
-                    file_search_store_names=[store_name],
-                    metadata_filter=f"podcast={podcast_filter}"
-                )
-                logger.info(f"Applying podcast metadata filter: {podcast_filter}")
+            # Build metadata filter from podcast and/or episode
+            # Values are escaped and quoted to handle special characters safely
+            if podcast_filter or episode_filter:
+                filter_parts = []
+                if podcast_filter:
+                    escaped_podcast = escape_filter_value(podcast_filter)
+                    if escaped_podcast:
+                        filter_parts.append(f'podcast="{escaped_podcast}"')
+                if episode_filter:
+                    escaped_episode = escape_filter_value(episode_filter)
+                    if escaped_episode:
+                        filter_parts.append(f'episode="{escaped_episode}"')
+
+                if filter_parts:
+                    metadata_filter = " AND ".join(filter_parts)
+                    file_search_config = types.FileSearch(
+                        file_search_store_names=[store_name],
+                        metadata_filter=metadata_filter
+                    )
+                    logger.info(f"Applying metadata filter: {metadata_filter}")
 
             response = client.models.generate_content(
                 model=config.GEMINI_MODEL,

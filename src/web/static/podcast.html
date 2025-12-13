@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Podcast - Podcast RAG</title>
+
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Custom configuration for Tailwind -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#2563eb',
+                        secondary: '#64748b',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Hover effect for episode cards */
+        .episode-card {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .episode-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Loading skeleton animation */
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        .skeleton {
+            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+        }
+
+        /* Placeholder for missing images */
+        .placeholder-image {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-gray-200 px-6 py-4 shadow-sm">
+        <div class="max-w-4xl mx-auto flex justify-between items-center">
+            <div>
+                <a href="/podcasts.html" class="text-primary hover:underline text-sm">&larr; Back to Podcasts</a>
+                <h1 id="pageTitle" class="text-2xl font-bold text-gray-900 mt-1">Loading...</h1>
+            </div>
+            <a
+                href="/"
+                class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm"
+            >
+                Chat
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 max-w-4xl w-full mx-auto px-4 py-8">
+        <!-- Podcast Info Section -->
+        <div id="podcastInfo" class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <div class="flex gap-6">
+                <!-- Cover Art -->
+                <div id="coverArt" class="skeleton w-32 h-32 rounded-lg flex-shrink-0"></div>
+                <!-- Details -->
+                <div class="flex-1 min-w-0">
+                    <h2 id="podcastTitle" class="text-xl font-bold text-gray-900 skeleton h-7 w-48 rounded"></h2>
+                    <p id="podcastAuthor" class="text-gray-600 mt-1 skeleton h-5 w-32 rounded"></p>
+                    <p id="podcastDescription" class="text-gray-500 text-sm mt-3 line-clamp-3 skeleton h-16 rounded"></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Episode Count -->
+        <div id="episodeStats" class="mb-4 text-sm text-gray-600">
+            Loading episodes...
+        </div>
+
+        <!-- Episode List -->
+        <div id="episodeList" class="space-y-4">
+            <!-- Skeleton loaders -->
+            <div class="skeleton rounded-lg h-24"></div>
+            <div class="skeleton rounded-lg h-24"></div>
+            <div class="skeleton rounded-lg h-24"></div>
+        </div>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="hidden text-center py-16">
+            <div class="text-6xl mb-4">📭</div>
+            <h2 class="text-xl font-semibold text-gray-700 mb-2">No Episodes Found</h2>
+            <p class="text-gray-500">This podcast doesn't have any episodes yet.</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="errorState" class="hidden text-center py-16">
+            <div class="text-6xl mb-4">⚠️</div>
+            <h2 class="text-xl font-semibold text-red-700 mb-2">Error Loading Podcast</h2>
+            <p id="errorMessage" class="text-gray-500"></p>
+            <button
+                onclick="loadPodcast()"
+                class="mt-4 px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+                Try Again
+            </button>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-gray-200 px-6 py-3">
+        <div class="max-w-4xl mx-auto text-center text-sm text-gray-600">
+            Powered by Gemini &amp; ADK Multi-Agent Search
+        </div>
+    </footer>
+
+    <script>
+        const pageTitle = document.getElementById('pageTitle');
+        const podcastInfo = document.getElementById('podcastInfo');
+        const coverArt = document.getElementById('coverArt');
+        const podcastTitle = document.getElementById('podcastTitle');
+        const podcastAuthor = document.getElementById('podcastAuthor');
+        const podcastDescription = document.getElementById('podcastDescription');
+        const episodeStats = document.getElementById('episodeStats');
+        const episodeList = document.getElementById('episodeList');
+        const emptyState = document.getElementById('emptyState');
+        const errorState = document.getElementById('errorState');
+        const errorMessage = document.getElementById('errorMessage');
+
+        /**
+         * Escape HTML to prevent XSS
+         */
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        /**
+         * Get URL parameter
+         */
+        function getUrlParam(name) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(name);
+        }
+
+        /**
+         * Format duration from seconds to human readable
+         */
+        function formatDuration(seconds) {
+            if (!seconds) return '';
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            if (hours > 0) {
+                return `${hours}h ${minutes}m`;
+            }
+            return `${minutes}m`;
+        }
+
+        /**
+         * Format date to human readable
+         */
+        function formatDate(isoDate) {
+            if (!isoDate) return '';
+            const date = new Date(isoDate);
+            return date.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+            });
+        }
+
+        /**
+         * Create an episode card element
+         */
+        function createEpisodeCard(episode) {
+            const card = document.createElement('a');
+            card.href = `/episode.html?id=${encodeURIComponent(episode.id)}`;
+            card.className = 'episode-card bg-white rounded-lg shadow-md p-4 block';
+
+            const episodeNum = episode.season_number && episode.episode_number
+                ? `S${episode.season_number}E${episode.episode_number}`
+                : episode.episode_number
+                    ? `Ep ${episode.episode_number}`
+                    : '';
+
+            const metadata = [
+                formatDate(episode.published_date),
+                formatDuration(episode.duration_seconds),
+                episodeNum
+            ].filter(Boolean).join(' · ');
+
+            card.innerHTML = `
+                <div class="flex justify-between items-start gap-4">
+                    <div class="flex-1 min-w-0">
+                        <h3 class="font-semibold text-gray-900 line-clamp-2">${escapeHtml(episode.title)}</h3>
+                        <p class="text-sm text-gray-500 mt-1">${escapeHtml(metadata)}</p>
+                        ${episode.ai_summary ? `<p class="text-sm text-gray-600 mt-2 line-clamp-2">${escapeHtml(episode.ai_summary)}</p>` : ''}
+                    </div>
+                    <div class="text-gray-400 flex-shrink-0">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                        </svg>
+                    </div>
+                </div>
+            `;
+
+            return card;
+        }
+
+        /**
+         * Load and display podcast with episodes
+         */
+        async function loadPodcast() {
+            const podcastId = getUrlParam('id');
+            if (!podcastId) {
+                showError('No podcast ID provided');
+                return;
+            }
+
+            // Reset states
+            podcastInfo.classList.remove('hidden');
+            episodeList.classList.remove('hidden');
+            emptyState.classList.add('hidden');
+            errorState.classList.add('hidden');
+
+            try {
+                const response = await fetch(`/api/podcasts/${encodeURIComponent(podcastId)}`);
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        throw new Error('Podcast not found');
+                    }
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                const podcast = data.podcast;
+                const episodes = data.episodes || [];
+
+                // Update page title
+                document.title = `${podcast.title} - Podcast RAG`;
+                pageTitle.textContent = podcast.title;
+
+                // Update podcast info
+                podcastTitle.textContent = podcast.title;
+                podcastTitle.className = 'text-xl font-bold text-gray-900';
+
+                podcastAuthor.textContent = podcast.author || '';
+                podcastAuthor.className = 'text-gray-600 mt-1';
+
+                podcastDescription.textContent = podcast.description || '';
+                podcastDescription.className = 'text-gray-500 text-sm mt-3 line-clamp-3';
+
+                // Update cover art
+                if (podcast.image_url) {
+                    coverArt.innerHTML = `<img src="${escapeHtml(podcast.image_url)}" alt="${escapeHtml(podcast.title)}" class="w-32 h-32 rounded-lg object-cover" referrerpolicy="no-referrer" onerror="this.parentElement.innerHTML='<div class=\\'placeholder-image w-32 h-32 rounded-lg flex items-center justify-center\\'><span class=\\'text-4xl\\'>🎙️</span></div>'">`;
+                } else {
+                    coverArt.innerHTML = `<div class="placeholder-image w-32 h-32 rounded-lg flex items-center justify-center"><span class="text-4xl">🎙️</span></div>`;
+                }
+                coverArt.className = 'w-32 h-32 rounded-lg flex-shrink-0';
+
+                // Update episode stats
+                episodeStats.textContent = `${episodes.length} episode${episodes.length !== 1 ? 's' : ''}`;
+
+                // Clear and render episodes
+                episodeList.innerHTML = '';
+
+                if (episodes.length === 0) {
+                    episodeList.classList.add('hidden');
+                    emptyState.classList.remove('hidden');
+                    return;
+                }
+
+                episodes.forEach(episode => {
+                    episodeList.appendChild(createEpisodeCard(episode));
+                });
+
+            } catch (error) {
+                console.error('Error loading podcast:', error);
+                showError(error.message || 'Failed to load podcast');
+            }
+        }
+
+        /**
+         * Show error state
+         */
+        function showError(message) {
+            podcastInfo.classList.add('hidden');
+            episodeList.classList.add('hidden');
+            emptyState.classList.add('hidden');
+            errorState.classList.remove('hidden');
+            errorMessage.textContent = message;
+            episodeStats.textContent = '';
+            pageTitle.textContent = 'Error';
+        }
+
+        // Load podcast on page load
+        loadPodcast();
+    </script>
+</body>
+</html>

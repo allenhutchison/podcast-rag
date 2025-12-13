@@ -11,13 +11,39 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import create_engine, func, or_, select
+from sqlalchemy import String, cast, create_engine, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, sessionmaker
 
 from .models import Base, Episode, Podcast
 
 logger = logging.getLogger(__name__)
+
+
+def _escape_like_pattern(value: str) -> str:
+    """
+    Escape special characters for use in SQL LIKE patterns.
+
+    Escapes backslashes, percent signs, underscores, and double quotes
+    to prevent unintended pattern matching or injection in LIKE clauses.
+
+    The escape order matters: backslashes must be escaped first since
+    they are used as the escape character.
+
+    Args:
+        value: The raw string to escape
+
+    Returns:
+        str: Escaped string safe for use in LIKE patterns
+    """
+    # Escape backslash first (it's the escape character)
+    escaped = value.replace('\\', '\\\\')
+    # Escape LIKE wildcards
+    escaped = escaped.replace('%', '\\%')
+    escaped = escaped.replace('_', '\\_')
+    # Escape double quotes (used in JSON string matching)
+    escaped = escaped.replace('"', '\\"')
+    return escaped
 
 
 class PodcastRepositoryInterface(ABC):
@@ -268,15 +294,47 @@ class PodcastRepositoryInterface(ABC):
         pass
 
     @abstractmethod
+    def search_episodes_by_keyword(
+        self, keyword: str, limit: int = 50
+    ) -> List[Episode]:
+        """
+        Search for episodes containing the specified keyword in ai_keywords.
+
+        Parameters:
+            keyword (str): The keyword to search for (case-insensitive).
+            limit (int): Maximum number of episodes to return (default 50).
+
+        Returns:
+            List[Episode]: Episodes with matching keywords, ordered by published_date descending.
+        """
+        pass
+
+    @abstractmethod
+    def search_episodes_by_person(
+        self, name: str, limit: int = 50
+    ) -> List[Episode]:
+        """
+        Search for episodes featuring the specified person as host or guest.
+
+        Parameters:
+            name (str): The person's name to search for (case-insensitive).
+            limit (int): Maximum number of episodes to return (default 50).
+
+        Returns:
+            List[Episode]: Episodes with matching hosts or guests, ordered by published_date descending.
+        """
+        pass
+
+    @abstractmethod
     def get_episodes_pending_download(self, limit: int = 10) -> List[Episode]:
         """
         Retrieve episodes that are pending download.
-        
+
         Returns episodes whose download_status is "pending", ordered by published_date descending and limited to the most recent `limit` entries.
-        
+
         Parameters:
             limit (int): Maximum number of episodes to return (default 10).
-        
+
         Returns:
             List[Episode]: A list of Episode objects pending download.
         """
@@ -1058,6 +1116,71 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             if existing:
                 return existing, False
             raise  # Re-raise if we still can't find it (unexpected state)
+
+    def search_episodes_by_keyword(
+        self, keyword: str, limit: int = 50
+    ) -> List[Episode]:
+        """
+        Search for episodes containing the specified keyword in ai_keywords.
+
+        Uses case-insensitive JSON string matching for cross-database compatibility
+        (SQLite and PostgreSQL) via lower() + like() instead of ilike().
+        Special LIKE characters are escaped to prevent injection.
+        """
+        # Lowercase and escape special characters for case-insensitive LIKE
+        escaped_keyword = _escape_like_pattern(keyword.lower())
+        pattern = f'%"{escaped_keyword}"%'
+
+        with self._get_session() as session:
+            # Use func.lower() + like() for portable case-insensitive search
+            # (ilike is PostgreSQL-specific and not supported by SQLite)
+            stmt = (
+                select(Episode)
+                .options(joinedload(Episode.podcast))
+                .where(
+                    func.lower(cast(Episode.ai_keywords, String)).like(
+                        pattern, escape='\\'
+                    )
+                )
+                .order_by(Episode.published_date.desc())
+                .limit(limit)
+            )
+            return list(session.scalars(stmt).unique().all())
+
+    def search_episodes_by_person(
+        self, name: str, limit: int = 50
+    ) -> List[Episode]:
+        """
+        Search for episodes featuring the specified person as host or guest.
+
+        Uses case-insensitive JSON string matching for cross-database compatibility
+        (SQLite and PostgreSQL) via lower() + like() instead of ilike().
+        Special LIKE characters are escaped to prevent injection.
+        """
+        # Lowercase and escape special characters for case-insensitive LIKE
+        escaped_name = _escape_like_pattern(name.lower())
+        pattern = f'%"{escaped_name}"%'
+
+        with self._get_session() as session:
+            # Use func.lower() + like() for portable case-insensitive search
+            # (ilike is PostgreSQL-specific and not supported by SQLite)
+            stmt = (
+                select(Episode)
+                .options(joinedload(Episode.podcast))
+                .where(
+                    or_(
+                        func.lower(cast(Episode.ai_hosts, String)).like(
+                            pattern, escape='\\'
+                        ),
+                        func.lower(cast(Episode.ai_guests, String)).like(
+                            pattern, escape='\\'
+                        ),
+                    )
+                )
+                .order_by(Episode.published_date.desc())
+                .limit(limit)
+            )
+            return list(session.scalars(stmt).unique().all())
 
     def get_episodes_pending_download(self, limit: int = 10) -> List[Episode]:
         """

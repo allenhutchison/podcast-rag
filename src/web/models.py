@@ -22,6 +22,7 @@ class ChatRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=1000, description="User's question")
     history: Optional[List[Message]] = Field(default=None, description="Conversation history")
     podcast_id: Optional[int] = Field(default=None, description="Filter to specific podcast")
+    episode_id: Optional[str] = Field(default=None, description="Filter to specific episode")
 
 
 class CitationMetadata(BaseModel):
