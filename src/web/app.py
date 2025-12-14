@@ -26,6 +26,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from src.agents import create_orchestrator, get_podcast_citations, clear_podcast_citations, set_podcast_filter
 from src.config import Config
 from src.db.factory import create_repository
+from src.web.admin_routes import router as admin_router
 from src.web.auth import get_current_user
 from src.web.auth_routes import router as auth_router
 from src.web.models import ChatRequest
@@ -129,6 +130,9 @@ app.state.repository = _repository
 
 # Include auth routes
 app.include_router(auth_router)
+
+# Include admin routes
+app.include_router(admin_router)
 
 # Session service (shared across all sessions)
 _session_service = None

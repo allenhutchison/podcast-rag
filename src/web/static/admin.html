@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Podcast RAG</title>
+
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Custom configuration for Tailwind -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#2563eb',
+                        secondary: '#64748b',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Tab styling */
+        .tab-btn {
+            transition: all 0.2s ease;
+        }
+        .tab-btn.active {
+            border-bottom-color: #2563eb;
+            color: #2563eb;
+        }
+
+        /* Stat card hover effect */
+        .stat-card {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Pipeline stage styling */
+        .pipeline-stage {
+            position: relative;
+        }
+        .pipeline-stage:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            right: -1rem;
+            width: 2rem;
+            height: 2px;
+            background: #e5e7eb;
+        }
+
+        /* Toggle switch styling */
+        .toggle-switch {
+            display: inline-block;
+            position: relative;
+            width: 44px;
+            height: 24px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #cbd5e1;
+            transition: 0.3s;
+            border-radius: 24px;
+        }
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+        input:checked + .toggle-slider {
+            background-color: #2563eb;
+        }
+        input:checked + .toggle-slider:before {
+            transform: translateX(20px);
+        }
+        input:disabled + .toggle-slider {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Loading skeleton animation */
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        .skeleton {
+            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-gray-200 px-6 py-4 shadow-sm">
+        <div class="max-w-6xl mx-auto flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
+                <p class="text-sm text-gray-600 mt-1">System overview and user management</p>
+            </div>
+            <div class="flex items-center gap-4">
+                <a
+                    href="/"
+                    class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm"
+                >
+                    Back to Chat
+                </a>
+                <div id="userInfo" class="border-l pl-4 border-gray-200"></div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Tab Navigation -->
+    <nav class="bg-white border-b border-gray-200">
+        <div class="max-w-6xl mx-auto px-4">
+            <div class="flex space-x-8">
+                <button
+                    onclick="switchTab('workflow')"
+                    id="tab-workflow"
+                    class="tab-btn active py-4 px-1 border-b-2 border-primary text-sm font-medium text-primary"
+                >
+                    Workflow Status
+                </button>
+                <button
+                    onclick="switchTab('podcasts')"
+                    id="tab-podcasts"
+                    class="tab-btn py-4 px-1 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                >
+                    Podcast Stats
+                </button>
+                <button
+                    onclick="switchTab('users')"
+                    id="tab-users"
+                    class="tab-btn py-4 px-1 border-b-2 border-transparent text-sm font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                >
+                    User Management
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-8">
+
+        <!-- Workflow Status Tab -->
+        <div id="panel-workflow" class="tab-panel">
+            <h2 class="text-lg font-semibold text-gray-900 mb-6">Processing Pipeline Status</h2>
+
+            <!-- Pipeline Visualization -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+                <h3 class="text-sm font-medium text-gray-700 mb-4">Pipeline Stages</h3>
+                <div class="flex items-center justify-between gap-4 overflow-x-auto pb-2">
+                    <div class="pipeline-stage flex-1 min-w-[140px] bg-blue-50 rounded-lg p-4 text-center">
+                        <div class="text-2xl font-bold text-blue-600" id="stat-pending-download">-</div>
+                        <div class="text-xs text-gray-600 mt-1">Pending Download</div>
+                    </div>
+                    <div class="pipeline-stage flex-1 min-w-[140px] bg-yellow-50 rounded-lg p-4 text-center">
+                        <div class="text-2xl font-bold text-yellow-600" id="stat-downloading">-</div>
+                        <div class="text-xs text-gray-600 mt-1">Downloading</div>
+                    </div>
+                    <div class="pipeline-stage flex-1 min-w-[140px] bg-orange-50 rounded-lg p-4 text-center">
+                        <div class="text-2xl font-bold text-orange-600" id="stat-pending-transcription">-</div>
+                        <div class="text-xs text-gray-600 mt-1">Pending Transcription</div>
+                    </div>
+                    <div class="pipeline-stage flex-1 min-w-[140px] bg-purple-50 rounded-lg p-4 text-center">
+                        <div class="text-2xl font-bold text-purple-600" id="stat-transcribing">-</div>
+                        <div class="text-xs text-gray-600 mt-1">Transcribing</div>
+                    </div>
+                    <div class="pipeline-stage flex-1 min-w-[140px] bg-indigo-50 rounded-lg p-4 text-center">
+                        <div class="text-2xl font-bold text-indigo-600" id="stat-pending-indexing">-</div>
+                        <div class="text-xs text-gray-600 mt-1">Pending Indexing</div>
+                    </div>
+                    <div class="flex-1 min-w-[140px] bg-green-50 rounded-lg p-4 text-center">
+                        <div class="text-2xl font-bold text-green-600" id="stat-fully-processed">-</div>
+                        <div class="text-xs text-gray-600 mt-1">Fully Processed</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detailed Stats Grid -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="stat-card bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                    <div class="text-sm text-gray-500">Downloaded</div>
+                    <div class="text-2xl font-bold text-gray-900" id="stat-downloaded">-</div>
+                </div>
+                <div class="stat-card bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                    <div class="text-sm text-gray-500">Transcribed</div>
+                    <div class="text-2xl font-bold text-gray-900" id="stat-transcribed">-</div>
+                </div>
+                <div class="stat-card bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                    <div class="text-sm text-gray-500">Indexed</div>
+                    <div class="text-2xl font-bold text-gray-900" id="stat-indexed">-</div>
+                </div>
+                <div class="stat-card bg-white rounded-lg shadow-sm border border-red-200 p-4">
+                    <div class="text-sm text-gray-500">Failed</div>
+                    <div class="text-2xl font-bold text-red-600" id="stat-failed">-</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Podcast Stats Tab -->
+        <div id="panel-podcasts" class="tab-panel hidden">
+            <h2 class="text-lg font-semibold text-gray-900 mb-6">Podcast Statistics</h2>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div class="stat-card bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <div class="text-sm text-gray-500 mb-1">Total Podcasts</div>
+                    <div class="text-3xl font-bold text-gray-900" id="stat-total-podcasts">-</div>
+                </div>
+                <div class="stat-card bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <div class="text-sm text-gray-500 mb-1">Subscribed</div>
+                    <div class="text-3xl font-bold text-primary" id="stat-subscribed-podcasts">-</div>
+                </div>
+                <div class="stat-card bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <div class="text-sm text-gray-500 mb-1">Total Episodes</div>
+                    <div class="text-3xl font-bold text-gray-900" id="stat-total-episodes">-</div>
+                </div>
+                <div class="stat-card bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <div class="text-sm text-gray-500 mb-1">Processing Rate</div>
+                    <div class="text-3xl font-bold text-green-600" id="stat-processing-rate">-</div>
+                </div>
+            </div>
+
+            <!-- Progress Bar -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <h3 class="text-sm font-medium text-gray-700 mb-4">Overall Processing Progress</h3>
+                <div class="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
+                    <div id="progress-bar" class="bg-green-500 h-4 rounded-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+                <p class="text-sm text-gray-600 mt-2">
+                    <span id="progress-text">0 of 0 episodes fully processed</span>
+                </p>
+            </div>
+        </div>
+
+        <!-- User Management Tab -->
+        <div id="panel-users" class="tab-panel hidden">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-lg font-semibold text-gray-900">User Management</h2>
+                <div class="text-sm text-gray-600">
+                    <span id="user-count">-</span> users (<span id="admin-count">-</span> admins)
+                </div>
+            </div>
+
+            <!-- Error Banner for Admin Toggle -->
+            <div id="toggleErrorMessage" class="hidden bg-red-50 border border-red-200 rounded-lg p-4 mb-4 text-sm text-red-700"></div>
+
+            <!-- Users Table -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                User
+                            </th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Email
+                            </th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Last Login
+                            </th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Status
+                            </th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Admin
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-table-body" class="bg-white divide-y divide-gray-200">
+                        <tr>
+                            <td colspan="5" class="px-6 py-4 text-center text-gray-500">Loading users...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Error State -->
+        <div id="errorState" class="hidden text-center py-16">
+            <div class="text-6xl mb-4">&#9888;&#65039;</div>
+            <h2 class="text-xl font-semibold text-red-700 mb-2">Error Loading Data</h2>
+            <p id="errorMessage" class="text-gray-500"></p>
+            <button
+                onclick="loadAdminData()"
+                class="mt-4 px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+                Try Again
+            </button>
+        </div>
+
+        <!-- Access Denied State -->
+        <div id="accessDenied" class="hidden text-center py-16">
+            <div class="text-6xl mb-4">&#128274;</div>
+            <h2 class="text-xl font-semibold text-red-700 mb-2">Access Denied</h2>
+            <p class="text-gray-500">You do not have admin privileges to access this page.</p>
+            <a
+                href="/"
+                class="mt-4 inline-block px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+                Go to Home
+            </a>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-gray-200 px-6 py-3">
+        <div class="max-w-6xl mx-auto text-center text-sm text-gray-600">
+            Powered by Gemini &amp; ADK Multi-Agent Search
+        </div>
+    </footer>
+
+    <script src="/auth.js?v=1"></script>
+    <script>
+        let currentTab = 'workflow';
+        let currentUser = null;
+
+        /**
+         * Escape HTML to prevent XSS
+         */
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        /**
+         * Format a date string for display
+         */
+        function formatDate(isoString) {
+            if (!isoString) return 'Never';
+            const date = new Date(isoString);
+            return date.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        /**
+         * Switch between tabs
+         */
+        function switchTab(tab) {
+            currentTab = tab;
+
+            // Update tab buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active', 'border-primary', 'text-primary');
+                btn.classList.add('border-transparent', 'text-gray-500');
+            });
+            const activeBtn = document.getElementById(`tab-${tab}`);
+            activeBtn.classList.add('active', 'border-primary', 'text-primary');
+            activeBtn.classList.remove('border-transparent', 'text-gray-500');
+
+            // Update panels
+            document.querySelectorAll('.tab-panel').forEach(panel => {
+                panel.classList.add('hidden');
+            });
+            document.getElementById(`panel-${tab}`).classList.remove('hidden');
+        }
+
+        /**
+         * Load admin dashboard data
+         */
+        async function loadAdminData() {
+            document.getElementById('errorState').classList.add('hidden');
+            document.getElementById('accessDenied').classList.add('hidden');
+
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+            try {
+                const response = await fetch('/api/admin/stats', {
+                    credentials: 'include',
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+
+                if (response.status === 403) {
+                    // Hide all panels and show access denied
+                    document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+                    document.querySelector('nav').classList.add('hidden');
+                    document.getElementById('accessDenied').classList.remove('hidden');
+                    return;
+                }
+
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        window.location.href = '/login.html';
+                        return;
+                    }
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                updateStats(data);
+                loadUsers();
+
+            } catch (error) {
+                clearTimeout(timeoutId);
+                console.error('Error loading admin data:', error);
+                document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+                document.getElementById('errorState').classList.remove('hidden');
+                const errorMsg = error.name === 'AbortError' ? 'Request timed out' : (error.message || 'Failed to load admin data');
+                document.getElementById('errorMessage').textContent = errorMsg;
+            }
+        }
+
+        /**
+         * Update stats display with data from API
+         *
+         * Expected response structure from /api/admin/stats:
+         * {
+         *   workflow: {
+         *     total_podcasts: number, subscribed_podcasts: number, total_episodes: number,
+         *     pending_download: number, downloading: number, downloaded: number, download_failed: number,
+         *     pending_transcription: number, transcribing: number, transcribed: number, transcript_failed: number,
+         *     pending_indexing: number, indexed: number, fully_processed: number
+         *   },
+         *   users: { total: number, admins: number }
+         * }
+         */
+        function updateStats(data) {
+            // Validate response structure
+            if (!data || typeof data !== 'object') {
+                console.error('Invalid stats response: expected object, got', typeof data);
+                return;
+            }
+
+            // Validate and extract workflow with safe defaults
+            const workflow = (data.workflow && typeof data.workflow === 'object') ? data.workflow : {};
+            if (!data.workflow || typeof data.workflow !== 'object') {
+                console.warn('Invalid or missing workflow data in stats response');
+            }
+
+            // Validate and extract users with safe defaults
+            const users = (data.users && typeof data.users === 'object') ? data.users : {};
+            if (!data.users || typeof data.users !== 'object') {
+                console.warn('Invalid or missing users data in stats response');
+            }
+
+            // Helper to safely get numeric value
+            const getNum = (val) => (typeof val === 'number' ? val : 0);
+
+            // Pipeline stats
+            document.getElementById('stat-pending-download').textContent = getNum(workflow.pending_download);
+            document.getElementById('stat-downloading').textContent = getNum(workflow.downloading);
+            document.getElementById('stat-pending-transcription').textContent = getNum(workflow.pending_transcription);
+            document.getElementById('stat-transcribing').textContent = getNum(workflow.transcribing);
+            document.getElementById('stat-pending-indexing').textContent = getNum(workflow.pending_indexing);
+            document.getElementById('stat-fully-processed').textContent = getNum(workflow.fully_processed);
+
+            // Detailed stats
+            document.getElementById('stat-downloaded').textContent = getNum(workflow.downloaded);
+            document.getElementById('stat-transcribed').textContent = getNum(workflow.transcribed);
+            document.getElementById('stat-indexed').textContent = getNum(workflow.indexed);
+
+            // Calculate failed count
+            const failed = getNum(workflow.download_failed) + getNum(workflow.transcript_failed);
+            document.getElementById('stat-failed').textContent = failed;
+
+            // Podcast stats
+            document.getElementById('stat-total-podcasts').textContent = getNum(workflow.total_podcasts);
+            document.getElementById('stat-subscribed-podcasts').textContent = getNum(workflow.subscribed_podcasts);
+            document.getElementById('stat-total-episodes').textContent = getNum(workflow.total_episodes);
+
+            // Processing rate
+            const total = getNum(workflow.total_episodes);
+            const processed = getNum(workflow.fully_processed);
+            const rate = total > 0 ? Math.round((processed / total) * 100) : 0;
+            document.getElementById('stat-processing-rate').textContent = `${rate}%`;
+
+            // Progress bar
+            document.getElementById('progress-bar').style.width = `${rate}%`;
+            document.getElementById('progress-text').textContent = `${processed} of ${total} episodes fully processed`;
+
+            // User stats
+            document.getElementById('user-count').textContent = getNum(users.total);
+            document.getElementById('admin-count').textContent = getNum(users.admins);
+        }
+
+        /**
+         * Load users list
+         */
+        async function loadUsers() {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+            try {
+                const response = await fetch('/api/admin/users', {
+                    credentials: 'include',
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                renderUsersTable(data.users || []);
+
+            } catch (error) {
+                clearTimeout(timeoutId);
+                console.error('Error loading users:', error);
+                const errorMsg = error.name === 'AbortError' ? 'Request timed out' : error.message;
+                document.getElementById('users-table-body').innerHTML = `
+                    <tr>
+                        <td colspan="5" class="px-6 py-4 text-center text-red-500">
+                            Error loading users: ${escapeHtml(errorMsg)}
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+
+        /**
+         * Render users table
+         */
+        function renderUsersTable(users) {
+            const tbody = document.getElementById('users-table-body');
+
+            if (users.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="px-6 py-4 text-center text-gray-500">No users found</td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = users.map(user => {
+                const isCurrentUser = currentUser && user.id === currentUser.id;
+                const disabledAttr = isCurrentUser ? 'disabled' : '';
+                const disabledClass = isCurrentUser ? 'opacity-50 cursor-not-allowed' : '';
+
+                return `
+                    <tr class="${isCurrentUser ? 'bg-blue-50' : ''}">
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="flex items-center">
+                                ${user.picture_url
+                                    ? `<img class="h-8 w-8 rounded-full mr-3" src="${escapeHtml(user.picture_url)}" alt="" referrerpolicy="no-referrer">`
+                                    : `<div class="h-8 w-8 rounded-full bg-gray-300 mr-3 flex items-center justify-center text-gray-600 text-sm font-medium">${escapeHtml((user.name || user.email || '?').charAt(0).toUpperCase())}</div>`
+                                }
+                                <div class="text-sm font-medium text-gray-900">
+                                    ${escapeHtml(user.name || 'Unknown')}
+                                    ${isCurrentUser ? '<span class="text-xs text-blue-600 ml-1">(you)</span>' : ''}
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            ${escapeHtml(user.email)}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            ${formatDate(user.last_login)}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                                ${user.is_active ? 'Active' : 'Inactive'}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <label class="toggle-switch ${disabledClass}" title="${isCurrentUser ? 'Cannot modify your own admin status' : 'Toggle admin status'}">
+                                <input
+                                    type="checkbox"
+                                    class="admin-toggle"
+                                    data-user-id="${escapeHtml(user.id)}"
+                                    ${user.is_admin ? 'checked' : ''}
+                                    ${disabledAttr}
+                                >
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        /**
+         * Toggle user admin status
+         */
+        async function toggleAdmin(userId, isAdmin, checkbox) {
+            // Disable checkbox during request
+            checkbox.disabled = true;
+
+            try {
+                const response = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/admin`, {
+                    method: 'PATCH',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ is_admin: isAdmin })
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.detail || `HTTP error! status: ${response.status}`);
+                }
+
+                // Reload stats and users to reflect changes
+                loadAdminData();
+
+            } catch (error) {
+                console.error('Error toggling admin status:', error);
+                // Revert checkbox state
+                checkbox.checked = !isAdmin;
+                checkbox.disabled = false;
+                // Show inline error message
+                const errorDiv = document.getElementById('toggleErrorMessage');
+                errorDiv.textContent = `Failed to update admin status: ${error.message}`;
+                errorDiv.classList.remove('hidden');
+                setTimeout(() => errorDiv.classList.add('hidden'), 5000);
+            }
+        }
+
+        // Check auth and load data on page load
+        document.addEventListener('DOMContentLoaded', async () => {
+            const user = await requireAuth();
+            if (!user) return;
+
+            currentUser = user;
+            updateUserUIWithAdmin(user);
+
+            // Check if user is admin
+            if (!user.is_admin) {
+                document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+                document.querySelector('nav').classList.add('hidden');
+                document.getElementById('accessDenied').classList.remove('hidden');
+                return;
+            }
+
+            loadAdminData();
+
+            // Event delegation for admin toggle checkboxes
+            document.getElementById('users-table-body').addEventListener('change', (e) => {
+                if (e.target.classList.contains('admin-toggle')) {
+                    const userId = e.target.dataset.userId;
+                    const isAdmin = e.target.checked;
+                    toggleAdmin(userId, isAdmin, e.target);
+                }
+            });
+        });
+    </script>
+</body>
+</html>

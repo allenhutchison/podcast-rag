@@ -223,14 +223,14 @@
     </footer>
 
     <!-- JavaScript -->
-    <script src="/auth.js"></script>
+    <script src="/auth.js?v=1"></script>
     <script src="/chat.js?v=8"></script>
     <script>
         // Check authentication on page load
         document.addEventListener('DOMContentLoaded', async () => {
             const user = await requireAuth();
             if (!user) return;
-            updateUserUI(user);
+            updateUserUIWithAdmin(user);
         });
     </script>
 

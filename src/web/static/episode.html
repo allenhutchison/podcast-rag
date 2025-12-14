@@ -219,7 +219,7 @@
         </div>
     </footer>
 
-    <script src="/auth.js"></script>
+    <script src="/auth.js?v=1"></script>
 
     <!-- Chat Drawer Backdrop -->
     <div id="drawerBackdrop" class="drawer-backdrop" onclick="closeChatDrawer()"></div>
@@ -747,7 +747,7 @@
         document.addEventListener('DOMContentLoaded', async () => {
             const user = await requireAuth();
             if (!user) return;
-            updateUserUI(user);
+            updateUserUIWithAdmin(user);
             loadEpisode();
         });
     </script>
