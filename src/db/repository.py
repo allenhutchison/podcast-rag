@@ -8,7 +8,7 @@ import logging
 import os
 import shutil
 from abc import ABC, abstractmethod
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import String, cast, create_engine, func, or_, select
@@ -889,6 +889,73 @@ class PodcastRepositoryInterface(ABC):
 
         Returns:
             List[Podcast]: List of subscribed podcasts.
+        """
+        pass
+
+    # --- Email Digest Operations ---
+
+    @abstractmethod
+    def get_users_for_email_digest(self, limit: int = 100) -> List[User]:
+        """Atomically claim and return users eligible for email digest.
+
+        This method uses SELECT FOR UPDATE SKIP LOCKED to prevent race conditions
+        where multiple processes could claim the same users. The claimed users
+        have their last_email_digest_sent updated atomically within the same
+        transaction.
+
+        Returns users where:
+        - email_digest_enabled is True
+        - is_active is True
+        - last_email_digest_sent is None or more than 20 hours ago
+
+        Args:
+            limit: Maximum number of users to claim (default 100).
+
+        Returns:
+            List[User]: Users claimed for email digest processing.
+        """
+        pass
+
+    @abstractmethod
+    def get_new_episodes_for_user_since(
+        self, user_id: str, since: datetime, limit: int = 50
+    ) -> List[Episode]:
+        """Get new fully-processed episodes for a user's subscriptions published since a date.
+
+        Only returns episodes with ai_summary populated (fully processed) and
+        published_date after the specified time.
+
+        Args:
+            user_id: The user's UUID.
+            since: Only include episodes published after this datetime.
+            limit: Maximum number of episodes to return.
+
+        Returns:
+            List[Episode]: New processed episodes from user's subscribed podcasts.
+        """
+        pass
+
+    @abstractmethod
+    def mark_email_digest_sent(self, user_id: str) -> None:
+        """Update user's last_email_digest_sent timestamp to now.
+
+        Args:
+            user_id: The user's UUID.
+        """
+        pass
+
+    @abstractmethod
+    def get_recent_processed_episodes(self, limit: int = 5) -> List[Episode]:
+        """Get the most recently processed episodes from the database.
+
+        Returns episodes with ai_summary populated, ordered by published_date descending.
+        Used for email preview fallback when user has no subscriptions.
+
+        Args:
+            limit: Maximum number of episodes to return.
+
+        Returns:
+            List[Episode]: Recent processed episodes from any podcast.
         """
         pass
 
@@ -2247,6 +2314,133 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             if limit:
                 stmt = stmt.limit(limit)
             return list(session.scalars(stmt).all())
+
+    # --- Email Digest Operations ---
+
+    def get_users_for_email_digest(self, limit: int = 100) -> List[User]:
+        """Atomically claim and return users eligible for email digest.
+
+        Uses SELECT FOR UPDATE SKIP LOCKED (PostgreSQL) to prevent race conditions
+        where multiple processes could claim the same users. The claimed users have
+        their last_email_digest_sent updated atomically within the same transaction.
+
+        For SQLite (development), falls back to regular SELECT with limit since
+        SQLite doesn't support row-level locking.
+
+        Note: Because users are claimed atomically, mark_email_digest_sent() becomes
+        a no-op for PostgreSQL but should still be called for SQLite compatibility.
+        """
+        twenty_hours_ago = datetime.now(UTC) - timedelta(hours=20)
+        now = datetime.now(UTC)
+
+        with self._get_session() as session:
+            # Check if we're using PostgreSQL (supports FOR UPDATE SKIP LOCKED)
+            dialect_name = session.bind.dialect.name if session.bind else "sqlite"
+            use_row_locking = dialect_name == "postgresql"
+
+            # Build base query for eligible users
+            base_conditions = [
+                User.email_digest_enabled.is_(True),
+                User.is_active.is_(True),
+                or_(
+                    User.last_email_digest_sent.is_(None),
+                    User.last_email_digest_sent < twenty_hours_ago
+                )
+            ]
+
+            if use_row_locking:
+                # PostgreSQL: Atomic claim using FOR UPDATE SKIP LOCKED
+                # Step 1: Select and lock user IDs
+                id_stmt = (
+                    select(User.id)
+                    .where(*base_conditions)
+                    .order_by(User.last_email_digest_sent.asc().nullsfirst())
+                    .limit(limit)
+                    .with_for_update(skip_locked=True)
+                )
+                user_ids = list(session.scalars(id_stmt).all())
+
+                if not user_ids:
+                    return []
+
+                # Step 2: Atomically claim by updating last_email_digest_sent
+                from sqlalchemy import update
+                update_stmt = (
+                    update(User)
+                    .where(User.id.in_(user_ids))
+                    .values(last_email_digest_sent=now)
+                )
+                session.execute(update_stmt)
+
+                # Step 3: Fetch full User objects for the claimed users
+                fetch_stmt = select(User).where(User.id.in_(user_ids))
+                users = list(session.scalars(fetch_stmt).all())
+
+                # Commit the claim transaction
+                session.commit()
+
+                # Expunge users so they can be used after session closes
+                for user in users:
+                    session.expunge(user)
+
+                return users
+            else:
+                # SQLite: No row locking, use simple SELECT with limit
+                # Assumes single-process operation for SQLite
+                stmt = (
+                    select(User)
+                    .where(*base_conditions)
+                    .order_by(User.last_email_digest_sent.asc().nullsfirst())
+                    .limit(limit)
+                )
+                return list(session.scalars(stmt).all())
+
+    def get_new_episodes_for_user_since(
+        self, user_id: str, since: datetime, limit: int = 50
+    ) -> List[Episode]:
+        """Get new fully-processed episodes for a user's subscriptions published since a date.
+
+        Only returns episodes with ai_summary populated (fully processed) and
+        published_date after the specified time.
+        """
+        with self._get_session() as session:
+            stmt = (
+                select(Episode)
+                .options(joinedload(Episode.podcast))
+                .join(UserSubscription, Episode.podcast_id == UserSubscription.podcast_id)
+                .where(
+                    UserSubscription.user_id == user_id,
+                    Episode.published_date > since,
+                    Episode.ai_summary.isnot(None),
+                    Episode.metadata_status == "completed",
+                )
+                .order_by(Episode.published_date.desc())
+                .limit(limit)
+            )
+            return list(session.scalars(stmt).unique().all())
+
+    def mark_email_digest_sent(self, user_id: str) -> None:
+        """Update user's last_email_digest_sent timestamp to now."""
+        self.update_user(user_id, last_email_digest_sent=datetime.now(UTC))
+
+    def get_recent_processed_episodes(self, limit: int = 5) -> List[Episode]:
+        """Get the most recently processed episodes from the database.
+
+        Returns episodes with ai_summary populated, ordered by published_date descending.
+        Used for email preview fallback when user has no subscriptions.
+        """
+        with self._get_session() as session:
+            stmt = (
+                select(Episode)
+                .options(joinedload(Episode.podcast))
+                .where(
+                    Episode.ai_summary.isnot(None),
+                    Episode.metadata_status == "completed",
+                )
+                .order_by(Episode.published_date.desc())
+                .limit(limit)
+            )
+            return list(session.scalars(stmt).unique().all())
 
     # --- Connection Management ---
 

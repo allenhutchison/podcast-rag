@@ -117,6 +117,13 @@ function updateUserUI(user, options = {}) {
     nameSpan.textContent = user.name || user.email || '';
     container.appendChild(nameSpan);
 
+    // Add Settings link (always shown for logged-in users)
+    const settingsLink = document.createElement('a');
+    settingsLink.href = '/settings.html';
+    settingsLink.className = 'text-gray-500 hover:text-gray-700 text-sm';
+    settingsLink.textContent = 'Settings';
+    container.appendChild(settingsLink);
+
     // Add admin link for admin users (if enabled)
     if (showAdminLink && isAdmin(user)) {
         const adminLink = document.createElement('a');

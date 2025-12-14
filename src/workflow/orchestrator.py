@@ -7,6 +7,7 @@ Transcription runs as the driver with async post-processing.
 import logging
 import signal
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Dict, Optional
@@ -33,6 +34,7 @@ class PipelineStats:
     episodes_transcribed: int = 0
     transcription_failures: int = 0
     transcription_permanent_failures: int = 0
+    email_digests_sent: int = 0
 
     # Post-processing stats (populated on stop)
     post_processing: Optional[PostProcessingStats] = None
@@ -88,13 +90,19 @@ class PipelineOrchestrator:
 
         self._running = False
         self._last_sync: Optional[datetime] = None
+        self._last_email_digest_check: Optional[datetime] = None
         self._stats = PipelineStats()
 
         # Workers (created lazily)
         self._sync_worker = None
         self._download_worker = None
         self._transcription_worker = None
+        self._email_digest_worker = None
         self._post_processor: Optional[PostProcessor] = None
+
+        # Background executor for SMTP/network I/O (email digests)
+        self._background_executor: Optional[ThreadPoolExecutor] = None
+        self._email_digest_future: Optional[Future] = None
 
     def _get_sync_worker(self):
         """Get or create the sync worker."""
@@ -129,6 +137,17 @@ class PipelineOrchestrator:
                 repository=self.repository,
             )
         return self._transcription_worker
+
+    def _get_email_digest_worker(self):
+        """Get or create the email digest worker."""
+        if self._email_digest_worker is None:
+            from src.workflow.workers.email_digest import EmailDigestWorker
+
+            self._email_digest_worker = EmailDigestWorker(
+                config=self.config,
+                repository=self.repository,
+            )
+        return self._email_digest_worker
 
     def run(self) -> PipelineStats:
         """Run the pipeline until interrupted.
@@ -208,6 +227,11 @@ class PipelineOrchestrator:
         )
         self._post_processor.start()
 
+        # Start background executor for SMTP/network I/O
+        self._background_executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="email-digest"
+        )
+
         # Run initial sync
         self._run_sync()
 
@@ -216,6 +240,19 @@ class PipelineOrchestrator:
     def _shutdown(self) -> None:
         """Clean up pipeline components."""
         logger.info("Shutting down pipeline...")
+
+        # Wait for any in-flight email digest job to complete
+        if self._email_digest_future and not self._email_digest_future.done():
+            logger.info("Waiting for email digest job to complete...")
+            try:
+                self._email_digest_future.result(timeout=60)
+            except Exception:
+                logger.exception("Email digest job failed during shutdown")
+
+        # Shutdown background executor
+        if self._background_executor:
+            self._background_executor.shutdown(wait=True)
+            self._background_executor = None
 
         # Stop post-processor (wait for pending jobs)
         if self._post_processor:
@@ -245,6 +282,9 @@ class PipelineOrchestrator:
         """
         # 1. Check sync timer
         self._maybe_run_sync()
+
+        # 1.5. Check email digest timer (hourly, per-user timezone delivery)
+        self._maybe_run_email_digests()
 
         # 2. Maintain download buffer
         self._maintain_download_buffer()
@@ -330,6 +370,92 @@ class PipelineOrchestrator:
 
         except Exception:
             logger.exception("Sync failed")
+
+    def _maybe_run_email_digests(self) -> None:
+        """Run email digests if we haven't checked this hour yet.
+
+        Checks every hour to find users whose delivery time is now in their
+        timezone. The worker handles per-user timezone/hour filtering.
+
+        Email digest sending runs in a background thread to avoid blocking
+        the main pipeline thread with SMTP I/O.
+        """
+        # Skip if a digest job is already in progress
+        if self._email_digest_future and not self._email_digest_future.done():
+            return
+
+        if self._should_send_email_digests():
+            self._run_email_digests()
+
+    def _should_send_email_digests(self) -> bool:
+        """Check if it's time to check for email digests.
+
+        With per-user timezone support, we check every hour at the start of
+        the hour. The worker filters users based on their individual timezone
+        and preferred delivery hour.
+
+        Returns:
+            True if we should check for digests now.
+        """
+        now_utc = datetime.now(UTC)
+
+        # Check if we've already checked this hour (in UTC)
+        if self._last_email_digest_check:
+            last_check_utc = self._last_email_digest_check
+            # Ensure it's UTC-aware for comparison
+            if last_check_utc.tzinfo is None:
+                last_check_utc = last_check_utc.replace(tzinfo=UTC)
+            else:
+                last_check_utc = last_check_utc.astimezone(UTC)
+
+            # Only run once per UTC hour
+            if (
+                last_check_utc.date() == now_utc.date()
+                and last_check_utc.hour == now_utc.hour
+            ):
+                return False
+
+        return True
+
+    def _run_email_digests(self) -> None:
+        """Submit email digest sending to the background executor.
+
+        SMTP I/O runs in a background thread to avoid blocking transcription.
+        Stats are updated when the job completes via callback.
+        """
+        # Mark that we've scheduled digests this hour (prevents re-scheduling)
+        self._last_email_digest_check = datetime.now(UTC)
+
+        if not self._background_executor:
+            logger.warning("Background executor not available, skipping email digest")
+            return
+
+        logger.info("Submitting email digest job to background executor...")
+
+        def _send_digests() -> WorkerResult:
+            """Background task to send email digests."""
+            try:
+                worker = self._get_email_digest_worker()
+                result = worker.process_batch(limit=100)
+
+                if result.processed > 0 or result.skipped > 0:
+                    worker.log_result(result)
+
+                return result
+            except Exception:
+                logger.exception("Email digest job failed")
+                return WorkerResult()
+
+        def _on_complete(future: Future) -> None:
+            """Callback when email digest job completes."""
+            try:
+                result = future.result()
+                self._stats.email_digests_sent += result.processed
+            except Exception:
+                logger.exception("Error retrieving email digest result")
+
+        self._email_digest_future = self._background_executor.submit(_send_digests)
+        self._email_digest_future.add_done_callback(_on_complete)
 
     def _maintain_download_buffer(self) -> None:
         """Ensure download buffer has enough episodes ready for transcription."""

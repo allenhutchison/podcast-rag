@@ -265,6 +265,16 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
 
+    # Email digest preferences
+    email_digest_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    last_email_digest_sent: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    timezone: Mapped[Optional[str]] = mapped_column(String(64))  # IANA timezone
+    email_digest_hour: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=8, server_default="8"
+    )  # 0-23, hour to send digest in user's timezone
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
