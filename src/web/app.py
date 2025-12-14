@@ -11,6 +11,7 @@ import logging
 import os
 import re
 import uuid
+from contextlib import asynccontextmanager
 from typing import AsyncGenerator, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -39,24 +40,47 @@ logger = logging.getLogger(__name__)
 # Initialize configuration
 config = Config()
 
-# Validate required security settings
-import os
-_is_dev_mode = os.getenv("DEV_MODE", "").lower() == "true"
-if not config.JWT_SECRET_KEY:
-    if _is_dev_mode:
-        logger.warning(
-            "JWT_SECRET_KEY not set - using insecure dev key. "
-            "DO NOT use in production!"
-        )
-        config.JWT_SECRET_KEY = "dev-secret-key-insecure-do-not-use-in-prod"
-    else:
-        raise RuntimeError(
-            "JWT_SECRET_KEY environment variable must be set. "
-            "Set DEV_MODE=true to use an insecure dev key for local testing."
-        )
-
 # Initialize repository for database access
 _repository = create_repository(config.DATABASE_URL)
+
+
+def _validate_jwt_config():
+    """
+    Validate JWT configuration at startup.
+
+    In DEV_MODE, allows running without JWT_SECRET_KEY by using an insecure key.
+    In production, requires JWT_SECRET_KEY to be set.
+    """
+    is_dev_mode = os.getenv("DEV_MODE", "").lower() == "true"
+    if not config.JWT_SECRET_KEY:
+        if is_dev_mode:
+            logger.warning(
+                "JWT_SECRET_KEY not set - using insecure dev key. "
+                "DO NOT use in production!"
+            )
+            config.JWT_SECRET_KEY = "dev-secret-key-insecure-do-not-use-in-prod"
+        else:
+            raise RuntimeError(
+                "JWT_SECRET_KEY environment variable must be set. "
+                "Set DEV_MODE=true to use an insecure dev key for local testing."
+            )
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    FastAPI lifespan context manager.
+
+    Runs startup validation and cleanup logic.
+    """
+    # Startup: validate configuration
+    _validate_jwt_config()
+    logger.info("Application started")
+
+    yield
+
+    # Shutdown: cleanup if needed
+    logger.info("Application shutdown")
 
 # Initialize rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -65,7 +89,8 @@ limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(
     title="Podcast RAG Chat",
     description="Chat interface for querying podcast transcripts with web search",
-    version="2.0.0"
+    version="2.0.0",
+    lifespan=lifespan
 )
 
 # Add rate limiter to app state
