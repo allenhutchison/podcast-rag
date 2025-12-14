@@ -167,12 +167,19 @@ async def get_current_user_info(
     """
     Get current user information.
 
-    Returns the user's profile data from the JWT token.
+    Returns the user's profile data including admin status.
+    Admin status is fetched from the database for accuracy.
     Requires authentication.
     """
+    repository: PodcastRepositoryInterface = request.app.state.repository
+
+    # Fetch user from database to get current admin status
+    user = repository.get_user(current_user["sub"])
+
     return {
         "id": current_user["sub"],
         "email": current_user["email"],
         "name": current_user.get("name"),
-        "picture": current_user.get("picture")
+        "picture": current_user.get("picture"),
+        "is_admin": user.is_admin if user else False
     }

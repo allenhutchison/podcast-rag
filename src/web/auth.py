@@ -157,3 +157,45 @@ async def get_optional_user(
 
     config = request.app.state.config
     return verify_token(podcast_rag_session, config)
+
+
+async def get_current_admin(
+    request: Request,
+    podcast_rag_session: Optional[str] = Cookie(default=None)
+) -> dict:
+    """
+    FastAPI dependency to require admin access.
+
+    Verifies the JWT from the session cookie and checks that the user
+    has admin privileges. Admin status is verified from the database,
+    not just the JWT, for security.
+
+    Args:
+        request: FastAPI request object.
+        podcast_rag_session: Session cookie containing the JWT.
+
+    Returns:
+        dict: User data from the JWT payload.
+
+    Raises:
+        HTTPException: 401 if not authenticated or token is invalid.
+        HTTPException: 403 if authenticated but not an admin.
+    """
+    config = request.app.state.config
+    repository = request.app.state.repository
+
+    if not podcast_rag_session:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    user_data = verify_token(podcast_rag_session, config)
+    if not user_data:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
+    # Check admin status from database (more secure than trusting JWT)
+    user_id = user_data.get("sub")
+    user = repository.get_user(user_id)
+
+    if not user or not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    return user_data

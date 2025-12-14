@@ -136,3 +136,103 @@ async function initAuth() {
     }
     return user;
 }
+
+/**
+ * Check if the current user is an admin.
+ *
+ * @param {Object} user - User object from auth check
+ * @returns {boolean} True if user is an admin
+ */
+function isAdmin(user) {
+    return user && user.is_admin === true;
+}
+
+/**
+ * Require admin access, redirecting to home if not admin.
+ *
+ * @returns {Promise<Object|null>} User object if admin, null if redirecting
+ */
+async function requireAdmin() {
+    const user = await requireAuth();
+    if (!user) return null;
+
+    if (!isAdmin(user)) {
+        window.location.href = '/';
+        return null;
+    }
+    return user;
+}
+
+/**
+ * Update the user info display with admin link for admin users.
+ * Uses DOM methods to prevent XSS attacks.
+ *
+ * @param {Object} user - User object from auth check
+ * @param {string} user.name - User's display name
+ * @param {string} user.email - User's email
+ * @param {string} user.picture - URL to user's profile picture
+ * @param {boolean} user.is_admin - Whether user is an admin
+ */
+function updateUserUIWithAdmin(user) {
+    const userInfoContainer = document.getElementById('userInfo');
+    if (!userInfoContainer) return;
+
+    // Clear existing content
+    userInfoContainer.innerHTML = '';
+
+    // Create container div
+    const container = document.createElement('div');
+    container.className = 'flex items-center gap-3';
+
+    // Create and configure image element
+    const validPictureUrl = validatePictureUrl(user.picture);
+    if (validPictureUrl) {
+        const img = document.createElement('img');
+        img.src = validPictureUrl;
+        img.alt = user.name || user.email || 'User';
+        img.className = 'w-8 h-8 rounded-full';
+        img.referrerPolicy = 'no-referrer';
+        img.addEventListener('error', function() {
+            this.style.display = 'none';
+        });
+        container.appendChild(img);
+    }
+
+    // Create name/email span
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'text-gray-700 text-sm hidden sm:inline';
+    nameSpan.textContent = user.name || user.email || '';
+    container.appendChild(nameSpan);
+
+    // Add admin link for admin users
+    if (isAdmin(user)) {
+        const adminLink = document.createElement('a');
+        adminLink.href = '/admin.html';
+        adminLink.className = 'text-primary hover:text-blue-700 text-sm font-medium';
+        adminLink.textContent = 'Admin';
+        container.appendChild(adminLink);
+    }
+
+    // Create logout button
+    const logoutBtn = document.createElement('button');
+    logoutBtn.className = 'text-gray-500 hover:text-gray-700 text-sm underline';
+    logoutBtn.textContent = 'Sign out';
+    logoutBtn.addEventListener('click', logout);
+    container.appendChild(logoutBtn);
+
+    userInfoContainer.appendChild(container);
+}
+
+/**
+ * Initialize authentication for a page with admin link support.
+ * Call this in DOMContentLoaded to check auth and update UI with admin link.
+ *
+ * @returns {Promise<Object|null>} User object if authenticated
+ */
+async function initAuthWithAdmin() {
+    const user = await requireAuth();
+    if (user) {
+        updateUserUIWithAdmin(user);
+    }
+    return user;
+}

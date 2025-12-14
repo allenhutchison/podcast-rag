@@ -318,7 +318,7 @@
         document.addEventListener('DOMContentLoaded', async () => {
             const user = await requireAuth();
             if (!user) return;
-            updateUserUI(user);
+            updateUserUIWithAdmin(user);
             loadPodcast();
         });
     </script>

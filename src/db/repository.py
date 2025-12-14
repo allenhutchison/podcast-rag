@@ -773,6 +773,52 @@ class PodcastRepositoryInterface(ABC):
         """
         pass
 
+    @abstractmethod
+    def list_users(
+        self,
+        is_admin: Optional[bool] = None,
+        is_active: Optional[bool] = None,
+        limit: Optional[int] = None,
+        offset: int = 0,
+    ) -> List[User]:
+        """List users with optional filtering.
+
+        Args:
+            is_admin: Filter by admin status (optional).
+            is_active: Filter by active status (optional).
+            limit: Maximum number of users to return (optional).
+            offset: Number of users to skip.
+
+        Returns:
+            List[User]: List of users matching the filters.
+        """
+        pass
+
+    @abstractmethod
+    def set_user_admin_status(self, user_id: str, is_admin: bool) -> Optional[User]:
+        """Set a user's admin status.
+
+        Args:
+            user_id: The user's UUID.
+            is_admin: Whether the user should be an admin.
+
+        Returns:
+            Optional[User]: The updated user if found, None otherwise.
+        """
+        pass
+
+    @abstractmethod
+    def get_user_count(self, is_admin: Optional[bool] = None) -> int:
+        """Get total count of users with optional filtering.
+
+        Args:
+            is_admin: Filter by admin status (optional).
+
+        Returns:
+            int: Number of users matching the filter.
+        """
+        pass
+
     # --- Subscription Operations ---
 
     @abstractmethod
@@ -2065,6 +2111,38 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             session.commit()
             session.refresh(user)
             return user
+
+    def list_users(
+        self,
+        is_admin: Optional[bool] = None,
+        is_active: Optional[bool] = None,
+        limit: Optional[int] = None,
+        offset: int = 0,
+    ) -> List[User]:
+        """List users with optional filtering."""
+        with self._get_session() as session:
+            stmt = select(User)
+            if is_admin is not None:
+                stmt = stmt.where(User.is_admin == is_admin)
+            if is_active is not None:
+                stmt = stmt.where(User.is_active == is_active)
+            stmt = stmt.order_by(User.created_at.desc())
+            stmt = stmt.offset(offset)
+            if limit:
+                stmt = stmt.limit(limit)
+            return list(session.scalars(stmt).all())
+
+    def set_user_admin_status(self, user_id: str, is_admin: bool) -> Optional[User]:
+        """Set a user's admin status."""
+        return self.update_user(user_id, is_admin=is_admin)
+
+    def get_user_count(self, is_admin: Optional[bool] = None) -> int:
+        """Get total count of users with optional filtering."""
+        with self._get_session() as session:
+            stmt = select(func.count(User.id))
+            if is_admin is not None:
+                stmt = stmt.where(User.is_admin == is_admin)
+            return session.scalar(stmt) or 0
 
     # --- Subscription Operations ---
 
