@@ -173,3 +173,6 @@ cython_debug/
 
 # File Search cache
 .file_search_cache.json
+
+# MCP (Model Context Protocol) local configuration
+.mcp.json
