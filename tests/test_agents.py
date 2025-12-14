@@ -10,6 +10,7 @@ import pytest
 
 from src.agents.podcast_search import (
     sanitize_query,
+    escape_filter_value,
     get_podcast_citations,
     set_podcast_citations,
     clear_podcast_citations,
@@ -74,6 +75,57 @@ class TestSanitizeQuery:
         for query in normal_queries:
             result = sanitize_query(query)
             assert result == query
+
+
+class TestEscapeFilterValue:
+    """Tests for AIP-160 metadata filter value escaping."""
+
+    def test_escape_empty_value(self):
+        """Test that empty/None values return None."""
+        assert escape_filter_value("") is None
+        assert escape_filter_value(None) is None
+
+    def test_escape_normal_value(self):
+        """Test that normal values pass through unchanged."""
+        assert escape_filter_value("Up First") == "Up First"
+        assert escape_filter_value("Tech Talk Daily") == "Tech Talk Daily"
+
+    def test_escape_value_with_commas(self):
+        """Test that values with commas are preserved (quoting handles this)."""
+        result = escape_filter_value("Health Care, Flooding, DOJ")
+        assert result == "Health Care, Flooding, DOJ"
+
+    def test_escape_double_quotes(self):
+        """Test that double quotes are escaped."""
+        result = escape_filter_value('Episode "Special"')
+        assert result == 'Episode \\"Special\\"'
+
+    def test_escape_backslashes(self):
+        """Test that backslashes are escaped."""
+        result = escape_filter_value("path\\to\\file")
+        assert result == "path\\\\to\\\\file"
+
+    def test_escape_quotes_and_backslashes(self):
+        """Test that both quotes and backslashes are properly escaped."""
+        result = escape_filter_value('test\\with"both')
+        # Backslash becomes \\ and quote becomes \"
+        assert result == 'test\\\\with\\"both'
+
+    def test_reject_control_characters(self):
+        """Test that values with control characters are rejected."""
+        assert escape_filter_value("test\x00null") is None
+        assert escape_filter_value("test\x01control") is None
+
+    def test_allow_tabs(self):
+        """Test that tabs are allowed."""
+        result = escape_filter_value("test\twith\ttabs")
+        assert result == "test\twith\ttabs"
+
+    def test_truncate_long_values(self):
+        """Test that very long values are truncated."""
+        long_value = "x" * 600
+        result = escape_filter_value(long_value)
+        assert len(result) == 500
 
 
 class TestSessionCitations:

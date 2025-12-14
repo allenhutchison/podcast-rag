@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search - Podcast RAG</title>
+
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Custom configuration for Tailwind -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#2563eb',
+                        secondary: '#64748b',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Hover effect for episode cards */
+        .episode-card {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .episode-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Loading skeleton animation */
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        .skeleton {
+            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+        }
+
+        /* Placeholder for missing images */
+        .placeholder-image {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-gray-200 px-6 py-4 shadow-sm">
+        <div class="max-w-4xl mx-auto flex justify-between items-center">
+            <div>
+                <a href="/podcasts.html" class="text-primary hover:underline text-sm">&larr; Back to Podcasts</a>
+                <h1 id="pageTitle" class="text-2xl font-bold text-gray-900 mt-1">Search Results</h1>
+            </div>
+            <a
+                href="/"
+                class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm"
+            >
+                Chat
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 max-w-4xl w-full mx-auto px-4 py-8">
+        <!-- Search Info -->
+        <div id="searchInfo" class="bg-white rounded-lg shadow-md p-4 mb-6">
+            <div class="flex items-center gap-3">
+                <span id="searchIcon" class="text-2xl">🔍</span>
+                <div>
+                    <p class="text-sm text-gray-500">
+                        <span id="searchTypeLabel">Searching for</span>
+                    </p>
+                    <p id="searchQuery" class="font-semibold text-gray-900 text-lg skeleton h-7 w-48 rounded"></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Count -->
+        <div id="resultsStats" class="mb-4 text-sm text-gray-600">
+            Searching...
+        </div>
+
+        <!-- Results List -->
+        <div id="resultsList" class="space-y-4">
+            <!-- Skeleton loaders -->
+            <div class="skeleton rounded-lg h-28"></div>
+            <div class="skeleton rounded-lg h-28"></div>
+            <div class="skeleton rounded-lg h-28"></div>
+        </div>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="hidden text-center py-16">
+            <div class="text-6xl mb-4">🔍</div>
+            <h2 class="text-xl font-semibold text-gray-700 mb-2">No Results Found</h2>
+            <p id="emptyMessage" class="text-gray-500">No episodes found matching your search.</p>
+            <a href="/podcasts.html" class="mt-4 inline-block px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 transition-colors">
+                Browse Podcasts
+            </a>
+        </div>
+
+        <!-- Error State -->
+        <div id="errorState" class="hidden text-center py-16">
+            <div class="text-6xl mb-4">⚠️</div>
+            <h2 class="text-xl font-semibold text-red-700 mb-2">Error Searching</h2>
+            <p id="errorMessage" class="text-gray-500"></p>
+            <button
+                onclick="performSearch()"
+                class="mt-4 px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+                Try Again
+            </button>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-gray-200 px-6 py-3">
+        <div class="max-w-4xl mx-auto text-center text-sm text-gray-600">
+            Powered by Gemini &amp; ADK Multi-Agent Search
+        </div>
+    </footer>
+
+    <script>
+        const pageTitle = document.getElementById('pageTitle');
+        const searchInfo = document.getElementById('searchInfo');
+        const searchIcon = document.getElementById('searchIcon');
+        const searchTypeLabel = document.getElementById('searchTypeLabel');
+        const searchQuery = document.getElementById('searchQuery');
+        const resultsStats = document.getElementById('resultsStats');
+        const resultsList = document.getElementById('resultsList');
+        const emptyState = document.getElementById('emptyState');
+        const emptyMessage = document.getElementById('emptyMessage');
+        const errorState = document.getElementById('errorState');
+        const errorMessage = document.getElementById('errorMessage');
+
+        /**
+         * Escape HTML to prevent XSS
+         */
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        /**
+         * Get URL parameter
+         */
+        function getUrlParam(name) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(name);
+        }
+
+        /**
+         * Format duration from seconds to human readable
+         */
+        function formatDuration(seconds) {
+            if (!seconds) return '';
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            if (hours > 0) {
+                return `${hours}h ${minutes}m`;
+            }
+            return `${minutes}m`;
+        }
+
+        /**
+         * Format date to human readable
+         */
+        function formatDate(isoDate) {
+            if (!isoDate) return '';
+            const date = new Date(isoDate);
+            return date.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+            });
+        }
+
+        /**
+         * Create a result card element
+         */
+        function createResultCard(result) {
+            const card = document.createElement('a');
+            card.href = `/episode.html?id=${encodeURIComponent(result.id)}`;
+            card.className = 'episode-card bg-white rounded-lg shadow-md p-4 block';
+
+            const podcast = result.podcast || {};
+            const metadata = [
+                formatDate(result.published_date),
+                formatDuration(result.duration_seconds)
+            ].filter(Boolean).join(' · ');
+
+            const imageHtml = podcast.image_url
+                ? `<img src="${escapeHtml(podcast.image_url)}" alt="${escapeHtml(podcast.title || '')}" class="w-12 h-12 rounded-lg object-cover flex-shrink-0" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.innerHTML='<div class=\\'placeholder-image w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0\\'><span class=\\'text-xl\\'>🎙️</span></div>'">`
+                : `<div class="placeholder-image w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0"><span class="text-xl">🎙️</span></div>`;
+
+            card.innerHTML = `
+                <div class="flex gap-4">
+                    ${imageHtml}
+                    <div class="flex-1 min-w-0">
+                        <h3 class="font-semibold text-gray-900 line-clamp-2">${escapeHtml(result.title)}</h3>
+                        <p class="text-sm text-primary mt-1">${escapeHtml(podcast.title || 'Unknown Podcast')}</p>
+                        <p class="text-sm text-gray-500 mt-1">${escapeHtml(metadata)}</p>
+                        ${result.ai_summary ? `<p class="text-sm text-gray-600 mt-2 line-clamp-2">${escapeHtml(result.ai_summary)}</p>` : ''}
+                    </div>
+                    <div class="text-gray-400 flex-shrink-0 self-center">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                        </svg>
+                    </div>
+                </div>
+            `;
+
+            return card;
+        }
+
+        /**
+         * Perform the search
+         */
+        async function performSearch() {
+            const type = getUrlParam('type');
+            const query = getUrlParam('q');
+
+            if (!type || !query) {
+                showError('Missing search parameters');
+                return;
+            }
+
+            // Update UI based on search type
+            if (type === 'keyword') {
+                searchIcon.textContent = '🏷️';
+                searchTypeLabel.textContent = 'Episodes with topic';
+                pageTitle.textContent = `Topic: ${query}`;
+            } else if (type === 'person') {
+                searchIcon.textContent = '👤';
+                searchTypeLabel.textContent = 'Episodes featuring';
+                pageTitle.textContent = `Person: ${query}`;
+            }
+
+            searchQuery.textContent = query;
+            searchQuery.className = 'font-semibold text-gray-900 text-lg';
+
+            document.title = `${query} - Search - Podcast RAG`;
+
+            // Reset states
+            resultsList.classList.remove('hidden');
+            emptyState.classList.add('hidden');
+            errorState.classList.add('hidden');
+
+            try {
+                const response = await fetch(`/api/search?type=${encodeURIComponent(type)}&q=${encodeURIComponent(query)}`);
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                const results = data.results || [];
+
+                // Clear results
+                resultsList.innerHTML = '';
+
+                if (results.length === 0) {
+                    resultsList.classList.add('hidden');
+                    emptyState.classList.remove('hidden');
+                    emptyMessage.textContent = type === 'keyword'
+                        ? `No episodes found with the topic "${query}".`
+                        : `No episodes found featuring "${query}".`;
+                    resultsStats.textContent = 'No results';
+                    return;
+                }
+
+                // Update stats
+                resultsStats.textContent = `${results.length} episode${results.length !== 1 ? 's' : ''} found`;
+
+                // Render results
+                results.forEach(result => {
+                    resultsList.appendChild(createResultCard(result));
+                });
+
+            } catch (error) {
+                console.error('Error searching:', error);
+                showError(error.message || 'Failed to search');
+            }
+        }
+
+        /**
+         * Show error state
+         */
+        function showError(message) {
+            resultsList.classList.add('hidden');
+            emptyState.classList.add('hidden');
+            errorState.classList.remove('hidden');
+            errorMessage.textContent = message;
+            resultsStats.textContent = '';
+        }
+
+        // Perform search on page load
+        performSearch();
+    </script>
+</body>
+</html>

@@ -291,6 +291,7 @@ async def generate_streaming_response(
     session_id: str,
     _history: Optional[List[dict]] = None,  # TODO: Integrate with ADK session context
     podcast_id: Optional[int] = None,
+    episode_id: Optional[str] = None,
 ) -> AsyncGenerator[str, None]:
     """
     Generate streaming response from ADK multi-agent pipeline.
@@ -307,15 +308,26 @@ async def generate_streaming_response(
         session_id: Session identifier
         _history: Optional conversation history (unused, reserved for future ADK integration)
         podcast_id: Optional podcast ID to filter results
+        episode_id: Optional episode ID to filter results to a specific episode
 
     Yields:
         SSE formatted events
     """
     from google.genai import types
 
-    # Get podcast name for filtering if specified
+    # Get podcast and episode names for filtering if specified
     podcast_filter_name: Optional[str] = None
-    if podcast_id is not None:
+    episode_filter_name: Optional[str] = None
+
+    if episode_id is not None:
+        episode = _repository.get_episode(episode_id)
+        if episode:
+            episode_filter_name = episode.title
+            # Also set podcast filter from the episode's podcast
+            if episode.podcast:
+                podcast_filter_name = episode.podcast.title
+            logger.info(f"Filtering search to episode: {episode_filter_name}")
+    elif podcast_id is not None:
         podcast = _repository.get_podcast(podcast_id)
         if podcast:
             podcast_filter_name = podcast.title
@@ -345,12 +357,14 @@ async def generate_streaming_response(
         # Clear any previous podcast citations for this session
         clear_podcast_citations(session_id)
 
-        # Set podcast filter for the search tool
-        set_podcast_filter(session_id, podcast_filter_name)
+        # Set podcast and episode filters for the search tool
+        set_podcast_filter(session_id, podcast_filter_name, episode_filter_name)
 
-        # Build message content with optional podcast filter
+        # Build message content with optional podcast/episode filter context
         query_text = query
-        if podcast_filter_name:
+        if episode_filter_name:
+            query_text = f"[Focus only on the episode '{episode_filter_name}' from '{podcast_filter_name}'] {query}"
+        elif podcast_filter_name:
             query_text = f"[Focus only on the podcast '{podcast_filter_name}'] {query}"
 
         content = types.Content(
@@ -573,7 +587,8 @@ async def chat(request: Request, chat_request: ChatRequest):
             chat_request.query,
             session_id,
             history_dicts,
-            chat_request.podcast_id
+            chat_request.podcast_id,
+            chat_request.episode_id
         ),
         media_type="text/event-stream"
     )
@@ -620,6 +635,135 @@ async def list_podcasts(include_stats: bool = False):
         })
 
     return {"podcasts": podcast_list}
+
+
+@app.get("/api/podcasts/{podcast_id}")
+async def get_podcast_detail(podcast_id: str):
+    """
+    Get podcast details with list of episodes.
+
+    Args:
+        podcast_id: The podcast ID
+
+    Returns:
+        Podcast details with episodes sorted by release date (newest first)
+    """
+    podcast = _repository.get_podcast(podcast_id)
+    if not podcast:
+        raise HTTPException(status_code=404, detail="Podcast not found")
+
+    # Get all episodes for this podcast (already sorted by published_date desc)
+    episodes = _repository.list_episodes(podcast_id=podcast_id)
+
+    # Format response
+    return {
+        "podcast": {
+            "id": podcast.id,
+            "title": podcast.title,
+            "author": podcast.itunes_author or podcast.author,
+            "description": podcast.description,
+            "image_url": podcast.image_url,
+        },
+        "episodes": [
+            {
+                "id": str(ep.id),
+                "title": ep.title,
+                "published_date": ep.published_date.isoformat() if ep.published_date else None,
+                "duration_seconds": ep.duration_seconds,
+                "episode_number": ep.episode_number,
+                "season_number": ep.season_number,
+                "ai_summary": (ep.ai_summary[:200] + "...") if ep.ai_summary and len(ep.ai_summary) > 200 else ep.ai_summary,
+            }
+            for ep in episodes
+        ]
+    }
+
+
+@app.get("/api/episodes/{episode_id}")
+async def get_episode_detail(episode_id: str):
+    """
+    Get full episode details.
+
+    Args:
+        episode_id: The episode UUID
+
+    Returns:
+        Episode details including summary, metadata, and audio URL
+    """
+    episode = _repository.get_episode(episode_id)
+    if not episode:
+        raise HTTPException(status_code=404, detail="Episode not found")
+
+    # Get podcast info (should be eager loaded)
+    podcast = episode.podcast
+
+    return {
+        "episode": {
+            "id": str(episode.id),
+            "title": episode.title,
+            "description": episode.description,
+            "published_date": episode.published_date.isoformat() if episode.published_date else None,
+            "duration_seconds": episode.duration_seconds,
+            "episode_number": episode.episode_number,
+            "season_number": episode.season_number,
+            "enclosure_url": episode.enclosure_url,
+            "link": episode.link,
+            "ai_summary": episode.ai_summary,
+            "ai_keywords": episode.ai_keywords or [],
+            "ai_hosts": episode.ai_hosts or [],
+            "ai_guests": episode.ai_guests or [],
+        },
+        "podcast": {
+            "id": podcast.id if podcast else None,
+            "title": podcast.title if podcast else None,
+            "image_url": podcast.image_url if podcast else None,
+        }
+    }
+
+
+@app.get("/api/search")
+async def search_episodes(type: str, q: str):
+    """
+    Search for episodes by keyword or person (host/guest).
+
+    Args:
+        type: Search type - 'keyword' or 'person'
+        q: Search query string
+
+    Returns:
+        Matching episodes with podcast info
+    """
+    if not q or not q.strip():
+        raise HTTPException(status_code=400, detail="Search query cannot be empty")
+
+    query = q.strip()
+
+    if type == "keyword":
+        episodes = _repository.search_episodes_by_keyword(query)
+    elif type == "person":
+        episodes = _repository.search_episodes_by_person(query)
+    else:
+        raise HTTPException(status_code=400, detail="Invalid search type. Use 'keyword' or 'person'")
+
+    return {
+        "query": query,
+        "type": type,
+        "results": [
+            {
+                "id": str(ep.id),
+                "title": ep.title,
+                "published_date": ep.published_date.isoformat() if ep.published_date else None,
+                "duration_seconds": ep.duration_seconds,
+                "ai_summary": (ep.ai_summary[:200] + "...") if ep.ai_summary and len(ep.ai_summary) > 200 else ep.ai_summary,
+                "podcast": {
+                    "id": str(ep.podcast.id) if ep.podcast else None,
+                    "title": ep.podcast.title if ep.podcast else None,
+                    "image_url": ep.podcast.image_url if ep.podcast else None,
+                }
+            }
+            for ep in episodes
+        ]
+    }
 
 
 # Mount static files (must be last to avoid route conflicts)

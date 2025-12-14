@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Episode - Podcast RAG</title>
+
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Custom configuration for Tailwind -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#2563eb',
+                        secondary: '#64748b',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Loading skeleton animation */
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        .skeleton {
+            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+        }
+
+        /* Placeholder for missing images */
+        .placeholder-image {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        /* Keyword pill styling */
+        .keyword-pill {
+            background-color: #e0e7ff;
+            color: #3730a3;
+        }
+
+        /* Chat drawer styles */
+        .drawer-backdrop {
+            position: fixed;
+            inset: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 40;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+        .drawer-backdrop.open {
+            opacity: 1;
+            visibility: visible;
+        }
+        .drawer {
+            position: fixed;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            width: 100%;
+            max-width: 420px;
+            background: white;
+            z-index: 50;
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+            display: flex;
+            flex-direction: column;
+        }
+        .drawer.open {
+            transform: translateX(0);
+        }
+        .drawer-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+        }
+        .drawer-messages::-webkit-scrollbar {
+            width: 6px;
+        }
+        .drawer-messages::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+
+        /* Typing indicator animation */
+        @keyframes pulse {
+            0%, 100% { opacity: 0.4; }
+            50% { opacity: 1; }
+        }
+        .typing-dot {
+            animation: pulse 1.4s ease-in-out infinite;
+        }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+        /* Markdown in chat */
+        .chat-markdown p { margin-bottom: 0.5em; }
+        .chat-markdown ul, .chat-markdown ol { margin-left: 1.5em; margin-bottom: 0.5em; }
+        .chat-markdown ul { list-style-type: disc; }
+        .chat-markdown ol { list-style-type: decimal; }
+        .chat-markdown li { margin-bottom: 0.25em; }
+        .chat-markdown code { background: #f1f5f9; padding: 0.125rem 0.25rem; border-radius: 0.25rem; font-size: 0.9em; }
+    </style>
+    <!-- Marked.js for Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+    <!-- DOMPurify for HTML sanitization (XSS prevention) -->
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-gray-200 px-6 py-4 shadow-sm">
+        <div class="max-w-4xl mx-auto flex justify-between items-center">
+            <div>
+                <a id="backLink" href="/podcasts.html" class="text-primary hover:underline text-sm">&larr; Back to Podcast</a>
+                <h1 id="pageTitle" class="text-2xl font-bold text-gray-900 mt-1 line-clamp-1">Loading...</h1>
+            </div>
+            <button
+                id="openChatBtn"
+                onclick="openChatDrawer()"
+                class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm"
+            >
+                Ask about this episode
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main id="mainContent" class="flex-1 max-w-4xl w-full mx-auto px-4 py-8">
+        <!-- Podcast Context -->
+        <div id="podcastContext" class="flex items-center gap-3 mb-6">
+            <div id="podcastCover" class="skeleton w-12 h-12 rounded-lg flex-shrink-0"></div>
+            <div>
+                <a id="podcastLink" href="#" class="text-sm text-primary hover:underline font-medium">Loading...</a>
+            </div>
+        </div>
+
+        <!-- Episode Header -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 id="episodeTitle" class="text-2xl font-bold text-gray-900 skeleton h-8 w-3/4 rounded"></h2>
+            <div id="episodeMeta" class="flex flex-wrap gap-3 mt-3 text-sm text-gray-600">
+                <span class="skeleton h-5 w-24 rounded"></span>
+            </div>
+        </div>
+
+        <!-- Audio Player -->
+        <div id="audioSection" class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Listen</h3>
+            <div id="audioPlayer" class="skeleton h-12 rounded"></div>
+        </div>
+
+        <!-- AI Summary -->
+        <div id="summarySection" class="bg-white rounded-lg shadow-md p-6 mb-6 hidden">
+            <h3 class="text-lg font-semibold text-gray-900 mb-3">Summary</h3>
+            <p id="summaryText" class="text-gray-700 leading-relaxed whitespace-pre-line"></p>
+        </div>
+
+        <!-- Description -->
+        <div id="descriptionSection" class="bg-white rounded-lg shadow-md p-6 mb-6 hidden">
+            <h3 class="text-lg font-semibold text-gray-900 mb-3">Description</h3>
+            <p id="descriptionText" class="text-gray-700 leading-relaxed whitespace-pre-line"></p>
+        </div>
+
+        <!-- Keywords -->
+        <div id="keywordsSection" class="bg-white rounded-lg shadow-md p-6 mb-6 hidden">
+            <h3 class="text-lg font-semibold text-gray-900 mb-3">Topics</h3>
+            <div id="keywordsList" class="flex flex-wrap gap-2"></div>
+        </div>
+
+        <!-- People -->
+        <div id="peopleSection" class="bg-white rounded-lg shadow-md p-6 mb-6 hidden">
+            <h3 class="text-lg font-semibold text-gray-900 mb-3">People</h3>
+            <div id="hostsList" class="mb-3 hidden">
+                <span class="text-sm font-medium text-gray-500">Hosts:</span>
+                <span id="hostsText" class="text-gray-700"></span>
+            </div>
+            <div id="guestsList" class="hidden">
+                <span class="text-sm font-medium text-gray-500">Guests:</span>
+                <span id="guestsText" class="text-gray-700"></span>
+            </div>
+        </div>
+
+        <!-- Episode Link -->
+        <div id="linkSection" class="bg-white rounded-lg shadow-md p-6 mb-6 hidden">
+            <h3 class="text-lg font-semibold text-gray-900 mb-3">More Info</h3>
+            <a id="episodeLink" href="#" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">
+                View on podcast website &rarr;
+            </a>
+        </div>
+
+        <!-- Error State -->
+        <div id="errorState" class="hidden text-center py-16">
+            <div class="text-6xl mb-4">⚠️</div>
+            <h2 class="text-xl font-semibold text-red-700 mb-2">Error Loading Episode</h2>
+            <p id="errorMessage" class="text-gray-500"></p>
+            <button
+                onclick="loadEpisode()"
+                class="mt-4 px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+                Try Again
+            </button>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-gray-200 px-6 py-3">
+        <div class="max-w-4xl mx-auto text-center text-sm text-gray-600">
+            Powered by Gemini &amp; ADK Multi-Agent Search
+        </div>
+    </footer>
+
+    <!-- Chat Drawer Backdrop -->
+    <div id="drawerBackdrop" class="drawer-backdrop" onclick="closeChatDrawer()"></div>
+
+    <!-- Chat Drawer -->
+    <div id="chatDrawer" class="drawer shadow-xl">
+        <!-- Drawer Header -->
+        <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
+            <div class="flex-1 min-w-0">
+                <h3 class="font-semibold text-gray-900 truncate">Ask about this episode</h3>
+                <p id="drawerEpisodeTitle" class="text-sm text-gray-500 truncate"></p>
+            </div>
+            <button
+                onclick="closeChatDrawer()"
+                class="ml-2 p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-lg transition-colors"
+                title="Close"
+            >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Messages Area -->
+        <div id="drawerMessages" class="drawer-messages space-y-4">
+            <!-- Welcome message -->
+            <div class="bg-gray-100 rounded-lg p-3 text-sm text-gray-700">
+                <p>Ask me anything about this episode. I'll search the transcript and provide answers with citations.</p>
+            </div>
+        </div>
+
+        <!-- Input Form -->
+        <form id="drawerChatForm" class="p-4 border-t border-gray-200 bg-white" onsubmit="handleDrawerSubmit(event)">
+            <div class="flex gap-2">
+                <input
+                    type="text"
+                    id="drawerInput"
+                    placeholder="Ask a question..."
+                    class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                    autocomplete="off"
+                    required
+                />
+                <button
+                    type="submit"
+                    id="drawerSubmitBtn"
+                    class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
+                    </svg>
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        const pageTitle = document.getElementById('pageTitle');
+        const backLink = document.getElementById('backLink');
+        const podcastContext = document.getElementById('podcastContext');
+        const podcastCover = document.getElementById('podcastCover');
+        const podcastLink = document.getElementById('podcastLink');
+        const episodeTitle = document.getElementById('episodeTitle');
+        const episodeMeta = document.getElementById('episodeMeta');
+        const audioSection = document.getElementById('audioSection');
+        const audioPlayer = document.getElementById('audioPlayer');
+        const summarySection = document.getElementById('summarySection');
+        const summaryText = document.getElementById('summaryText');
+        const descriptionSection = document.getElementById('descriptionSection');
+        const descriptionText = document.getElementById('descriptionText');
+        const keywordsSection = document.getElementById('keywordsSection');
+        const keywordsList = document.getElementById('keywordsList');
+        const peopleSection = document.getElementById('peopleSection');
+        const hostsList = document.getElementById('hostsList');
+        const hostsText = document.getElementById('hostsText');
+        const guestsList = document.getElementById('guestsList');
+        const guestsText = document.getElementById('guestsText');
+        const linkSection = document.getElementById('linkSection');
+        const episodeLink = document.getElementById('episodeLink');
+        const errorState = document.getElementById('errorState');
+        const errorMessage = document.getElementById('errorMessage');
+
+        /**
+         * Escape HTML to prevent XSS
+         */
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        /**
+         * Safely render markdown to sanitized HTML.
+         * Uses DOMPurify to prevent XSS attacks from AI/upstream content.
+         * Falls back to plain text if DOMPurify is unavailable.
+         */
+        function safeMarkdownToHtml(text) {
+            const rawText = text || 'No response received.';
+            const parsedHtml = marked.parse(rawText);
+
+            // Use DOMPurify if available, otherwise fall back to textContent (safe but loses formatting)
+            if (typeof DOMPurify !== 'undefined' && DOMPurify.sanitize) {
+                return DOMPurify.sanitize(parsedHtml, {
+                    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'b', 'i', 'u', 'code', 'pre', 'ul', 'ol', 'li', 'a', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
+                    ALLOWED_ATTR: ['href', 'target', 'rel'],
+                    ALLOW_DATA_ATTR: false,
+                });
+            }
+
+            // Fallback: return escaped text (loses markdown formatting but safe)
+            console.warn('DOMPurify not available, falling back to plain text rendering');
+            return escapeHtml(rawText);
+        }
+
+        /**
+         * Get URL parameter
+         */
+        function getUrlParam(name) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(name);
+        }
+
+        /**
+         * Format duration from seconds to human readable
+         */
+        function formatDuration(seconds) {
+            if (!seconds) return '';
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            if (hours > 0) {
+                return `${hours}h ${minutes}m`;
+            }
+            return `${minutes}m`;
+        }
+
+        /**
+         * Format date to human readable
+         */
+        function formatDate(isoDate) {
+            if (!isoDate) return '';
+            const date = new Date(isoDate);
+            return date.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+        }
+
+        /**
+         * Load and display episode details
+         */
+        async function loadEpisode() {
+            const episodeId = getUrlParam('id');
+            if (!episodeId) {
+                showError('No episode ID provided');
+                return;
+            }
+
+            // Reset error state
+            errorState.classList.add('hidden');
+
+            try {
+                const response = await fetch(`/api/episodes/${encodeURIComponent(episodeId)}`);
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        throw new Error('Episode not found');
+                    }
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                const episode = data.episode;
+                const podcast = data.podcast;
+
+                // Store for drawer
+                setCurrentEpisodeData(episode, podcast);
+
+                // Update page title
+                document.title = `${episode.title} - Podcast RAG`;
+                pageTitle.textContent = episode.title;
+
+                // Update back link to specific podcast
+                if (podcast && podcast.id) {
+                    backLink.href = `/podcast.html?id=${encodeURIComponent(podcast.id)}`;
+                    backLink.innerHTML = `&larr; Back to ${escapeHtml(podcast.title)}`;
+                }
+
+                // Update podcast context
+                if (podcast) {
+                    podcastLink.textContent = podcast.title;
+                    podcastLink.href = `/podcast.html?id=${encodeURIComponent(podcast.id)}`;
+
+                    if (podcast.image_url) {
+                        podcastCover.innerHTML = `<img src="${escapeHtml(podcast.image_url)}" alt="${escapeHtml(podcast.title)}" class="w-12 h-12 rounded-lg object-cover" referrerpolicy="no-referrer" onerror="this.parentElement.innerHTML='<div class=\\'placeholder-image w-12 h-12 rounded-lg flex items-center justify-center\\'><span class=\\'text-xl\\'>🎙️</span></div>'">`;
+                    } else {
+                        podcastCover.innerHTML = `<div class="placeholder-image w-12 h-12 rounded-lg flex items-center justify-center"><span class="text-xl">🎙️</span></div>`;
+                    }
+                    podcastCover.className = 'w-12 h-12 rounded-lg flex-shrink-0';
+                }
+
+                // Update episode title
+                episodeTitle.textContent = episode.title;
+                episodeTitle.className = 'text-2xl font-bold text-gray-900';
+
+                // Update episode metadata
+                const episodeNum = episode.season_number && episode.episode_number
+                    ? `Season ${episode.season_number}, Episode ${episode.episode_number}`
+                    : episode.episode_number
+                        ? `Episode ${episode.episode_number}`
+                        : '';
+
+                const metaParts = [
+                    formatDate(episode.published_date),
+                    formatDuration(episode.duration_seconds),
+                    episodeNum
+                ].filter(Boolean);
+
+                episodeMeta.innerHTML = metaParts.map(part =>
+                    `<span class="inline-flex items-center">${escapeHtml(part)}</span>`
+                ).join('<span class="text-gray-300">·</span>');
+
+                // Update audio player
+                if (episode.enclosure_url) {
+                    audioPlayer.innerHTML = `
+                        <audio controls class="w-full" preload="metadata">
+                            <source src="${escapeHtml(episode.enclosure_url)}" type="audio/mpeg">
+                            Your browser does not support the audio element.
+                        </audio>
+                        <a href="${escapeHtml(episode.enclosure_url)}" target="_blank" rel="noopener noreferrer" class="text-sm text-primary hover:underline mt-2 inline-block">
+                            Download MP3
+                        </a>
+                    `;
+                } else {
+                    audioSection.classList.add('hidden');
+                }
+
+                // Update AI summary
+                if (episode.ai_summary) {
+                    summaryText.textContent = episode.ai_summary;
+                    summarySection.classList.remove('hidden');
+                }
+
+                // Update description
+                if (episode.description) {
+                    descriptionText.textContent = episode.description;
+                    descriptionSection.classList.remove('hidden');
+                }
+
+                // Update keywords (clickable to search)
+                if (episode.ai_keywords && episode.ai_keywords.length > 0) {
+                    keywordsList.innerHTML = episode.ai_keywords.map(keyword =>
+                        `<a href="/search.html?type=keyword&q=${encodeURIComponent(keyword)}" class="keyword-pill px-3 py-1 rounded-full text-sm hover:opacity-80 transition-opacity">${escapeHtml(keyword)}</a>`
+                    ).join('');
+                    keywordsSection.classList.remove('hidden');
+                }
+
+                // Update people (clickable to search)
+                const hasHosts = episode.ai_hosts && episode.ai_hosts.length > 0;
+                const hasGuests = episode.ai_guests && episode.ai_guests.length > 0;
+
+                if (hasHosts || hasGuests) {
+                    if (hasHosts) {
+                        hostsText.innerHTML = episode.ai_hosts.map(host =>
+                            `<a href="/search.html?type=person&q=${encodeURIComponent(host)}" class="text-primary hover:underline">${escapeHtml(host)}</a>`
+                        ).join(', ');
+                        hostsList.classList.remove('hidden');
+                    }
+                    if (hasGuests) {
+                        guestsText.innerHTML = episode.ai_guests.map(guest =>
+                            `<a href="/search.html?type=person&q=${encodeURIComponent(guest)}" class="text-primary hover:underline">${escapeHtml(guest)}</a>`
+                        ).join(', ');
+                        guestsList.classList.remove('hidden');
+                    }
+                    peopleSection.classList.remove('hidden');
+                }
+
+                // Update episode link
+                if (episode.link) {
+                    episodeLink.href = episode.link;
+                    linkSection.classList.remove('hidden');
+                }
+
+            } catch (error) {
+                console.error('Error loading episode:', error);
+                showError(error.message || 'Failed to load episode');
+            }
+        }
+
+        /**
+         * Show error state
+         */
+        function showError(message) {
+            // Hide all content sections
+            podcastContext.classList.add('hidden');
+            document.querySelector('.bg-white.rounded-lg.shadow-md.p-6.mb-6').classList.add('hidden');
+            audioSection.classList.add('hidden');
+            summarySection.classList.add('hidden');
+            descriptionSection.classList.add('hidden');
+            keywordsSection.classList.add('hidden');
+            peopleSection.classList.add('hidden');
+            linkSection.classList.add('hidden');
+
+            // Show error
+            errorState.classList.remove('hidden');
+            errorMessage.textContent = message;
+            pageTitle.textContent = 'Error';
+        }
+
+        // ========================================
+        // Chat Drawer Functions
+        // ========================================
+
+        const drawerBackdrop = document.getElementById('drawerBackdrop');
+        const chatDrawer = document.getElementById('chatDrawer');
+        const drawerMessages = document.getElementById('drawerMessages');
+        const drawerInput = document.getElementById('drawerInput');
+        const drawerSubmitBtn = document.getElementById('drawerSubmitBtn');
+        const drawerEpisodeTitle = document.getElementById('drawerEpisodeTitle');
+
+        let isDrawerProcessing = false;
+        let currentEpisodeData = null;
+        let currentPodcastData = null;
+
+        /**
+         * Open the chat drawer
+         */
+        function openChatDrawer() {
+            drawerBackdrop.classList.add('open');
+            chatDrawer.classList.add('open');
+            document.body.style.overflow = 'hidden';
+            drawerInput.focus();
+
+            // Update drawer title with episode name
+            if (currentEpisodeData) {
+                drawerEpisodeTitle.textContent = currentEpisodeData.title;
+            }
+        }
+
+        /**
+         * Close the chat drawer
+         */
+        function closeChatDrawer() {
+            drawerBackdrop.classList.remove('open');
+            chatDrawer.classList.remove('open');
+            document.body.style.overflow = '';
+        }
+
+        /**
+         * Handle drawer form submission
+         */
+        async function handleDrawerSubmit(e) {
+            e.preventDefault();
+            if (isDrawerProcessing) return;
+
+            const query = drawerInput.value.trim();
+            if (!query) return;
+
+            isDrawerProcessing = true;
+            drawerSubmitBtn.disabled = true;
+            drawerInput.value = '';
+
+            // Add user message
+            addDrawerMessage(query, 'user');
+
+            // Add typing indicator
+            const typingId = addTypingIndicator();
+
+            try {
+                const episodeId = getUrlParam('id');
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        query: query,
+                        episode_id: episodeId
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                // Process SSE stream
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let responseText = '';
+                let citations = [];
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const parts = buffer.split(/\n\n+/);
+                    buffer = parts.pop() || '';
+
+                    for (const part of parts) {
+                        const lines = part.split('\n');
+                        let eventType = '';
+                        let eventData = '';
+
+                        for (const line of lines) {
+                            const trimmed = line.trim();
+                            if (trimmed.startsWith('event:')) {
+                                eventType = trimmed.substring(6).trim();
+                            } else if (trimmed.startsWith('data:')) {
+                                eventData = trimmed.substring(5).trim();
+                            }
+                        }
+
+                        if (!eventType || !eventData) continue;
+
+                        try {
+                            const data = JSON.parse(eventData);
+
+                            if (eventType === 'token') {
+                                responseText += data.token || '';
+                            } else if (eventType === 'citations') {
+                                citations = data.citations || [];
+                            } else if (eventType === 'error') {
+                                throw new Error(data.error || 'Unknown error');
+                            }
+                        } catch (parseError) {
+                            // Skip parse errors for incomplete events
+                        }
+                    }
+                }
+
+                // Remove typing indicator and add response
+                removeTypingIndicator(typingId);
+                addDrawerMessage(responseText, 'assistant', citations);
+
+            } catch (error) {
+                console.error('Chat error:', error);
+                removeTypingIndicator(typingId);
+                addDrawerMessage(`Error: ${error.message}`, 'error');
+            } finally {
+                isDrawerProcessing = false;
+                drawerSubmitBtn.disabled = false;
+            }
+        }
+
+        /**
+         * Add a message to the drawer
+         */
+        function addDrawerMessage(text, role, citations = []) {
+            const messageDiv = document.createElement('div');
+
+            if (role === 'user') {
+                messageDiv.className = 'bg-primary text-white rounded-lg p-3 text-sm ml-8';
+                messageDiv.textContent = text;
+            } else if (role === 'error') {
+                messageDiv.className = 'bg-red-100 text-red-700 rounded-lg p-3 text-sm';
+                messageDiv.textContent = text;
+            } else {
+                messageDiv.className = 'bg-gray-100 rounded-lg p-3 text-sm text-gray-700';
+
+                // Render markdown (sanitized to prevent XSS)
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'chat-markdown';
+                contentDiv.innerHTML = safeMarkdownToHtml(text);
+                messageDiv.appendChild(contentDiv);
+
+                // Add citations if present
+                if (citations.length > 0) {
+                    const citationsDiv = document.createElement('div');
+                    citationsDiv.className = 'mt-3 pt-3 border-t border-gray-200 text-xs text-gray-500';
+                    citationsDiv.innerHTML = '<p class="font-medium mb-2">Sources:</p>' +
+                        citations.filter(c => c.source_type === 'podcast').map(c =>
+                            `<p class="truncate">${escapeHtml(c.metadata?.podcast || '')} - ${escapeHtml(c.metadata?.episode || c.title || '')}</p>`
+                        ).join('');
+                    messageDiv.appendChild(citationsDiv);
+                }
+            }
+
+            drawerMessages.appendChild(messageDiv);
+            drawerMessages.scrollTop = drawerMessages.scrollHeight;
+        }
+
+        /**
+         * Add typing indicator
+         */
+        function addTypingIndicator() {
+            const id = 'typing-' + Date.now();
+            const div = document.createElement('div');
+            div.id = id;
+            div.className = 'bg-gray-100 rounded-lg p-3 text-sm text-gray-500 flex gap-1';
+            div.innerHTML = '<span class="typing-dot">●</span><span class="typing-dot">●</span><span class="typing-dot">●</span>';
+            drawerMessages.appendChild(div);
+            drawerMessages.scrollTop = drawerMessages.scrollHeight;
+            return id;
+        }
+
+        /**
+         * Remove typing indicator
+         */
+        function removeTypingIndicator(id) {
+            const el = document.getElementById(id);
+            if (el) el.remove();
+        }
+
+        /**
+         * Store episode data when loaded for drawer
+         */
+        function setCurrentEpisodeData(episode, podcast) {
+            currentEpisodeData = episode;
+            currentPodcastData = podcast;
+        }
+
+        // Close drawer with Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && chatDrawer.classList.contains('open')) {
+                closeChatDrawer();
+            }
+        });
+
+        // Load episode on page load
+        loadEpisode();
+    </script>
+</body>
+</html>

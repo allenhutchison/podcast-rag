@@ -6,7 +6,7 @@ from datetime import datetime
 
 from src.db.factory import create_repository
 from src.db.models import Podcast, Episode
-from src.db.repository import SQLAlchemyPodcastRepository
+from src.db.repository import SQLAlchemyPodcastRepository, _escape_like_pattern
 
 
 @pytest.fixture
@@ -984,6 +984,46 @@ class TestStatistics:
 
         assert stats["total_podcasts"] == 2
         assert stats["total_episodes"] == 2
+
+
+class TestEscapeLikePattern:
+    """Tests for LIKE pattern escaping to prevent injection."""
+
+    def test_escape_normal_string(self):
+        """Test that normal strings pass through unchanged."""
+        assert _escape_like_pattern("John Smith") == "John Smith"
+        assert _escape_like_pattern("AI Technology") == "AI Technology"
+
+    def test_escape_percent(self):
+        """Test that percent signs are escaped."""
+        assert _escape_like_pattern("100%") == "100\\%"
+        assert _escape_like_pattern("%wildcard%") == "\\%wildcard\\%"
+
+    def test_escape_underscore(self):
+        """Test that underscores are escaped."""
+        assert _escape_like_pattern("some_name") == "some\\_name"
+        assert _escape_like_pattern("_prefix") == "\\_prefix"
+
+    def test_escape_backslash(self):
+        """Test that backslashes are escaped."""
+        assert _escape_like_pattern("path\\to") == "path\\\\to"
+        assert _escape_like_pattern("\\start") == "\\\\start"
+
+    def test_escape_double_quote(self):
+        """Test that double quotes are escaped."""
+        assert _escape_like_pattern('say "hello"') == 'say \\"hello\\"'
+
+    def test_escape_combined(self):
+        """Test escaping multiple special characters together."""
+        # Backslash must be escaped first to avoid double-escaping
+        result = _escape_like_pattern('100% of "users_data"\\path')
+        assert result == '100\\% of \\"users\\_data\\"\\\\path'
+
+    def test_escape_empty_string(self):
+        """Test that empty string returns empty."""
+        assert _escape_like_pattern("") == ""
+
+
 # Additional test classes added for database storage migration:
 # - TestTranscriptTextStorage: Tests for storing transcript text directly in database
 # - TestMP3Metadata: Tests for MP3 ID3 tag metadata storage

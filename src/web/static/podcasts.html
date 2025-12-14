@@ -134,7 +134,7 @@
          */
         function createPodcastCard(podcast) {
             const card = document.createElement('a');
-            card.href = `/?podcast=${encodeURIComponent(podcast.id)}`;
+            card.href = `/podcast.html?id=${encodeURIComponent(podcast.id)}`;
             card.className = 'podcast-card bg-white rounded-lg shadow-md overflow-hidden cursor-pointer block';
             card.title = podcast.title;
 
