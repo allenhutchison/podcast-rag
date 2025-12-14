@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - Podcast RAG</title>
+
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Custom configuration for Tailwind -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#2563eb',
+                        secondary: '#64748b',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Toggle switch styling */
+        .toggle-switch {
+            display: inline-block;
+            position: relative;
+            width: 44px;
+            height: 24px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #cbd5e1;
+            transition: 0.3s;
+            border-radius: 24px;
+        }
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+        input:checked + .toggle-slider {
+            background-color: #2563eb;
+        }
+        input:checked + .toggle-slider:before {
+            transform: translateX(20px);
+        }
+        input:disabled + .toggle-slider {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-gray-200 px-6 py-4 shadow-sm">
+        <div class="max-w-2xl mx-auto flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-900">Settings</h1>
+                <p class="text-sm text-gray-600 mt-1">Manage your account preferences</p>
+            </div>
+            <div class="flex items-center gap-4">
+                <a
+                    href="/"
+                    class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm"
+                >
+                    Back to Chat
+                </a>
+                <div id="userInfo" class="border-l pl-4 border-gray-200"></div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 max-w-2xl w-full mx-auto px-4 py-8">
+        <!-- Success/Error Messages -->
+        <div id="successMessage" class="hidden bg-green-50 border border-green-200 rounded-lg p-4 mb-6 text-green-700 text-sm"></div>
+        <div id="errorMessage" class="hidden bg-red-50 border border-red-200 rounded-lg p-4 mb-6 text-red-700 text-sm"></div>
+
+        <!-- Email Digest Section -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Email Notifications</h2>
+
+            <!-- Enable/Disable Toggle -->
+            <div class="flex items-center justify-between py-4 border-b border-gray-100">
+                <div>
+                    <h3 class="text-sm font-medium text-gray-900">Daily Email Digest</h3>
+                    <p class="text-sm text-gray-500 mt-1">
+                        Receive a daily summary of new episodes from your subscribed podcasts.
+                    </p>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="emailDigestToggle" onchange="updateEmailDigest()" disabled>
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+
+            <!-- Delivery Time Settings (shown when digest is enabled) -->
+            <div id="deliverySettings" class="hidden mt-4 space-y-4">
+                <!-- Timezone -->
+                <div>
+                    <label for="timezoneSelect" class="block text-sm font-medium text-gray-700 mb-1">
+                        Timezone
+                    </label>
+                    <select
+                        id="timezoneSelect"
+                        onchange="updateTimezone()"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                    >
+                        <option value="">Loading...</option>
+                    </select>
+                    <p id="detectedTimezone" class="text-xs text-gray-400 mt-1"></p>
+                </div>
+
+                <!-- Delivery Hour -->
+                <div>
+                    <label for="hourSelect" class="block text-sm font-medium text-gray-700 mb-1">
+                        Delivery Time
+                    </label>
+                    <select
+                        id="hourSelect"
+                        onchange="updateDeliveryHour()"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                    >
+                        <option value="0">12:00 AM (Midnight)</option>
+                        <option value="1">1:00 AM</option>
+                        <option value="2">2:00 AM</option>
+                        <option value="3">3:00 AM</option>
+                        <option value="4">4:00 AM</option>
+                        <option value="5">5:00 AM</option>
+                        <option value="6">6:00 AM</option>
+                        <option value="7">7:00 AM</option>
+                        <option value="8" selected>8:00 AM</option>
+                        <option value="9">9:00 AM</option>
+                        <option value="10">10:00 AM</option>
+                        <option value="11">11:00 AM</option>
+                        <option value="12">12:00 PM (Noon)</option>
+                        <option value="13">1:00 PM</option>
+                        <option value="14">2:00 PM</option>
+                        <option value="15">3:00 PM</option>
+                        <option value="16">4:00 PM</option>
+                        <option value="17">5:00 PM</option>
+                        <option value="18">6:00 PM</option>
+                        <option value="19">7:00 PM</option>
+                        <option value="20">8:00 PM</option>
+                        <option value="21">9:00 PM</option>
+                        <option value="22">10:00 PM</option>
+                        <option value="23">11:00 PM</option>
+                    </select>
+                </div>
+
+                <!-- Preview Button -->
+                <div class="pt-2">
+                    <button
+                        onclick="showEmailPreview()"
+                        class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 transition-colors text-sm font-medium"
+                    >
+                        Preview Email
+                    </button>
+                    <p class="text-xs text-gray-400 mt-1">See what your daily digest will look like.</p>
+                </div>
+            </div>
+
+            <div id="digestStatus" class="mt-4 text-sm text-gray-500"></div>
+        </div>
+
+        <!-- Account Info Section -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Account Information</h2>
+
+            <div class="space-y-3 text-sm">
+                <div class="flex items-center gap-3">
+                    <img id="userAvatar" src="" alt="Profile" class="w-12 h-12 rounded-full bg-gray-200">
+                    <div>
+                        <p id="userName" class="font-medium text-gray-900">Loading...</p>
+                        <p id="userEmail" class="text-gray-500">Loading...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Email Preview Modal -->
+    <div id="previewModal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+            <!-- Backdrop -->
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onclick="closeEmailPreview()"></div>
+
+            <!-- Modal Content -->
+            <div class="relative bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-2xl sm:w-full">
+                <!-- Modal Header -->
+                <div class="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                    <h3 class="text-lg font-medium text-gray-900">Email Preview</h3>
+                    <button
+                        onclick="closeEmailPreview()"
+                        class="text-gray-400 hover:text-gray-600 focus:outline-none"
+                    >
+                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Modal Body (iframe for email content) -->
+                <div class="bg-gray-100 p-4" style="max-height: 70vh; overflow-y: auto;">
+                    <div id="previewLoading" class="text-center py-8">
+                        <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-primary border-t-transparent"></div>
+                        <p class="mt-2 text-gray-600">Loading preview...</p>
+                    </div>
+                    <iframe
+                        id="previewFrame"
+                        class="hidden w-full bg-white rounded shadow"
+                        style="height: 60vh; border: none;"
+                        sandbox="allow-same-origin"
+                    ></iframe>
+                </div>
+
+                <!-- Modal Footer -->
+                <div class="bg-gray-50 px-4 py-3 border-t border-gray-200 flex justify-end">
+                    <button
+                        onclick="closeEmailPreview()"
+                        class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors text-sm font-medium"
+                    >
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-gray-200 px-6 py-3">
+        <div class="max-w-2xl mx-auto text-center text-sm text-gray-600">
+            Powered by Gemini &amp; ADK Multi-Agent Search
+        </div>
+    </footer>
+
+    <script src="/auth.js?v=1"></script>
+    <script>
+        let currentUser = null;
+        let browserTimezone = null;
+
+        /**
+         * Get browser's timezone
+         */
+        function getBrowserTimezone() {
+            try {
+                return Intl.DateTimeFormat().resolvedOptions().timeZone;
+            } catch (e) {
+                return 'UTC';
+            }
+        }
+
+        /**
+         * Load timezone options from API and populate dropdown
+         */
+        async function loadTimezones() {
+            const select = document.getElementById('timezoneSelect');
+
+            try {
+                const response = await fetch('/api/user/timezones', {
+                    credentials: 'include'
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to load timezones');
+                }
+
+                const data = await response.json();
+                const timezones = data.timezones || [];
+
+                // Clear and populate
+                select.innerHTML = '';
+
+                // Add browser timezone at top if not in list
+                browserTimezone = getBrowserTimezone();
+                if (browserTimezone && !timezones.includes(browserTimezone)) {
+                    const opt = document.createElement('option');
+                    opt.value = browserTimezone;
+                    opt.textContent = `${browserTimezone} (Detected)`;
+                    select.appendChild(opt);
+                }
+
+                // Add common timezones
+                timezones.forEach(tz => {
+                    const opt = document.createElement('option');
+                    opt.value = tz;
+                    opt.textContent = tz === browserTimezone ? `${tz} (Detected)` : tz;
+                    select.appendChild(opt);
+                });
+
+            } catch (error) {
+                console.error('Error loading timezones:', error);
+                // Fallback to browser timezone
+                select.innerHTML = '';
+                browserTimezone = getBrowserTimezone();
+                const opt = document.createElement('option');
+                opt.value = browserTimezone;
+                opt.textContent = browserTimezone;
+                select.appendChild(opt);
+            }
+        }
+
+        /**
+         * Load user settings from the API
+         */
+        async function loadSettings() {
+            try {
+                const response = await fetch('/api/user/settings', {
+                    credentials: 'include'
+                });
+
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        window.location.href = '/login.html';
+                        return;
+                    }
+                    throw new Error('Failed to load settings');
+                }
+
+                const data = await response.json();
+                const toggle = document.getElementById('emailDigestToggle');
+                const timezoneSelect = document.getElementById('timezoneSelect');
+                const hourSelect = document.getElementById('hourSelect');
+                const deliverySettings = document.getElementById('deliverySettings');
+
+                toggle.checked = data.email_digest_enabled;
+                toggle.disabled = false;
+
+                // Show/hide delivery settings based on toggle
+                if (data.email_digest_enabled) {
+                    deliverySettings.classList.remove('hidden');
+                } else {
+                    deliverySettings.classList.add('hidden');
+                }
+
+                // Set timezone (use browser timezone as default if not set)
+                const userTimezone = data.timezone || browserTimezone;
+                if (userTimezone) {
+                    timezoneSelect.value = userTimezone;
+                    // If the value wasn't in the list, add it
+                    if (timezoneSelect.value !== userTimezone) {
+                        const opt = document.createElement('option');
+                        opt.value = userTimezone;
+                        opt.textContent = userTimezone;
+                        timezoneSelect.insertBefore(opt, timezoneSelect.firstChild);
+                        timezoneSelect.value = userTimezone;
+                    }
+                }
+
+                // If user has no timezone set, auto-save browser timezone
+                if (!data.timezone && browserTimezone && data.email_digest_enabled) {
+                    await saveTimezone(browserTimezone, true);
+                    document.getElementById('detectedTimezone').textContent =
+                        'Timezone automatically detected from your browser.';
+                }
+
+                // Set delivery hour
+                hourSelect.value = data.email_digest_hour || 8;
+
+                // Update status message
+                updateStatusMessage(data);
+
+            } catch (error) {
+                console.error('Error loading settings:', error);
+                showError('Failed to load settings. Please try again.');
+            }
+        }
+
+        /**
+         * Update the status message based on settings
+         */
+        function updateStatusMessage(data) {
+            const statusEl = document.getElementById('digestStatus');
+
+            if (!data.email_digest_enabled) {
+                statusEl.textContent = '';
+                return;
+            }
+
+            if (data.last_email_digest_sent) {
+                const date = new Date(data.last_email_digest_sent);
+                statusEl.textContent =
+                    `Last digest sent: ${date.toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    })}`;
+            } else {
+                statusEl.textContent = 'You will receive your first digest at the scheduled time.';
+            }
+        }
+
+        /**
+         * Update email digest preference
+         */
+        async function updateEmailDigest() {
+            const toggle = document.getElementById('emailDigestToggle');
+            const enabled = toggle.checked;
+            const deliverySettings = document.getElementById('deliverySettings');
+            toggle.disabled = true;
+
+            try {
+                // If enabling and no timezone set, include browser timezone
+                const payload = { email_digest_enabled: enabled };
+                const timezoneSelect = document.getElementById('timezoneSelect');
+                if (enabled && !timezoneSelect.value) {
+                    payload.timezone = browserTimezone;
+                }
+
+                const response = await fetch('/api/user/settings', {
+                    method: 'PATCH',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to update settings');
+                }
+
+                // Show/hide delivery settings
+                if (enabled) {
+                    deliverySettings.classList.remove('hidden');
+                } else {
+                    deliverySettings.classList.add('hidden');
+                }
+
+                showSuccess(enabled
+                    ? 'Daily digest enabled!'
+                    : 'Daily digest disabled.');
+
+                // Reload to update status message
+                await loadSettings();
+
+            } catch (error) {
+                console.error('Error updating settings:', error);
+                // Revert toggle
+                toggle.checked = !enabled;
+                toggle.disabled = false;
+                showError('Failed to update settings. Please try again.');
+            }
+        }
+
+        /**
+         * Save timezone setting
+         */
+        async function saveTimezone(timezone, silent = false) {
+            try {
+                const response = await fetch('/api/user/settings', {
+                    method: 'PATCH',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ timezone })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to update timezone');
+                }
+
+                if (!silent) {
+                    showSuccess('Timezone updated.');
+                }
+
+            } catch (error) {
+                console.error('Error updating timezone:', error);
+                if (!silent) {
+                    showError('Failed to update timezone. Please try again.');
+                }
+            }
+        }
+
+        /**
+         * Update timezone from dropdown
+         */
+        async function updateTimezone() {
+            const select = document.getElementById('timezoneSelect');
+            await saveTimezone(select.value);
+        }
+
+        /**
+         * Update delivery hour from dropdown
+         */
+        async function updateDeliveryHour() {
+            const select = document.getElementById('hourSelect');
+            const hour = parseInt(select.value, 10);
+
+            try {
+                const response = await fetch('/api/user/settings', {
+                    method: 'PATCH',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email_digest_hour: hour })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to update delivery time');
+                }
+
+                showSuccess('Delivery time updated.');
+
+            } catch (error) {
+                console.error('Error updating delivery hour:', error);
+                showError('Failed to update delivery time. Please try again.');
+            }
+        }
+
+        /**
+         * Show success message
+         */
+        function showSuccess(message) {
+            const el = document.getElementById('successMessage');
+            el.textContent = message;
+            el.classList.remove('hidden');
+            document.getElementById('errorMessage').classList.add('hidden');
+            setTimeout(() => el.classList.add('hidden'), 5000);
+        }
+
+        /**
+         * Show error message
+         */
+        function showError(message) {
+            const el = document.getElementById('errorMessage');
+            el.textContent = message;
+            el.classList.remove('hidden');
+            document.getElementById('successMessage').classList.add('hidden');
+        }
+
+        /**
+         * Show email preview modal
+         */
+        async function showEmailPreview() {
+            const modal = document.getElementById('previewModal');
+            const loading = document.getElementById('previewLoading');
+            const frame = document.getElementById('previewFrame');
+
+            // Show modal with loading state
+            modal.classList.remove('hidden');
+            loading.classList.remove('hidden');
+            frame.classList.add('hidden');
+
+            try {
+                const response = await fetch('/api/user/settings/email-preview', {
+                    credentials: 'include'
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to load preview');
+                }
+
+                const html = await response.text();
+
+                // Write HTML to iframe
+                frame.srcdoc = html;
+                frame.onload = () => {
+                    loading.classList.add('hidden');
+                    frame.classList.remove('hidden');
+                };
+
+            } catch (error) {
+                console.error('Error loading preview:', error);
+                closeEmailPreview();
+                showError('Failed to load email preview. Please try again.');
+            }
+        }
+
+        /**
+         * Close email preview modal
+         */
+        function closeEmailPreview() {
+            const modal = document.getElementById('previewModal');
+            const frame = document.getElementById('previewFrame');
+
+            modal.classList.add('hidden');
+            frame.srcdoc = '';
+        }
+
+        /**
+         * Update account info display
+         */
+        function updateAccountInfo(user) {
+            document.getElementById('userName').textContent = user.name || 'User';
+            document.getElementById('userEmail').textContent = user.email || '';
+
+            const avatar = document.getElementById('userAvatar');
+            if (user.picture) {
+                avatar.src = user.picture;
+                avatar.onerror = function() {
+                    this.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%239ca3af"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>';
+                };
+            } else {
+                avatar.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%239ca3af"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>';
+            }
+        }
+
+        // Check auth and load settings on page load
+        document.addEventListener('DOMContentLoaded', async () => {
+            const user = await requireAuth();
+            if (!user) return;
+
+            currentUser = user;
+            updateUserUIWithAdmin(user);
+            updateAccountInfo(user);
+
+            // Load timezones first, then settings
+            await loadTimezones();
+            await loadSettings();
+        });
+    </script>
+</body>
+</html>

@@ -33,6 +33,7 @@ class PipelineStats:
     episodes_transcribed: int = 0
     transcription_failures: int = 0
     transcription_permanent_failures: int = 0
+    email_digests_sent: int = 0
 
     # Post-processing stats (populated on stop)
     post_processing: Optional[PostProcessingStats] = None
@@ -88,12 +89,14 @@ class PipelineOrchestrator:
 
         self._running = False
         self._last_sync: Optional[datetime] = None
+        self._last_email_digest_check: Optional[datetime] = None
         self._stats = PipelineStats()
 
         # Workers (created lazily)
         self._sync_worker = None
         self._download_worker = None
         self._transcription_worker = None
+        self._email_digest_worker = None
         self._post_processor: Optional[PostProcessor] = None
 
     def _get_sync_worker(self):
@@ -129,6 +132,17 @@ class PipelineOrchestrator:
                 repository=self.repository,
             )
         return self._transcription_worker
+
+    def _get_email_digest_worker(self):
+        """Get or create the email digest worker."""
+        if self._email_digest_worker is None:
+            from src.workflow.workers.email_digest import EmailDigestWorker
+
+            self._email_digest_worker = EmailDigestWorker(
+                config=self.config,
+                repository=self.repository,
+            )
+        return self._email_digest_worker
 
     def run(self) -> PipelineStats:
         """Run the pipeline until interrupted.
@@ -246,6 +260,9 @@ class PipelineOrchestrator:
         # 1. Check sync timer
         self._maybe_run_sync()
 
+        # 1.5. Check email digest timer (daily at configured hour)
+        self._maybe_run_email_digests()
+
         # 2. Maintain download buffer
         self._maintain_download_buffer()
 
@@ -330,6 +347,64 @@ class PipelineOrchestrator:
 
         except Exception:
             logger.exception("Sync failed")
+
+    def _maybe_run_email_digests(self) -> None:
+        """Run email digests if we haven't checked this hour yet.
+
+        Checks every hour to find users whose delivery time is now in their
+        timezone. The worker handles per-user timezone/hour filtering.
+        """
+        if self._should_send_email_digests():
+            self._run_email_digests()
+
+    def _should_send_email_digests(self) -> bool:
+        """Check if it's time to check for email digests.
+
+        With per-user timezone support, we check every hour at the start of
+        the hour. The worker filters users based on their individual timezone
+        and preferred delivery hour.
+
+        Returns:
+            True if we should check for digests now.
+        """
+        now_utc = datetime.now(UTC)
+
+        # Check if we've already checked this hour (in UTC)
+        if self._last_email_digest_check:
+            last_check_utc = self._last_email_digest_check
+            # Ensure it's UTC-aware for comparison
+            if last_check_utc.tzinfo is None:
+                last_check_utc = last_check_utc.replace(tzinfo=UTC)
+            else:
+                last_check_utc = last_check_utc.astimezone(UTC)
+
+            # Only run once per UTC hour
+            if (
+                last_check_utc.date() == now_utc.date()
+                and last_check_utc.hour == now_utc.hour
+            ):
+                return False
+
+        return True
+
+    def _run_email_digests(self) -> None:
+        """Send email digests to users whose delivery time is now."""
+        logger.info("Checking for users due for email digest...")
+
+        try:
+            worker = self._get_email_digest_worker()
+            result = worker.process_batch(limit=100)
+
+            if result.processed > 0 or result.skipped > 0:
+                worker.log_result(result)
+
+            self._stats.email_digests_sent += result.processed
+
+            # Mark that we've checked digests this hour
+            self._last_email_digest_check = datetime.now(UTC)
+
+        except Exception:
+            logger.exception("Email digest job failed")
 
     def _maintain_download_buffer(self) -> None:
         """Ensure download buffer has enough episodes ready for transcription."""

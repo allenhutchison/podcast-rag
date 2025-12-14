@@ -73,6 +73,24 @@ class Config:
         self.COOKIE_DOMAIN = os.getenv("COOKIE_DOMAIN", None) or None  # None = current domain
         self.COOKIE_SECURE = os.getenv("COOKIE_SECURE", "true").lower() == "true"
 
+        # SMTP Email configuration
+        self.SMTP_HOST = os.getenv("SMTP_HOST", "")
+        self.SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+        self.SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
+        self.SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+        self.SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
+        self.SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", "noreply@podcast-rag.local")
+        self.SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "Podcast RAG")
+        self.SMTP_TIMEOUT = int(os.getenv("SMTP_TIMEOUT", "30"))  # seconds
+
+        # Email digest settings
+        self.EMAIL_DIGEST_SEND_HOUR = int(os.getenv("EMAIL_DIGEST_SEND_HOUR", "8"))  # 8 AM
+        if not 0 <= self.EMAIL_DIGEST_SEND_HOUR <= 23:
+            raise ValueError(
+                f"EMAIL_DIGEST_SEND_HOUR must be between 0 and 23, got {self.EMAIL_DIGEST_SEND_HOUR}"
+            )
+        self.EMAIL_DIGEST_TIMEZONE = os.getenv("EMAIL_DIGEST_TIMEZONE", "America/Los_Angeles")
+
         # ADK (Agent Development Kit) configuration
         self.ADK_PARALLEL_TIMEOUT = int(os.getenv("ADK_PARALLEL_TIMEOUT", "30"))
 

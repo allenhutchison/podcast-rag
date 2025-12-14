@@ -8,7 +8,7 @@ import logging
 import os
 import shutil
 from abc import ABC, abstractmethod
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import String, cast, create_engine, func, or_, select
@@ -889,6 +889,65 @@ class PodcastRepositoryInterface(ABC):
 
         Returns:
             List[Podcast]: List of subscribed podcasts.
+        """
+        pass
+
+    # --- Email Digest Operations ---
+
+    @abstractmethod
+    def get_users_for_email_digest(self) -> List[User]:
+        """Get users who have email digest enabled and are due for one.
+
+        Returns users where:
+        - email_digest_enabled is True
+        - is_active is True
+        - last_email_digest_sent is None or more than 20 hours ago
+
+        Returns:
+            List[User]: Users eligible for email digest.
+        """
+        pass
+
+    @abstractmethod
+    def get_new_episodes_for_user_since(
+        self, user_id: str, since: datetime, limit: int = 50
+    ) -> List[Episode]:
+        """Get new fully-processed episodes for a user's subscriptions published since a date.
+
+        Only returns episodes with ai_summary populated (fully processed) and
+        published_date after the specified time.
+
+        Args:
+            user_id: The user's UUID.
+            since: Only include episodes published after this datetime.
+            limit: Maximum number of episodes to return.
+
+        Returns:
+            List[Episode]: New processed episodes from user's subscribed podcasts.
+        """
+        pass
+
+    @abstractmethod
+    def mark_email_digest_sent(self, user_id: str) -> None:
+        """Update user's last_email_digest_sent timestamp to now.
+
+        Args:
+            user_id: The user's UUID.
+        """
+        pass
+
+    @abstractmethod
+    def get_recent_processed_episodes(self, limit: int = 5) -> List[Episode]:
+        """Get the most recently processed episodes from the database.
+
+        Returns episodes with ai_summary populated, ordered by published_date descending.
+        Used for email preview fallback when user has no subscriptions.
+
+        Args:
+            limit: Maximum number of episodes to return.
+
+        Returns:
+            List[Episode]: Recent processed episodes from any podcast.
         """
         pass
 
@@ -2247,6 +2306,79 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             if limit:
                 stmt = stmt.limit(limit)
             return list(session.scalars(stmt).all())
+
+    # --- Email Digest Operations ---
+
+    def get_users_for_email_digest(self) -> List[User]:
+        """Get users who have email digest enabled and are due for one.
+
+        Returns users where:
+        - email_digest_enabled is True
+        - is_active is True
+        - last_email_digest_sent is None or more than 20 hours ago
+        """
+        with self._get_session() as session:
+            twenty_hours_ago = datetime.now(UTC) - timedelta(hours=20)
+            stmt = (
+                select(User)
+                .where(
+                    User.email_digest_enabled.is_(True),
+                    User.is_active.is_(True),
+                    or_(
+                        User.last_email_digest_sent.is_(None),
+                        User.last_email_digest_sent < twenty_hours_ago
+                    )
+                )
+                .order_by(User.last_email_digest_sent.asc().nullsfirst())
+            )
+            return list(session.scalars(stmt).all())
+
+    def get_new_episodes_for_user_since(
+        self, user_id: str, since: datetime, limit: int = 50
+    ) -> List[Episode]:
+        """Get new fully-processed episodes for a user's subscriptions published since a date.
+
+        Only returns episodes with ai_summary populated (fully processed) and
+        published_date after the specified time.
+        """
+        with self._get_session() as session:
+            stmt = (
+                select(Episode)
+                .options(joinedload(Episode.podcast))
+                .join(UserSubscription, Episode.podcast_id == UserSubscription.podcast_id)
+                .where(
+                    UserSubscription.user_id == user_id,
+                    Episode.published_date > since,
+                    Episode.ai_summary.isnot(None),
+                    Episode.metadata_status == "completed",
+                )
+                .order_by(Episode.published_date.desc())
+                .limit(limit)
+            )
+            return list(session.scalars(stmt).unique().all())
+
+    def mark_email_digest_sent(self, user_id: str) -> None:
+        """Update user's last_email_digest_sent timestamp to now."""
+        self.update_user(user_id, last_email_digest_sent=datetime.now(UTC))
+
+    def get_recent_processed_episodes(self, limit: int = 5) -> List[Episode]:
+        """Get the most recently processed episodes from the database.
+
+        Returns episodes with ai_summary populated, ordered by published_date descending.
+        Used for email preview fallback when user has no subscriptions.
+        """
+        with self._get_session() as session:
+            stmt = (
+                select(Episode)
+                .options(joinedload(Episode.podcast))
+                .where(
+                    Episode.ai_summary.isnot(None),
+                    Episode.metadata_status == "completed",
+                )
+                .order_by(Episode.published_date.desc())
+                .limit(limit)
+            )
+            return list(session.scalars(stmt).unique().all())
 
     # --- Connection Management ---
 

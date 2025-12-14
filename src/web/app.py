@@ -29,6 +29,7 @@ from src.db.factory import create_repository
 from src.web.admin_routes import router as admin_router
 from src.web.auth import get_current_user
 from src.web.auth_routes import router as auth_router
+from src.web.user_routes import router as user_router
 from src.web.models import ChatRequest
 
 # Configure logging
@@ -133,6 +134,9 @@ app.include_router(auth_router)
 
 # Include admin routes
 app.include_router(admin_router)
+
+# Include user routes
+app.include_router(user_router)
 
 # Session service (shared across all sessions)
 _session_service = None
