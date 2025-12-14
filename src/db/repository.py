@@ -980,20 +980,22 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
     def __init__(
         self,
         database_url: str,
-        pool_size: int = 5,
-        max_overflow: int = 10,
+        pool_size: int = 3,  # Supabase-optimized
+        max_overflow: int = 2,  # Supabase-optimized
         echo: bool = False,
+        pool_pre_ping: bool = True,  # Detect stale connections
     ):
         """
         Initialize the repository and configure its SQLAlchemy engine and session factory.
-        
+
         Creates an engine appropriate for the provided database URL, prepares a session factory, and ensures the ORM tables are created.
-        
+
         Parameters:
             database_url (str): SQLAlchemy-compatible database URL.
-            pool_size (int): Connection pool size for non-SQLite databases.
-            max_overflow (int): Maximum overflow connections for non-SQLite databases.
+            pool_size (int): Connection pool size for non-SQLite databases (default 3 for Supabase).
+            max_overflow (int): Maximum overflow connections for non-SQLite databases (default 2 for Supabase).
             echo (bool): If true, enable SQLAlchemy SQL statement logging.
+            pool_pre_ping (bool): If true, test connections for liveness before using them (recommended for Supabase).
         """
         self.database_url = database_url
 
@@ -1005,10 +1007,12 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 connect_args={"check_same_thread": False},
             )
         else:
+            # PostgreSQL (including Supabase)
             self.engine = create_engine(
                 database_url,
                 pool_size=pool_size,
                 max_overflow=max_overflow,
+                pool_pre_ping=pool_pre_ping,  # Test connections before use
                 echo=echo,
             )
 
