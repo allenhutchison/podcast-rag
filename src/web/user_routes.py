@@ -98,12 +98,7 @@ async def get_user_settings(
 
     user = repository.get_user(user_id)
     if not user:
-        return {
-            "email_digest_enabled": False,
-            "last_email_digest_sent": None,
-            "timezone": None,
-            "email_digest_hour": 8,
-        }
+        raise HTTPException(status_code=404, detail="User not found")
 
     return {
         "email_digest_enabled": user.email_digest_enabled,
@@ -137,29 +132,32 @@ async def update_user_settings(
     repository: PodcastRepositoryInterface = request.app.state.repository
     user_id = current_user["sub"]
 
+    # Verify user exists
+    user = repository.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
     updates = {}
     if body.email_digest_enabled is not None:
         updates["email_digest_enabled"] = body.email_digest_enabled
-        logger.info(f"User {user_id} set email_digest_enabled={body.email_digest_enabled}")
 
     if body.timezone is not None:
         updates["timezone"] = body.timezone
-        logger.info(f"User {user_id} set timezone={body.timezone}")
 
     if body.email_digest_hour is not None:
         updates["email_digest_hour"] = body.email_digest_hour
-        logger.info(f"User {user_id} set email_digest_hour={body.email_digest_hour}")
 
     if updates:
         repository.update_user(user_id, **updates)
+        logger.debug("User %s updated settings: %s", user_id, list(updates.keys()))
 
     # Return updated settings
     user = repository.get_user(user_id)
     return {
         "message": "Settings updated",
-        "email_digest_enabled": user.email_digest_enabled if user else False,
-        "timezone": user.timezone if user else None,
-        "email_digest_hour": user.email_digest_hour if user else 8,
+        "email_digest_enabled": user.email_digest_enabled,
+        "timezone": user.timezone,
+        "email_digest_hour": user.email_digest_hour,
     }
 
 

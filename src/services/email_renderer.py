@@ -5,6 +5,39 @@ Used by both the EmailDigestWorker and the preview API endpoint.
 """
 
 from typing import List, Optional
+from urllib.parse import urlparse
+
+# Allowed URL schemes for clickable links
+SAFE_URL_SCHEMES = {"http", "https"}
+
+
+def sanitize_url(url: Optional[str], fallback: str = "#") -> str:
+    """Validate and sanitize a URL for safe embedding in HTML.
+
+    Only allows http and https schemes to prevent XSS via javascript:,
+    data:, or other unsafe URL schemes.
+
+    Args:
+        url: The URL to validate.
+        fallback: Value to return if URL is invalid/unsafe (default "#").
+
+    Returns:
+        The original URL if safe, otherwise the fallback value.
+    """
+    if not url:
+        return fallback
+
+    try:
+        parsed = urlparse(url)
+        # Check scheme is safe (case-insensitive)
+        if parsed.scheme.lower() in SAFE_URL_SCHEMES:
+            return url
+        # Also allow scheme-relative URLs (//example.com/path)
+        if not parsed.scheme and url.startswith("//"):
+            return url
+        return fallback
+    except Exception:
+        return fallback
 
 
 def escape_html(text: str) -> str:
@@ -70,7 +103,7 @@ def render_digest_html(
             if ep.published_date:
                 published_str = ep.published_date.strftime("%B %d, %Y")
 
-            listen_url = ep.enclosure_url or "#"
+            listen_url = sanitize_url(ep.enclosure_url)
 
             episodes_html += f'''
             <div style="background: #f9fafb; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
@@ -173,8 +206,9 @@ def render_digest_text(
             if ep.ai_summary:
                 summary = ep.ai_summary[:200] + "..." if len(ep.ai_summary) > 200 else ep.ai_summary
                 lines.append(f"  Summary: {summary}")
-            if ep.enclosure_url:
-                lines.append(f"  Listen: {ep.enclosure_url}")
+            safe_url = sanitize_url(ep.enclosure_url, fallback="")
+            if safe_url:
+                lines.append(f"  Listen: {safe_url}")
             lines.append("")
 
     lines.append("---")

@@ -5,6 +5,7 @@ Provides a simple interface for sending HTML emails using generic SMTP.
 
 import logging
 import smtplib
+import ssl
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Optional
@@ -12,6 +13,21 @@ from typing import Optional
 from src.config import Config
 
 logger = logging.getLogger(__name__)
+
+
+def _redact_email(email: str) -> str:
+    """Redact email address for logging (PII protection).
+
+    Args:
+        email: Full email address.
+
+    Returns:
+        Redacted email showing only domain (e.g., "***@example.com").
+    """
+    if "@" not in email:
+        return "<invalid-email>"
+    _, domain = email.split("@", 1)
+    return f"***@{domain}"
 
 
 class EmailService:
@@ -67,10 +83,10 @@ class EmailService:
 
             # Add plain text version (fallback)
             if text_content:
-                msg.attach(MIMEText(text_content, "plain"))
+                msg.attach(MIMEText(text_content, "plain", "utf-8"))
 
             # Add HTML version
-            msg.attach(MIMEText(html_content, "html"))
+            msg.attach(MIMEText(html_content, "html", "utf-8"))
 
             # Connect and send
             with smtplib.SMTP(
@@ -78,17 +94,19 @@ class EmailService:
                 self.config.SMTP_PORT,
                 timeout=self.config.SMTP_TIMEOUT,
             ) as server:
+                server.ehlo()
                 if self.config.SMTP_USE_TLS:
-                    server.starttls()
+                    server.starttls(context=ssl.create_default_context())
+                    server.ehlo()
                 server.login(self.config.SMTP_USERNAME, self.config.SMTP_PASSWORD)
                 server.send_message(msg)
 
-            logger.info(f"Email sent successfully to {to_email}")
+            logger.info("Email sent successfully to %s", _redact_email(to_email))
             return True
 
-        except smtplib.SMTPException as e:
-            logger.error(f"SMTP error sending email to {to_email}: {e}")
+        except smtplib.SMTPException:
+            logger.exception("SMTP error sending email to %s", _redact_email(to_email))
             return False
-        except Exception as e:
-            logger.exception(f"Failed to send email to {to_email}: {e}")
+        except Exception:
+            logger.exception("Failed to send email to %s", _redact_email(to_email))
             return False

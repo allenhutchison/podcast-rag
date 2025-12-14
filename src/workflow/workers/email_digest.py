@@ -171,10 +171,10 @@ class EmailDigestWorker(WorkerInterface):
                     result.processed += 1
                 else:
                     result.skipped += 1
-            except Exception as e:
-                logger.exception(f"Failed to send digest to {user.email}: {e}")
+            except Exception:
+                logger.exception("Failed to send digest to user %s", user.id)
                 result.failed += 1
-                result.errors.append(f"User {user.id}: {str(e)}")
+                result.errors.append(f"User {user.id}: digest send failed")
 
         return result
 
@@ -196,9 +196,9 @@ class EmailDigestWorker(WorkerInterface):
         )
 
         if not episodes:
-            logger.debug(f"No new episodes for user {user.email}, skipping digest")
-            # Still mark as sent to avoid re-checking immediately
-            self.repository.mark_email_digest_sent(user.id)
+            logger.debug("No new episodes for user %s, skipping digest", user.id)
+            # Don't mark as sent - user remains eligible if new episodes arrive
+            # later in the day at their preferred delivery time
             return False
 
         # Generate and send email
@@ -215,6 +215,6 @@ class EmailDigestWorker(WorkerInterface):
 
         if success:
             self.repository.mark_email_digest_sent(user.id)
-            logger.info(f"Sent digest with {len(episodes)} episodes to {user.email}")
+            logger.info("Sent digest with %d episodes to user %s", len(episodes), user.id)
 
         return success
