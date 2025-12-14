@@ -40,9 +40,6 @@ logger = logging.getLogger(__name__)
 # Initialize configuration
 config = Config()
 
-# Initialize repository for database access
-_repository = create_repository(config.DATABASE_URL)
-
 
 def _validate_jwt_config():
     """
@@ -50,6 +47,8 @@ def _validate_jwt_config():
 
     In DEV_MODE, allows running without JWT_SECRET_KEY by using an insecure key.
     In production, requires JWT_SECRET_KEY to be set.
+
+    Must be called before any middleware that uses JWT_SECRET_KEY is configured.
     """
     is_dev_mode = os.getenv("DEV_MODE", "").lower() == "true"
     if not config.JWT_SECRET_KEY:
@@ -66,15 +65,20 @@ def _validate_jwt_config():
             )
 
 
+# Validate JWT config before any middleware uses it
+_validate_jwt_config()
+
+# Initialize repository for database access
+_repository = create_repository(config.DATABASE_URL)
+
+
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     """
     FastAPI lifespan context manager.
 
-    Runs startup validation and cleanup logic.
+    Handles startup logging and cleanup.
     """
-    # Startup: validate configuration
-    _validate_jwt_config()
     logger.info("Application started")
 
     yield
@@ -727,7 +731,7 @@ async def list_all_podcasts(
         List of all podcasts with subscription status for current user
     """
     user_id = current_user["sub"]
-    all_podcasts = _repository.list_podcasts(subscribed_only=True)
+    all_podcasts = _repository.list_podcasts(subscribed_only=False)
 
     podcast_list = []
     for p in all_podcasts:
@@ -751,6 +755,30 @@ async def list_all_podcasts(
     return {"podcasts": podcast_list}
 
 
+def _validate_podcast_id(podcast_id: str) -> str:
+    """
+    Validate that podcast_id is a valid UUID format.
+
+    Args:
+        podcast_id: The podcast ID string to validate
+
+    Returns:
+        The validated podcast_id string
+
+    Raises:
+        HTTPException: 422 if podcast_id is not a valid UUID
+    """
+    try:
+        # Validate UUID format
+        uuid.UUID(podcast_id)
+        return podcast_id
+    except (ValueError, AttributeError):
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid podcast_id: must be a valid UUID"
+        )
+
+
 @app.post("/api/podcasts/{podcast_id}/subscribe")
 async def subscribe_to_podcast(
     podcast_id: str,
@@ -759,13 +787,18 @@ async def subscribe_to_podcast(
     """
     Subscribe current user to a podcast.
 
+    Idempotent: returns 200 success even if already subscribed.
+
     Args:
-        podcast_id: The podcast ID
+        podcast_id: The podcast UUID string
         current_user: Authenticated user from JWT cookie
 
     Returns:
-        Success message with subscription details
+        200 with success message and subscription details
+        404 if podcast not found
+        422 if podcast_id is not a valid UUID
     """
+    podcast_id = _validate_podcast_id(podcast_id)
     user_id = current_user["sub"]
 
     # Verify podcast exists
@@ -773,9 +806,14 @@ async def subscribe_to_podcast(
     if not podcast:
         raise HTTPException(status_code=404, detail="Podcast not found")
 
-    # Check if already subscribed
+    # Check if already subscribed (idempotent - return success)
     if _repository.is_user_subscribed(user_id, podcast_id):
-        return {"message": "Already subscribed", "podcast_id": podcast_id}
+        return {
+            "message": "Already subscribed",
+            "podcast_id": podcast_id,
+            "podcast_title": podcast.title,
+            "already_subscribed": True
+        }
 
     # Create subscription
     subscription = _repository.subscribe_user_to_podcast(user_id, podcast_id)
@@ -785,7 +823,8 @@ async def subscribe_to_podcast(
     return {
         "message": "Subscribed successfully",
         "podcast_id": podcast_id,
-        "podcast_title": podcast.title
+        "podcast_title": podcast.title,
+        "already_subscribed": False
     }
 
 
@@ -797,13 +836,18 @@ async def unsubscribe_from_podcast(
     """
     Unsubscribe current user from a podcast.
 
+    Idempotent: returns 200 success even if not currently subscribed.
+
     Args:
-        podcast_id: The podcast ID
+        podcast_id: The podcast UUID string
         current_user: Authenticated user from JWT cookie
 
     Returns:
-        Success message
+        200 with success message
+        404 if podcast not found
+        422 if podcast_id is not a valid UUID
     """
+    podcast_id = _validate_podcast_id(podcast_id)
     user_id = current_user["sub"]
 
     # Verify podcast exists
@@ -811,14 +855,13 @@ async def unsubscribe_from_podcast(
     if not podcast:
         raise HTTPException(status_code=404, detail="Podcast not found")
 
-    # Remove subscription
-    success = _repository.unsubscribe_user_from_podcast(user_id, podcast_id)
-    if not success:
-        return {"message": "Not subscribed", "podcast_id": podcast_id}
+    # Remove subscription (idempotent - return success even if not subscribed)
+    was_subscribed = _repository.unsubscribe_user_from_podcast(user_id, podcast_id)
 
     return {
-        "message": "Unsubscribed successfully",
-        "podcast_id": podcast_id
+        "message": "Unsubscribed successfully" if was_subscribed else "Not subscribed",
+        "podcast_id": podcast_id,
+        "was_subscribed": was_subscribed
     }
 
 
@@ -831,12 +874,15 @@ async def get_podcast_detail(
     Get podcast details with list of episodes.
 
     Args:
-        podcast_id: The podcast ID
+        podcast_id: The podcast UUID string
         current_user: Authenticated user from JWT cookie
 
     Returns:
         Podcast details with episodes sorted by release date (newest first)
+        404 if podcast not found
+        422 if podcast_id is not a valid UUID
     """
+    podcast_id = _validate_podcast_id(podcast_id)
     podcast = _repository.get_podcast(podcast_id)
     if not podcast:
         raise HTTPException(status_code=404, detail="Podcast not found")

@@ -2012,11 +2012,11 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             try:
                 session.commit()
                 session.refresh(user)
-                logger.info(f"Created new user: {email}")
+                logger.info(f"Created new user: user_id={user.id}")
                 return user
-            except IntegrityError:
+            except IntegrityError as e:
                 session.rollback()
-                logger.info(f"User already exists, fetching existing: {email}")
+                logger.info(f"User already exists, fetching existing: google_id={google_id}")
                 # Try to find by google_id first, then by email
                 existing = session.execute(
                     select(User).where(User.google_id == google_id)
@@ -2028,8 +2028,10 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 ).scalar_one_or_none()
                 if existing:
                     return existing
-                # If we can't find the existing user, re-raise
-                raise ValueError(f"IntegrityError but user not found: {email}")
+                # If we can't find the existing user, re-raise with chaining
+                raise ValueError(
+                    f"IntegrityError but user not found: google_id={google_id}"
+                ) from e
 
     def get_user(self, user_id: str) -> Optional[User]:
         """Get a user by ID."""
@@ -2067,7 +2069,12 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
     # --- Subscription Operations ---
 
     def subscribe_user_to_podcast(self, user_id: str, podcast_id: str) -> UserSubscription:
-        """Subscribe a user to a podcast."""
+        """Subscribe a user to a podcast.
+
+        Handles race conditions where concurrent requests may both pass the
+        pre-check. If an IntegrityError occurs due to unique constraint
+        violation, returns the existing subscription instead of raising.
+        """
         with self._get_session() as session:
             # Check if already subscribed
             existing = session.scalar(
@@ -2085,10 +2092,29 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 subscribed_at=datetime.now(UTC),
             )
             session.add(subscription)
-            session.commit()
-            session.refresh(subscription)
-            logger.info(f"User {user_id} subscribed to podcast {podcast_id}")
-            return subscription
+
+            try:
+                session.commit()
+                session.refresh(subscription)
+                logger.info(f"User {user_id} subscribed to podcast {podcast_id}")
+                return subscription
+            except IntegrityError:
+                # Race condition: another request created the subscription
+                session.rollback()
+                logger.debug(
+                    f"Subscription race condition for user {user_id}, podcast {podcast_id}"
+                )
+                # Re-query for the existing subscription
+                existing = session.scalar(
+                    select(UserSubscription).where(
+                        UserSubscription.user_id == user_id,
+                        UserSubscription.podcast_id == podcast_id,
+                    )
+                )
+                if existing:
+                    return existing
+                # Should not happen, but re-raise if subscription still not found
+                raise
 
     def unsubscribe_user_from_podcast(self, user_id: str, podcast_id: str) -> bool:
         """Unsubscribe a user from a podcast."""

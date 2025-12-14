@@ -31,10 +31,14 @@ async def login(request: Request):
     """
     config = request.app.state.config
 
-    if not config.GOOGLE_CLIENT_ID or not config.GOOGLE_CLIENT_SECRET:
+    if (
+        not config.GOOGLE_CLIENT_ID
+        or not config.GOOGLE_CLIENT_SECRET
+        or not config.GOOGLE_REDIRECT_URI
+    ):
         raise HTTPException(
             status_code=500,
-            detail="OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET."
+            detail="OAuth not configured. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI."
         )
 
     oauth = get_oauth(config)
@@ -84,7 +88,7 @@ async def auth_callback(request: Request):
             picture_url=picture,
             last_login=datetime.now(timezone.utc)
         )
-        logger.info(f"User logged in: {email}")
+        logger.info(f"User logged in: user_id={user.id}")
     else:
         # Create new user
         user = repository.create_user(
@@ -93,7 +97,7 @@ async def auth_callback(request: Request):
             name=name,
             picture_url=picture
         )
-        logger.info(f"Created new user: {email}")
+        logger.info(f"Created new user: user_id={user.id}")
 
     # Create JWT token
     jwt_payload = {
@@ -104,17 +108,32 @@ async def auth_callback(request: Request):
     }
     access_token = create_access_token(jwt_payload, config)
 
+    # Validate and compute cookie max_age
+    try:
+        expiration_days = int(config.JWT_EXPIRATION_DAYS) if config.JWT_EXPIRATION_DAYS else 7
+    except (ValueError, TypeError):
+        logger.warning(
+            f"Invalid JWT_EXPIRATION_DAYS value: {config.JWT_EXPIRATION_DAYS}, using default 7"
+        )
+        expiration_days = 7
+    max_age = expiration_days * 24 * 60 * 60
+
     # Set cookie and redirect to home
     response = RedirectResponse(url="/", status_code=302)
-    response.set_cookie(
-        key="podcast_rag_session",
-        value=access_token,
-        max_age=config.JWT_EXPIRATION_DAYS * 24 * 60 * 60,
-        httponly=True,
-        secure=config.COOKIE_SECURE,
-        samesite="lax",
-        domain=config.COOKIE_DOMAIN
-    )
+
+    # Build cookie kwargs, only include domain if set
+    cookie_kwargs = {
+        "key": "podcast_rag_session",
+        "value": access_token,
+        "max_age": max_age,
+        "httponly": True,
+        "secure": config.COOKIE_SECURE,
+        "samesite": "lax",
+    }
+    if config.COOKIE_DOMAIN:
+        cookie_kwargs["domain"] = config.COOKIE_DOMAIN
+
+    response.set_cookie(**cookie_kwargs)
 
     return response
 
@@ -129,10 +148,13 @@ async def logout(request: Request):
     config = request.app.state.config
 
     response = RedirectResponse(url="/login.html", status_code=302)
-    response.delete_cookie(
-        key="podcast_rag_session",
-        domain=config.COOKIE_DOMAIN
-    )
+
+    # Build delete_cookie kwargs, only include domain if set
+    delete_kwargs = {"key": "podcast_rag_session"}
+    if config.COOKIE_DOMAIN:
+        delete_kwargs["domain"] = config.COOKIE_DOMAIN
+
+    response.delete_cookie(**delete_kwargs)
 
     return response
 
