@@ -15,7 +15,7 @@ from sqlalchemy import String, cast, create_engine, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, sessionmaker
 
-from .models import Base, Episode, Podcast
+from .models import Base, Episode, Podcast, User, UserSubscription
 
 logger = logging.getLogger(__name__)
 
@@ -701,13 +701,158 @@ class PodcastRepositoryInterface(ABC):
         """
         pass
 
+    # --- User Operations ---
+
+    @abstractmethod
+    def create_user(
+        self,
+        google_id: str,
+        email: str,
+        name: Optional[str] = None,
+        picture_url: Optional[str] = None,
+    ) -> User:
+        """Create a new user from Google OAuth data.
+
+        Args:
+            google_id: Google's unique user identifier.
+            email: User's email address.
+            name: User's display name (optional).
+            picture_url: URL to user's profile picture (optional).
+
+        Returns:
+            User: The newly created user.
+        """
+        pass
+
+    @abstractmethod
+    def get_user(self, user_id: str) -> Optional[User]:
+        """Get a user by ID.
+
+        Args:
+            user_id: The user's UUID.
+
+        Returns:
+            Optional[User]: The user if found, None otherwise.
+        """
+        pass
+
+    @abstractmethod
+    def get_user_by_google_id(self, google_id: str) -> Optional[User]:
+        """Get a user by their Google ID.
+
+        Args:
+            google_id: Google's unique user identifier.
+
+        Returns:
+            Optional[User]: The user if found, None otherwise.
+        """
+        pass
+
+    @abstractmethod
+    def get_user_by_email(self, email: str) -> Optional[User]:
+        """Get a user by email address.
+
+        Args:
+            email: User's email address.
+
+        Returns:
+            Optional[User]: The user if found, None otherwise.
+        """
+        pass
+
+    @abstractmethod
+    def update_user(self, user_id: str, **kwargs) -> Optional[User]:
+        """Update a user's attributes.
+
+        Args:
+            user_id: The user's UUID.
+            **kwargs: Attributes to update (name, picture_url, last_login, etc.).
+
+        Returns:
+            Optional[User]: The updated user if found, None otherwise.
+        """
+        pass
+
+    # --- Subscription Operations ---
+
+    @abstractmethod
+    def subscribe_user_to_podcast(self, user_id: str, podcast_id: str) -> UserSubscription:
+        """Subscribe a user to a podcast.
+
+        Args:
+            user_id: The user's UUID.
+            podcast_id: The podcast's UUID.
+
+        Returns:
+            UserSubscription: The subscription record.
+
+        Raises:
+            IntegrityError: If subscription already exists.
+        """
+        pass
+
+    @abstractmethod
+    def unsubscribe_user_from_podcast(self, user_id: str, podcast_id: str) -> bool:
+        """Unsubscribe a user from a podcast.
+
+        Args:
+            user_id: The user's UUID.
+            podcast_id: The podcast's UUID.
+
+        Returns:
+            bool: True if unsubscribed, False if subscription didn't exist.
+        """
+        pass
+
+    @abstractmethod
+    def get_user_subscriptions(self, user_id: str) -> List[Podcast]:
+        """Get all podcasts a user is subscribed to.
+
+        Args:
+            user_id: The user's UUID.
+
+        Returns:
+            List[Podcast]: List of podcasts the user is subscribed to.
+        """
+        pass
+
+    @abstractmethod
+    def is_user_subscribed(self, user_id: str, podcast_id: str) -> bool:
+        """Check if a user is subscribed to a podcast.
+
+        Args:
+            user_id: The user's UUID.
+            podcast_id: The podcast's UUID.
+
+        Returns:
+            bool: True if subscribed, False otherwise.
+        """
+        pass
+
+    @abstractmethod
+    def list_podcasts_for_user(
+        self, user_id: str, limit: Optional[int] = None
+    ) -> List[Podcast]:
+        """List podcasts the user is subscribed to.
+
+        This is the user-filtered equivalent of list_podcasts().
+
+        Args:
+            user_id: The user's UUID.
+            limit: Maximum number of podcasts to return.
+
+        Returns:
+            List[Podcast]: List of subscribed podcasts.
+        """
+        pass
+
     # --- Connection Management ---
 
     @abstractmethod
     def close(self) -> None:
         """
         Close and release all database connections and engine resources used by the repository.
-        
+
         This will dispose the underlying SQLAlchemy engine and free associated connection pool resources so the repository can be cleanly shut down.
         """
         pass
@@ -1838,6 +1983,166 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             episode_id,
             **{status_field: "pending", error_field: None}
         )
+
+    # --- User Operations ---
+
+    def create_user(
+        self,
+        google_id: str,
+        email: str,
+        name: Optional[str] = None,
+        picture_url: Optional[str] = None,
+    ) -> User:
+        """Create a new user from Google OAuth data.
+
+        If a user with the same google_id or email already exists,
+        returns the existing user instead of raising an error.
+        """
+        with self._get_session() as session:
+            user = User(
+                google_id=google_id,
+                email=email,
+                name=name,
+                picture_url=picture_url,
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+                last_login=datetime.now(UTC),
+            )
+            session.add(user)
+            try:
+                session.commit()
+                session.refresh(user)
+                logger.info(f"Created new user: {email}")
+                return user
+            except IntegrityError:
+                session.rollback()
+                logger.info(f"User already exists, fetching existing: {email}")
+                # Try to find by google_id first, then by email
+                existing = session.execute(
+                    select(User).where(User.google_id == google_id)
+                ).scalar_one_or_none()
+                if existing:
+                    return existing
+                existing = session.execute(
+                    select(User).where(User.email == email)
+                ).scalar_one_or_none()
+                if existing:
+                    return existing
+                # If we can't find the existing user, re-raise
+                raise ValueError(f"IntegrityError but user not found: {email}")
+
+    def get_user(self, user_id: str) -> Optional[User]:
+        """Get a user by ID."""
+        with self._get_session() as session:
+            return session.get(User, user_id)
+
+    def get_user_by_google_id(self, google_id: str) -> Optional[User]:
+        """Get a user by their Google ID."""
+        with self._get_session() as session:
+            stmt = select(User).where(User.google_id == google_id)
+            return session.scalar(stmt)
+
+    def get_user_by_email(self, email: str) -> Optional[User]:
+        """Get a user by email address."""
+        with self._get_session() as session:
+            stmt = select(User).where(User.email == email)
+            return session.scalar(stmt)
+
+    def update_user(self, user_id: str, **kwargs) -> Optional[User]:
+        """Update a user's attributes."""
+        with self._get_session() as session:
+            user = session.get(User, user_id)
+            if not user:
+                return None
+
+            for key, value in kwargs.items():
+                if hasattr(user, key):
+                    setattr(user, key, value)
+
+            user.updated_at = datetime.now(UTC)
+            session.commit()
+            session.refresh(user)
+            return user
+
+    # --- Subscription Operations ---
+
+    def subscribe_user_to_podcast(self, user_id: str, podcast_id: str) -> UserSubscription:
+        """Subscribe a user to a podcast."""
+        with self._get_session() as session:
+            # Check if already subscribed
+            existing = session.scalar(
+                select(UserSubscription).where(
+                    UserSubscription.user_id == user_id,
+                    UserSubscription.podcast_id == podcast_id,
+                )
+            )
+            if existing:
+                return existing
+
+            subscription = UserSubscription(
+                user_id=user_id,
+                podcast_id=podcast_id,
+                subscribed_at=datetime.now(UTC),
+            )
+            session.add(subscription)
+            session.commit()
+            session.refresh(subscription)
+            logger.info(f"User {user_id} subscribed to podcast {podcast_id}")
+            return subscription
+
+    def unsubscribe_user_from_podcast(self, user_id: str, podcast_id: str) -> bool:
+        """Unsubscribe a user from a podcast."""
+        with self._get_session() as session:
+            subscription = session.scalar(
+                select(UserSubscription).where(
+                    UserSubscription.user_id == user_id,
+                    UserSubscription.podcast_id == podcast_id,
+                )
+            )
+            if not subscription:
+                return False
+
+            session.delete(subscription)
+            session.commit()
+            logger.info(f"User {user_id} unsubscribed from podcast {podcast_id}")
+            return True
+
+    def get_user_subscriptions(self, user_id: str) -> List[Podcast]:
+        """Get all podcasts a user is subscribed to."""
+        with self._get_session() as session:
+            stmt = (
+                select(Podcast)
+                .join(UserSubscription, Podcast.id == UserSubscription.podcast_id)
+                .where(UserSubscription.user_id == user_id)
+                .order_by(Podcast.title)
+            )
+            return list(session.scalars(stmt).all())
+
+    def is_user_subscribed(self, user_id: str, podcast_id: str) -> bool:
+        """Check if a user is subscribed to a podcast."""
+        with self._get_session() as session:
+            subscription = session.scalar(
+                select(UserSubscription).where(
+                    UserSubscription.user_id == user_id,
+                    UserSubscription.podcast_id == podcast_id,
+                )
+            )
+            return subscription is not None
+
+    def list_podcasts_for_user(
+        self, user_id: str, limit: Optional[int] = None
+    ) -> List[Podcast]:
+        """List podcasts the user is subscribed to."""
+        with self._get_session() as session:
+            stmt = (
+                select(Podcast)
+                .join(UserSubscription, Podcast.id == UserSubscription.podcast_id)
+                .where(UserSubscription.user_id == user_id)
+                .order_by(Podcast.title)
+            )
+            if limit:
+                stmt = stmt.limit(limit)
+            return list(session.scalars(stmt).all())
 
     # --- Connection Management ---
 

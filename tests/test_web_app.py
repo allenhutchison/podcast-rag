@@ -36,15 +36,23 @@ class TestHealthEndpoint:
 class TestChatEndpoint:
     """Tests for the /api/chat endpoint."""
 
+    def test_chat_endpoint_requires_auth(self, client):
+        """Test that chat endpoint requires authentication."""
+        response = client.post(
+            "/api/chat",
+            json={"query": "What is AI?"}
+        )
+        # Without authentication, should return 401
+        assert response.status_code == 401
+
     def test_chat_endpoint_requires_query(self, client):
-        """Test that chat endpoint rejects empty queries."""
+        """Test that chat endpoint rejects empty queries (returns 401 without auth)."""
         response = client.post(
             "/api/chat",
             json={"query": ""}
         )
-        # FastAPI returns 422 for validation errors (empty string fails .strip())
-        # But our custom validation in the endpoint returns 400
-        assert response.status_code in [400, 422]
+        # Without authentication, should return 401 before validation
+        assert response.status_code == 401
 
     @pytest.mark.skip(reason="Rate limiting causes test instability - test manually")
     def test_chat_endpoint_rejects_whitespace_query(self, client):
@@ -53,7 +61,7 @@ class TestChatEndpoint:
             "/api/chat",
             json={"query": "   "}
         )
-        assert response.status_code in [400, 422]
+        assert response.status_code in [400, 401, 422]
 
     @pytest.mark.skip(reason="Requires ADK components - test manually with live service")
     def test_chat_endpoint_streams_response(self, client):
@@ -81,13 +89,13 @@ class TestChatEndpoint:
         assert response.status_code == 200
 
     def test_chat_endpoint_validates_request_format(self, client):
-        """Test that chat endpoint validates request format."""
-        # Missing query field
+        """Test that chat endpoint validates request format (returns 401 without auth)."""
+        # Missing query field - but auth is checked first
         response = client.post(
             "/api/chat",
             json={}
         )
-        assert response.status_code == 422  # Validation error
+        assert response.status_code == 401  # Auth checked before validation
 
 
 class TestStaticFiles:

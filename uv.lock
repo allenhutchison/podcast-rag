@@ -686,6 +686,18 @@ wheels = [
 ]
 
 [[package]]
+name = "ecdsa"
+version = "0.19.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c0/1f/924e3caae75f471eae4b26bd13b698f6af2c44279f67af317439c2f4c46a/ecdsa-0.19.1.tar.gz", hash = "sha256:478cba7b62555866fcb3bb3fe985e06decbdb68ef55713c4e5ab98c57d508e61", size = 201793 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cb/a3/460c57f094a4a165c84a1341c373b0a4f5ec6ac244b998d5021aade89b77/ecdsa-0.19.1-py2.py3-none-any.whl", hash = "sha256:30638e27cf77b7e15c4c4cc1973720149e1033827cfd00661ca5c8cc0cdb24c3", size = 150607 },
+]
+
+[[package]]
 name = "eyed3"
 version = "0.9.9"
 source = { registry = "https://pypi.org/simple" }
@@ -1692,6 +1704,15 @@ wheels = [
 ]
 
 [[package]]
+name = "itsdangerous"
+version = "2.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/9c/cb/8ac0172223afbccb63986cc25049b154ecfb5e85932587206f42317be31d/itsdangerous-2.2.0.tar.gz", hash = "sha256:e0050c0b7da1eea53ffaf149c0cfbb5c6e2e2b69c4bef22c81fa6eb73e5f6173", size = 54410 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/04/96/92447566d16df59b2a776c0fb82dbc4d9e07cd95062562af01e408583fc4/itsdangerous-2.2.0-py3-none-any.whl", hash = "sha256:c6242fc49e35958c8b15141343aa660db5fc54d4f13a1db01a3f5891b98700ef", size = 16234 },
+]
+
+[[package]]
 name = "jinja2"
 version = "3.1.6"
 source = { registry = "https://pypi.org/simple" }
@@ -2491,13 +2512,16 @@ dependencies = [
 [package.optional-dependencies]
 all = [
     { name = "apscheduler" },
+    { name = "authlib" },
     { name = "eyed3" },
     { name = "fastapi" },
     { name = "faster-whisper" },
     { name = "google-adk" },
+    { name = "itsdangerous" },
     { name = "mcp" },
     { name = "nvidia-cublas-cu12" },
     { name = "nvidia-cudnn-cu12" },
+    { name = "python-jose", extra = ["cryptography"] },
     { name = "slowapi" },
     { name = "sse-starlette" },
     { name = "tiktoken" },
@@ -2522,8 +2546,11 @@ encoding = [
     { name = "tqdm" },
 ]
 web = [
+    { name = "authlib" },
     { name = "fastapi" },
     { name = "google-adk" },
+    { name = "itsdangerous" },
+    { name = "python-jose", extra = ["cryptography"] },
     { name = "slowapi" },
     { name = "sse-starlette" },
     { name = "tiktoken" },
@@ -2535,6 +2562,7 @@ requires-dist = [
     { name = "aiohttp", specifier = ">=3.9.0" },
     { name = "alembic", specifier = ">=1.13.0" },
     { name = "apscheduler", marker = "extra == 'encoding'", specifier = ">=3.10.0" },
+    { name = "authlib", marker = "extra == 'web'", specifier = ">=1.3.0" },
     { name = "eyed3", marker = "extra == 'encoding'", specifier = ">=0.9.0" },
     { name = "fastapi", marker = "extra == 'web'", specifier = ">=0.115.0" },
     { name = "faster-whisper", marker = "extra == 'benchmark'", specifier = ">=1.0.0" },
@@ -2542,6 +2570,7 @@ requires-dist = [
     { name = "feedparser", specifier = ">=6.0.0" },
     { name = "google-adk", marker = "extra == 'web'", specifier = ">=1.19.0" },
     { name = "google-genai", specifier = ">=0.2.0" },
+    { name = "itsdangerous", marker = "extra == 'web'", specifier = ">=2.1.0" },
     { name = "mcp", marker = "extra == 'encoding'", specifier = ">=1.0.0" },
     { name = "nvidia-cublas-cu12", marker = "extra == 'encoding'" },
     { name = "nvidia-cudnn-cu12", marker = "extra == 'encoding'" },
@@ -2551,6 +2580,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.1" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "python-jose", extras = ["cryptography"], marker = "extra == 'web'", specifier = ">=3.5.0" },
     { name = "requests", specifier = ">=2.31.0" },
     { name = "slowapi", marker = "extra == 'web'", specifier = ">=0.1.9" },
     { name = "sqlalchemy", specifier = ">=2.0.0" },
@@ -2975,6 +3005,25 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f0/26/19cadc79a718c5edbec86fd4919a6b6d3f681039a2f6d66d14be94e75fb9/python_dotenv-1.2.1.tar.gz", hash = "sha256:42667e897e16ab0d66954af0e60a9caa94f0fd4ecf3aaf6d2d260eec1aa36ad6", size = 44221 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/14/1b/a298b06749107c305e1fe0f814c6c74aea7b2f1e10989cb30f544a1b3253/python_dotenv-1.2.1-py3-none-any.whl", hash = "sha256:b81ee9561e9ca4004139c6cbba3a238c32b03e4894671e181b671e8cb8425d61", size = 21230 },
+]
+
+[[package]]
+name = "python-jose"
+version = "3.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "ecdsa" },
+    { name = "pyasn1" },
+    { name = "rsa" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c6/77/3a1c9039db7124eb039772b935f2244fbb73fc8ee65b9acf2375da1c07bf/python_jose-3.5.0.tar.gz", hash = "sha256:fb4eaa44dbeb1c26dcc69e4bd7ec54a1cb8dd64d3b4d81ef08d90ff453f2b01b", size = 92726 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d9/c3/0bd11992072e6a1c513b16500a5d07f91a24017c5909b02c72c62d7ad024/python_jose-3.5.0-py2.py3-none-any.whl", hash = "sha256:abd1202f23d34dfad2c3d28cb8617b90acf34132c7afd60abd0b0b7d3cb55771", size = 34624 },
+]
+
+[package.optional-dependencies]
+cryptography = [
+    { name = "cryptography" },
 ]
 
 [[package]]

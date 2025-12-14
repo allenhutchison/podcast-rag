@@ -232,8 +232,96 @@ class Episode(Base):
     def can_cleanup_audio(self) -> bool:
         """
         Indicates whether the episode's downloaded audio file is eligible for deletion.
-        
+
         Returns:
             bool: `True` if the episode is fully processed and a local audio file path exists, `False` otherwise.
         """
         return self.is_fully_processed and self.local_file_path is not None
+
+
+class User(Base):
+    """User model for Google OAuth authenticated users.
+
+    Stores user identity from Google OAuth and account management data.
+    Users can subscribe to podcasts from the shared podcast database.
+    """
+
+    __tablename__ = "users"
+
+    # Primary key
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+
+    # Google OAuth identifiers
+    google_id: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    email: Mapped[str] = mapped_column(String(256), unique=True, nullable=False)
+
+    # Profile information (from Google)
+    name: Mapped[Optional[str]] = mapped_column(String(256))
+    picture_url: Mapped[Optional[str]] = mapped_column(String(2048))
+
+    # Account status
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+    last_login: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+    # Relationships
+    subscriptions: Mapped[List["UserSubscription"]] = relationship(
+        "UserSubscription", back_populates="user", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index("ix_users_google_id", "google_id"),
+        Index("ix_users_email", "email"),
+    )
+
+    def __repr__(self) -> str:
+        """Return a concise representation of the User instance."""
+        return f"<User(id={self.id}, email={self.email!r})>"
+
+
+class UserSubscription(Base):
+    """Per-user podcast subscription.
+
+    Links users to podcasts they have subscribed to. The underlying podcast
+    data is shared across all users - this table only tracks which users
+    have subscribed to which podcasts.
+    """
+
+    __tablename__ = "user_subscriptions"
+
+    # Primary key
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+
+    # Foreign keys
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    podcast_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("podcasts.id", ondelete="CASCADE"), nullable=False
+    )
+
+    # Timestamps
+    subscribed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="subscriptions")
+    podcast: Mapped["Podcast"] = relationship("Podcast")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "podcast_id", name="uq_user_podcast_subscription"),
+        Index("ix_user_subscriptions_user_id", "user_id"),
+        Index("ix_user_subscriptions_podcast_id", "podcast_id"),
+    )
+
+    def __repr__(self) -> str:
+        """Return a concise representation of the UserSubscription instance."""
+        return f"<UserSubscription(user_id={self.user_id}, podcast_id={self.podcast_id})>"

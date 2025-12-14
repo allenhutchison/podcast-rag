@@ -58,12 +58,15 @@
                 <a href="/podcasts.html" class="text-primary hover:underline text-sm">&larr; Back to Podcasts</a>
                 <h1 id="pageTitle" class="text-2xl font-bold text-gray-900 mt-1">Search Results</h1>
             </div>
-            <a
-                href="/"
-                class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm"
-            >
-                Chat
-            </a>
+            <div class="flex items-center gap-4">
+                <a
+                    href="/"
+                    class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm"
+                >
+                    Chat
+                </a>
+                <div id="userInfo" class="border-l pl-4 border-gray-200"></div>
+            </div>
         </div>
     </header>
 
@@ -126,6 +129,7 @@
         </div>
     </footer>
 
+    <script src="/auth.js"></script>
     <script>
         const pageTitle = document.getElementById('pageTitle');
         const searchInfo = document.getElementById('searchInfo');
@@ -254,8 +258,14 @@
             errorState.classList.add('hidden');
 
             try {
-                const response = await fetch(`/api/search?type=${encodeURIComponent(type)}&q=${encodeURIComponent(query)}`);
+                const response = await fetch(`/api/search?type=${encodeURIComponent(type)}&q=${encodeURIComponent(query)}`, {
+                    credentials: 'include'
+                });
                 if (!response.ok) {
+                    if (response.status === 401) {
+                        window.location.href = '/login.html';
+                        return;
+                    }
                     const errorData = await response.json().catch(() => ({}));
                     throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
                 }
@@ -301,8 +311,13 @@
             resultsStats.textContent = '';
         }
 
-        // Perform search on page load
-        performSearch();
+        // Check auth and perform search on page load
+        document.addEventListener('DOMContentLoaded', async () => {
+            const user = await requireAuth();
+            if (!user) return;
+            updateUserUI(user);
+            performSearch();
+        });
     </script>
 </body>
 </html>

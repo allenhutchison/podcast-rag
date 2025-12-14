@@ -55,6 +55,10 @@ web = [
     "tiktoken>=0.5.0",
     "slowapi>=0.1.9",
     "google-adk>=1.19.0",
+    # Authentication
+    "authlib>=1.3.0",
+    "python-jose[cryptography]>=3.5.0",
+    "itsdangerous>=2.1.0",
 ]
 # Development dependencies
 dev = [
