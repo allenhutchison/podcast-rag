@@ -41,7 +41,7 @@ async def get_admin_stats(
 
     # Add user stats
     user_count = repository.get_user_count()
-    admin_count = len(repository.list_users(is_admin=True))
+    admin_count = repository.get_user_count(is_admin=True)
 
     return {
         "workflow": workflow_stats,

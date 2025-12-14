@@ -191,8 +191,12 @@ async def get_current_admin(
     if not user_data:
         raise HTTPException(status_code=401, detail="Invalid or expired session")
 
-    # Check admin status from database (more secure than trusting JWT)
+    # Validate user_id from token before DB lookup
     user_id = user_data.get("sub")
+    if not user_id or not isinstance(user_id, str):
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
+    # Check admin status from database (more secure than trusting JWT)
     user = repository.get_user(user_id)
 
     if not user or not user.is_admin:
