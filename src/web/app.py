@@ -11,19 +11,23 @@ import logging
 import os
 import re
 import uuid
+from contextlib import asynccontextmanager
 from typing import AsyncGenerator, List, Optional
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from starlette.middleware.sessions import SessionMiddleware
 
 from src.agents import create_orchestrator, get_podcast_citations, clear_podcast_citations, set_podcast_filter
 from src.config import Config
 from src.db.factory import create_repository
+from src.web.auth import get_current_user
+from src.web.auth_routes import router as auth_router
 from src.web.models import ChatRequest
 
 # Configure logging
@@ -36,8 +40,51 @@ logger = logging.getLogger(__name__)
 # Initialize configuration
 config = Config()
 
+
+def _validate_jwt_config():
+    """
+    Validate JWT configuration at startup.
+
+    In DEV_MODE, allows running without JWT_SECRET_KEY by using an insecure key.
+    In production, requires JWT_SECRET_KEY to be set.
+
+    Must be called before any middleware that uses JWT_SECRET_KEY is configured.
+    """
+    is_dev_mode = os.getenv("DEV_MODE", "").lower() == "true"
+    if not config.JWT_SECRET_KEY:
+        if is_dev_mode:
+            logger.warning(
+                "JWT_SECRET_KEY not set - using insecure dev key. "
+                "DO NOT use in production!"
+            )
+            config.JWT_SECRET_KEY = "dev-secret-key-insecure-do-not-use-in-prod"
+        else:
+            raise RuntimeError(
+                "JWT_SECRET_KEY environment variable must be set. "
+                "Set DEV_MODE=true to use an insecure dev key for local testing."
+            )
+
+
+# Validate JWT config before any middleware uses it
+_validate_jwt_config()
+
 # Initialize repository for database access
 _repository = create_repository(config.DATABASE_URL)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """
+    FastAPI lifespan context manager.
+
+    Handles startup logging and cleanup.
+    """
+    logger.info("Application started")
+
+    yield
+
+    # Shutdown: cleanup if needed
+    logger.info("Application shutdown")
 
 # Initialize rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -46,12 +93,25 @@ limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(
     title="Podcast RAG Chat",
     description="Chat interface for querying podcast transcripts with web search",
-    version="2.0.0"
+    version="2.0.0",
+    lifespan=lifespan
 )
 
 # Add rate limiter to app state
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Session middleware (required by Authlib for OAuth state)
+# Must be added before CORS middleware
+# JWT_SECRET_KEY is validated at startup, so it's always set
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=config.JWT_SECRET_KEY,
+    session_cookie="oauth_session",
+    max_age=3600,  # 1 hour for OAuth flow
+    https_only=config.COOKIE_SECURE,
+    same_site="lax"
+)
 
 # CORS middleware (configurable via environment variable)
 allowed_origins = config.WEB_ALLOWED_ORIGINS.split(",") if config.WEB_ALLOWED_ORIGINS != "*" else ["*"]
@@ -62,6 +122,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Store config and repository in app state for access in routes
+app.state.config = config
+app.state.repository = _repository
+
+# Include auth routes
+app.include_router(auth_router)
 
 # Session service (shared across all sessions)
 _session_service = None
@@ -557,15 +624,21 @@ async def generate_streaming_response(
 
 @app.post("/api/chat")
 @limiter.limit(config.WEB_RATE_LIMIT)
-async def chat(request: Request, chat_request: ChatRequest):
+async def chat(
+    request: Request,
+    chat_request: ChatRequest,
+    current_user: dict = Depends(get_current_user)
+):
     """
     Chat endpoint with Server-Sent Events streaming.
 
     Uses ADK multi-agent architecture for parallel podcast and web search.
+    Requires authentication.
 
     Args:
         request: FastAPI Request object (for rate limiting)
         chat_request: ChatRequest with query and optional conversation history
+        current_user: Authenticated user from JWT cookie
 
     Returns:
         StreamingResponse with SSE formatted tokens and citations
@@ -601,17 +674,22 @@ async def health():
 
 
 @app.get("/api/podcasts")
-async def list_podcasts(include_stats: bool = False):
+async def list_podcasts(
+    include_stats: bool = False,
+    current_user: dict = Depends(get_current_user)
+):
     """
-    Get list of subscribed podcasts for filtering.
+    Get list of podcasts the current user is subscribed to.
 
     Args:
         include_stats: If True, include image_url, author, and episode counts
+        current_user: Authenticated user from JWT cookie
 
     Returns:
         List of podcasts with id, title, and optionally more metadata
     """
-    podcasts = _repository.list_podcasts(subscribed_only=True)
+    user_id = current_user["sub"]
+    podcasts = _repository.get_user_subscriptions(user_id)
 
     if not include_stats:
         # Simple response for filter dropdown
@@ -637,17 +715,174 @@ async def list_podcasts(include_stats: bool = False):
     return {"podcasts": podcast_list}
 
 
+@app.get("/api/podcasts/all")
+async def list_all_podcasts(
+    include_stats: bool = False,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get list of all podcasts in the system with subscription status.
+
+    Args:
+        include_stats: If True, include image_url, author, and episode counts
+        current_user: Authenticated user from JWT cookie
+
+    Returns:
+        List of all podcasts with subscription status for current user
+    """
+    user_id = current_user["sub"]
+    all_podcasts = _repository.list_podcasts(subscribed_only=False)
+
+    podcast_list = []
+    for p in all_podcasts:
+        is_subscribed = _repository.is_user_subscribed(user_id, p.id)
+        podcast_data = {
+            "id": p.id,
+            "title": p.title,
+            "is_subscribed": is_subscribed
+        }
+
+        if include_stats:
+            stats = _repository.get_podcast_stats(p.id)
+            podcast_data.update({
+                "author": p.itunes_author or p.author,
+                "image_url": p.image_url,
+                "episode_count": stats.get("total_episodes", 0)
+            })
+
+        podcast_list.append(podcast_data)
+
+    return {"podcasts": podcast_list}
+
+
+def _validate_podcast_id(podcast_id: str) -> str:
+    """
+    Validate that podcast_id is a valid UUID format.
+
+    Args:
+        podcast_id: The podcast ID string to validate
+
+    Returns:
+        The validated podcast_id string
+
+    Raises:
+        HTTPException: 422 if podcast_id is not a valid UUID
+    """
+    try:
+        # Validate UUID format
+        uuid.UUID(podcast_id)
+        return podcast_id
+    except (ValueError, AttributeError):
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid podcast_id: must be a valid UUID"
+        )
+
+
+@app.post("/api/podcasts/{podcast_id}/subscribe")
+async def subscribe_to_podcast(
+    podcast_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Subscribe current user to a podcast.
+
+    Idempotent: returns 200 success even if already subscribed.
+
+    Args:
+        podcast_id: The podcast UUID string
+        current_user: Authenticated user from JWT cookie
+
+    Returns:
+        200 with success message and subscription details
+        404 if podcast not found
+        422 if podcast_id is not a valid UUID
+    """
+    podcast_id = _validate_podcast_id(podcast_id)
+    user_id = current_user["sub"]
+
+    # Verify podcast exists
+    podcast = _repository.get_podcast(podcast_id)
+    if not podcast:
+        raise HTTPException(status_code=404, detail="Podcast not found")
+
+    # Check if already subscribed (idempotent - return success)
+    if _repository.is_user_subscribed(user_id, podcast_id):
+        return {
+            "message": "Already subscribed",
+            "podcast_id": podcast_id,
+            "podcast_title": podcast.title,
+            "already_subscribed": True
+        }
+
+    # Create subscription
+    subscription = _repository.subscribe_user_to_podcast(user_id, podcast_id)
+    if not subscription:
+        raise HTTPException(status_code=500, detail="Failed to create subscription")
+
+    return {
+        "message": "Subscribed successfully",
+        "podcast_id": podcast_id,
+        "podcast_title": podcast.title,
+        "already_subscribed": False
+    }
+
+
+@app.delete("/api/podcasts/{podcast_id}/subscribe")
+async def unsubscribe_from_podcast(
+    podcast_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Unsubscribe current user from a podcast.
+
+    Idempotent: returns 200 success even if not currently subscribed.
+
+    Args:
+        podcast_id: The podcast UUID string
+        current_user: Authenticated user from JWT cookie
+
+    Returns:
+        200 with success message
+        404 if podcast not found
+        422 if podcast_id is not a valid UUID
+    """
+    podcast_id = _validate_podcast_id(podcast_id)
+    user_id = current_user["sub"]
+
+    # Verify podcast exists
+    podcast = _repository.get_podcast(podcast_id)
+    if not podcast:
+        raise HTTPException(status_code=404, detail="Podcast not found")
+
+    # Remove subscription (idempotent - return success even if not subscribed)
+    was_subscribed = _repository.unsubscribe_user_from_podcast(user_id, podcast_id)
+
+    return {
+        "message": "Unsubscribed successfully" if was_subscribed else "Not subscribed",
+        "podcast_id": podcast_id,
+        "was_subscribed": was_subscribed
+    }
+
+
 @app.get("/api/podcasts/{podcast_id}")
-async def get_podcast_detail(podcast_id: str):
+async def get_podcast_detail(
+    podcast_id: str,
+    current_user: dict = Depends(get_current_user)
+):
     """
     Get podcast details with list of episodes.
 
     Args:
-        podcast_id: The podcast ID
+        podcast_id: The podcast UUID string
+        current_user: Authenticated user from JWT cookie
 
     Returns:
         Podcast details with episodes sorted by release date (newest first)
+        404 if podcast not found
+        422 if podcast_id is not a valid UUID
     """
+    podcast_id = _validate_podcast_id(podcast_id)
     podcast = _repository.get_podcast(podcast_id)
     if not podcast:
         raise HTTPException(status_code=404, detail="Podcast not found")
@@ -680,12 +915,16 @@ async def get_podcast_detail(podcast_id: str):
 
 
 @app.get("/api/episodes/{episode_id}")
-async def get_episode_detail(episode_id: str):
+async def get_episode_detail(
+    episode_id: str,
+    current_user: dict = Depends(get_current_user)
+):
     """
     Get full episode details.
 
     Args:
         episode_id: The episode UUID
+        current_user: Authenticated user from JWT cookie
 
     Returns:
         Episode details including summary, metadata, and audio URL
@@ -722,13 +961,18 @@ async def get_episode_detail(episode_id: str):
 
 
 @app.get("/api/search")
-async def search_episodes(type: str, q: str):
+async def search_episodes(
+    type: str,
+    q: str,
+    current_user: dict = Depends(get_current_user)
+):
     """
     Search for episodes by keyword or person (host/guest).
 
     Args:
         type: Search type - 'keyword' or 'person'
         q: Search query string
+        current_user: Authenticated user from JWT cookie
 
     Returns:
         Matching episodes with podcast info

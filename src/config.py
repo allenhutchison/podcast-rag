@@ -59,6 +59,20 @@ class Config:
         self.WEB_RATE_LIMIT = os.getenv("RATE_LIMIT", "10/minute")
         self.WEB_PORT = int(os.getenv("PORT", "8080"))
 
+        # Google OAuth configuration
+        self.GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+        self.GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+        self.GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "")
+
+        # JWT configuration
+        self.JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "")
+        self.JWT_ALGORITHM = "HS256"
+        self.JWT_EXPIRATION_DAYS = int(os.getenv("JWT_EXPIRATION_DAYS", "7"))
+
+        # Cookie configuration
+        self.COOKIE_DOMAIN = os.getenv("COOKIE_DOMAIN", None) or None  # None = current domain
+        self.COOKIE_SECURE = os.getenv("COOKIE_SECURE", "true").lower() == "true"
+
         # ADK (Agent Development Kit) configuration
         self.ADK_PARALLEL_TIMEOUT = int(os.getenv("ADK_PARALLEL_TIMEOUT", "30"))
 

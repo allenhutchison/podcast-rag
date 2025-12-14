@@ -19,8 +19,14 @@ let abortController = null; // For request cancellation
  */
 async function loadPodcasts() {
     try {
-        const response = await fetch('/api/podcasts');
+        const response = await fetch('/api/podcasts', {
+            credentials: 'include'
+        });
         if (!response.ok) {
+            if (response.status === 401) {
+                window.location.href = '/login.html';
+                return;
+            }
             console.error('Failed to load podcasts');
             return;
         }
@@ -380,6 +386,7 @@ chatForm.addEventListener('submit', async (e) => {
             headers: {
                 'Content-Type': 'application/json',
             },
+            credentials: 'include',
             body: JSON.stringify(requestBody),
             signal: abortController.signal
         });

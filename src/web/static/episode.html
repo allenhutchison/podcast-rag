@@ -122,13 +122,16 @@
                 <a id="backLink" href="/podcasts.html" class="text-primary hover:underline text-sm">&larr; Back to Podcast</a>
                 <h1 id="pageTitle" class="text-2xl font-bold text-gray-900 mt-1 line-clamp-1">Loading...</h1>
             </div>
-            <button
-                id="openChatBtn"
-                onclick="openChatDrawer()"
-                class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm"
-            >
-                Ask about this episode
-            </button>
+            <div class="flex items-center gap-4">
+                <button
+                    id="openChatBtn"
+                    onclick="openChatDrawer()"
+                    class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm"
+                >
+                    Ask about this episode
+                </button>
+                <div id="userInfo" class="border-l pl-4 border-gray-200"></div>
+            </div>
         </div>
     </header>
 
@@ -215,6 +218,8 @@
             Powered by Gemini &amp; ADK Multi-Agent Search
         </div>
     </footer>
+
+    <script src="/auth.js"></script>
 
     <!-- Chat Drawer Backdrop -->
     <div id="drawerBackdrop" class="drawer-backdrop" onclick="closeChatDrawer()"></div>
@@ -376,8 +381,14 @@
             errorState.classList.add('hidden');
 
             try {
-                const response = await fetch(`/api/episodes/${encodeURIComponent(episodeId)}`);
+                const response = await fetch(`/api/episodes/${encodeURIComponent(episodeId)}`, {
+                    credentials: 'include'
+                });
                 if (!response.ok) {
+                    if (response.status === 401) {
+                        window.location.href = '/login.html';
+                        return;
+                    }
                     if (response.status === 404) {
                         throw new Error('Episode not found');
                     }
@@ -586,6 +597,7 @@
                 const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
                     body: JSON.stringify({
                         query: query,
                         episode_id: episodeId
@@ -731,8 +743,13 @@
             }
         });
 
-        // Load episode on page load
-        loadEpisode();
+        // Check auth and load episode on page load
+        document.addEventListener('DOMContentLoaded', async () => {
+            const user = await requireAuth();
+            if (!user) return;
+            updateUserUI(user);
+            loadEpisode();
+        });
     </script>
 </body>
 </html>

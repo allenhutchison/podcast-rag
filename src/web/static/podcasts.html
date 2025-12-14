@@ -58,20 +58,41 @@
                 <h1 class="text-2xl font-bold text-gray-900">Podcasts</h1>
                 <p class="text-sm text-gray-600 mt-1">Browse your podcast library</p>
             </div>
-            <a
-                href="/"
-                class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm"
-            >
-                Back to Chat
-            </a>
+            <div class="flex items-center gap-4">
+                <a
+                    href="/"
+                    class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm"
+                >
+                    Back to Chat
+                </a>
+                <div id="userInfo" class="border-l pl-4 border-gray-200"></div>
+            </div>
         </div>
     </header>
 
     <!-- Main Content -->
     <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-8">
-        <!-- Stats -->
-        <div id="statsBar" class="mb-6 text-sm text-gray-600">
-            Loading podcasts...
+        <!-- View Toggle -->
+        <div class="flex items-center justify-between mb-6">
+            <div id="statsBar" class="text-sm text-gray-600">
+                Loading podcasts...
+            </div>
+            <div class="flex rounded-lg overflow-hidden border border-gray-300">
+                <button
+                    id="myPodcastsBtn"
+                    onclick="switchView('subscribed')"
+                    class="px-4 py-2 text-sm font-medium bg-primary text-white"
+                >
+                    My Podcasts
+                </button>
+                <button
+                    id="browseAllBtn"
+                    onclick="switchView('all')"
+                    class="px-4 py-2 text-sm font-medium bg-white text-gray-700 hover:bg-gray-50"
+                >
+                    Browse All
+                </button>
+            </div>
         </div>
 
         <!-- Podcast Grid -->
@@ -113,12 +134,17 @@
         </div>
     </footer>
 
+    <script src="/auth.js"></script>
     <script>
         const podcastGrid = document.getElementById('podcastGrid');
         const statsBar = document.getElementById('statsBar');
         const emptyState = document.getElementById('emptyState');
         const errorState = document.getElementById('errorState');
         const errorMessage = document.getElementById('errorMessage');
+        const myPodcastsBtn = document.getElementById('myPodcastsBtn');
+        const browseAllBtn = document.getElementById('browseAllBtn');
+
+        let currentView = 'subscribed'; // 'subscribed' or 'all'
 
         /**
          * Escape HTML to prevent XSS
@@ -130,24 +156,97 @@
         }
 
         /**
+         * Switch between My Podcasts and Browse All views
+         */
+        function switchView(view) {
+            currentView = view;
+
+            // Update button styles
+            if (view === 'subscribed') {
+                myPodcastsBtn.className = 'px-4 py-2 text-sm font-medium bg-primary text-white';
+                browseAllBtn.className = 'px-4 py-2 text-sm font-medium bg-white text-gray-700 hover:bg-gray-50';
+            } else {
+                myPodcastsBtn.className = 'px-4 py-2 text-sm font-medium bg-white text-gray-700 hover:bg-gray-50';
+                browseAllBtn.className = 'px-4 py-2 text-sm font-medium bg-primary text-white';
+            }
+
+            loadPodcasts();
+        }
+
+        /**
+         * Toggle subscription for a podcast
+         */
+        async function toggleSubscription(podcastId, isCurrentlySubscribed, event) {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const button = event.target.closest('button');
+            const originalText = button.textContent;
+            button.disabled = true;
+            button.textContent = '...';
+
+            try {
+                const method = isCurrentlySubscribed ? 'DELETE' : 'POST';
+                const response = await fetch(`/api/podcasts/${encodeURIComponent(podcastId)}/subscribe`, {
+                    method: method,
+                    credentials: 'include'
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                // Reload the current view
+                await loadPodcasts();
+
+            } catch (error) {
+                console.error('Error toggling subscription:', error);
+                button.disabled = false;
+                button.textContent = originalText;
+                alert('Failed to update subscription. Please try again.');
+            }
+        }
+
+        /**
          * Create a podcast card element
          */
-        function createPodcastCard(podcast) {
-            const card = document.createElement('a');
-            card.href = `/podcast.html?id=${encodeURIComponent(podcast.id)}`;
-            card.className = 'podcast-card bg-white rounded-lg shadow-md overflow-hidden cursor-pointer block';
-            card.title = podcast.title;
+        function createPodcastCard(podcast, showSubscribeButton = false) {
+            const card = document.createElement('div');
+            card.className = 'podcast-card bg-white rounded-lg shadow-md overflow-hidden';
 
             const imageHtml = podcast.image_url
                 ? `<img src="${escapeHtml(podcast.image_url)}" alt="${escapeHtml(podcast.title)}" class="w-full aspect-square object-cover" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentElement.innerHTML='<div class=\\'placeholder-image w-full aspect-square flex items-center justify-center\\'><span class=\\'text-4xl\\'>🎙️</span></div>'">`
                 : `<div class="placeholder-image w-full aspect-square flex items-center justify-center"><span class="text-4xl">🎙️</span></div>`;
 
+            // Subscribe/Unsubscribe button for Browse All view
+            let subscribeButtonHtml = '';
+            if (showSubscribeButton) {
+                const isSubscribed = podcast.is_subscribed;
+                const buttonClass = isSubscribed
+                    ? 'w-full mt-2 px-3 py-1.5 text-xs font-medium bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition-colors'
+                    : 'w-full mt-2 px-3 py-1.5 text-xs font-medium bg-primary text-white rounded hover:bg-blue-700 transition-colors';
+                const buttonText = isSubscribed ? 'Unsubscribe' : 'Subscribe';
+                subscribeButtonHtml = `
+                    <button
+                        onclick="toggleSubscription('${escapeHtml(podcast.id)}', ${isSubscribed}, event)"
+                        class="${buttonClass}"
+                    >
+                        ${buttonText}
+                    </button>
+                `;
+            }
+
             card.innerHTML = `
-                ${imageHtml}
+                <a href="/podcast.html?id=${encodeURIComponent(podcast.id)}" class="block" title="${escapeHtml(podcast.title)}">
+                    ${imageHtml}
+                </a>
                 <div class="p-3">
-                    <h3 class="font-semibold text-sm text-gray-900 line-clamp-2">${escapeHtml(podcast.title)}</h3>
+                    <a href="/podcast.html?id=${encodeURIComponent(podcast.id)}" class="block">
+                        <h3 class="font-semibold text-sm text-gray-900 line-clamp-2 hover:text-primary">${escapeHtml(podcast.title)}</h3>
+                    </a>
                     ${podcast.author ? `<p class="text-xs text-gray-500 mt-1 truncate">${escapeHtml(podcast.author)}</p>` : ''}
                     ${podcast.episode_count !== undefined ? `<p class="text-xs text-gray-400 mt-1">${podcast.episode_count} episodes</p>` : ''}
+                    ${subscribeButtonHtml}
                 </div>
             `;
 
@@ -163,9 +262,20 @@
             emptyState.classList.add('hidden');
             errorState.classList.add('hidden');
 
+            // Determine endpoint based on view
+            const endpoint = currentView === 'all'
+                ? '/api/podcasts/all?include_stats=true'
+                : '/api/podcasts?include_stats=true';
+
             try {
-                const response = await fetch('/api/podcasts?include_stats=true');
+                const response = await fetch(endpoint, {
+                    credentials: 'include'
+                });
                 if (!response.ok) {
+                    if (response.status === 401) {
+                        window.location.href = '/login.html';
+                        return;
+                    }
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
 
@@ -178,17 +288,29 @@
                 if (podcasts.length === 0) {
                     podcastGrid.classList.add('hidden');
                     emptyState.classList.remove('hidden');
-                    statsBar.textContent = 'No podcasts in library';
+                    if (currentView === 'subscribed') {
+                        statsBar.textContent = 'No subscribed podcasts';
+                        document.querySelector('#emptyState p').textContent = 'Browse all podcasts to find ones to subscribe to.';
+                    } else {
+                        statsBar.textContent = 'No podcasts available';
+                        document.querySelector('#emptyState p').textContent = 'No podcasts have been added to the system yet.';
+                    }
                     return;
                 }
 
                 // Update stats
-                const totalEpisodes = podcasts.reduce((sum, p) => sum + (p.episode_count || 0), 0);
-                statsBar.textContent = `${podcasts.length} podcast${podcasts.length !== 1 ? 's' : ''} · ${totalEpisodes} total episodes`;
+                if (currentView === 'subscribed') {
+                    const totalEpisodes = podcasts.reduce((sum, p) => sum + (p.episode_count || 0), 0);
+                    statsBar.textContent = `${podcasts.length} subscribed · ${totalEpisodes} total episodes`;
+                } else {
+                    const subscribedCount = podcasts.filter(p => p.is_subscribed).length;
+                    statsBar.textContent = `${podcasts.length} available · ${subscribedCount} subscribed`;
+                }
 
                 // Render podcast cards
+                const showSubscribeButton = currentView === 'all';
                 podcasts.forEach(podcast => {
-                    podcastGrid.appendChild(createPodcastCard(podcast));
+                    podcastGrid.appendChild(createPodcastCard(podcast, showSubscribeButton));
                 });
 
             } catch (error) {
@@ -200,8 +322,13 @@
             }
         }
 
-        // Load podcasts on page load
-        loadPodcasts();
+        // Check auth and load podcasts on page load
+        document.addEventListener('DOMContentLoaded', async () => {
+            const user = await requireAuth();
+            if (!user) return;
+            updateUserUI(user);
+            loadPodcasts();
+        });
     </script>
 </body>
 </html>
