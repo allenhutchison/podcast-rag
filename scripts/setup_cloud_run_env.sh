@@ -56,6 +56,10 @@ echo ""
 echo "📦 Step 1: Creating/updating secrets in Secret Manager..."
 echo ""
 
+# create_or_update_secret creates or updates a Google Secret Manager secret with the provided value.
+# If a secret with the given name exists, a new version is added; otherwise the secret is created.
+# secret_name is the Secret Manager secret name.
+# secret_value is the value to store; if empty, the function does nothing and leaves existing secrets unchanged.
 create_or_update_secret() {
     local secret_name=$1
     local secret_value=$2
