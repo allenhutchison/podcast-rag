@@ -1950,13 +1950,13 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 - indexed: Episodes with file_search_status == "indexed".
                 - fully_processed: Episodes considered fully processed (all final processing steps complete).
         """
-        from sqlalchemy import func, case
+        from sqlalchemy import case
 
         with self._get_session() as session:
             # Podcast counts (efficient SQL aggregations)
             total_podcasts = session.scalar(select(func.count(Podcast.id))) or 0
             subscribed_podcasts = session.scalar(
-                select(func.count(Podcast.id)).where(Podcast.is_subscribed == True)
+                select(func.count(Podcast.id)).where(Podcast.is_subscribed.is_(True))
             ) or 0
 
             # Episode counts by status (single query with conditional aggregation)
