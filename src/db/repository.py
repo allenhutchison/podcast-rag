@@ -591,10 +591,10 @@ class PodcastRepositoryInterface(ABC):
     def get_podcast_stats(self, podcast_id: str) -> Dict[str, Any]:
         """
         Compute statistics for a single podcast.
-        
+
         Parameters:
             podcast_id (str): The podcast primary key to compute statistics for.
-        
+
         Returns:
             stats (Dict[str, Any]): A dictionary containing per-podcast statistics and counts, typically including:
                 - podcast (dict): A short snapshot of the podcast (e.g., `id`, `title`, `feed_url`, `is_subscribed`).
@@ -604,6 +604,23 @@ class PodcastRepositoryInterface(ABC):
                 - by_metadata_status (dict): Counts keyed by metadata status (e.g., `pending`, `in_progress`, `completed`, `failed`).
                 - by_indexing_status (dict): Counts keyed by file-search/indexing status (e.g., `pending`, `indexed`, `failed`).
                 - ready_for_cleanup (int): Number of episodes eligible for audio file cleanup.
+        """
+        pass
+
+    @abstractmethod
+    def get_podcast_episode_counts(self, podcast_ids: List[str]) -> Dict[str, int]:
+        """
+        Efficiently get episode counts for multiple podcasts in a single query.
+
+        This method is optimized for batch operations and uses a single SQL GROUP BY
+        query instead of N separate queries. Ideal for listing podcasts with stats.
+
+        Parameters:
+            podcast_ids (List[str]): List of podcast IDs to get counts for.
+
+        Returns:
+            Dict[str, int]: Mapping of podcast_id -> episode_count.
+                            Podcasts with 0 episodes will have count = 0.
         """
         pass
 
@@ -1817,9 +1834,9 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
     def get_podcast_stats(self, podcast_id: str) -> Dict[str, Any]:
         """
         Return a snapshot of processing statistics for the specified podcast.
-        
+
         If the podcast ID does not exist, returns an empty dict.
-        
+
         Returns:
             stats (Dict[str, Any]): A dictionary containing:
                 - `podcast_id`: The podcast's ID.
@@ -1868,6 +1885,47 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 ),
                 "fully_processed": sum(1 for e in episodes if e.is_fully_processed),
             }
+
+    def get_podcast_episode_counts(self, podcast_ids: List[str]) -> Dict[str, int]:
+        """
+        Efficiently get episode counts for multiple podcasts in a single query.
+
+        Uses a single SQL GROUP BY query instead of N separate queries, resulting
+        in significantly better performance when fetching counts for many podcasts.
+
+        Parameters:
+            podcast_ids (List[str]): List of podcast IDs to get counts for.
+
+        Returns:
+            Dict[str, int]: Mapping of podcast_id -> episode_count.
+                            Podcasts with 0 episodes will have count = 0.
+        """
+        from sqlalchemy import func
+
+        if not podcast_ids:
+            return {}
+
+        with self._get_session() as session:
+            # Single query with GROUP BY to count episodes per podcast
+            counts = (
+                session.query(
+                    Episode.podcast_id,
+                    func.count(Episode.id).label('episode_count')
+                )
+                .filter(Episode.podcast_id.in_(podcast_ids))
+                .group_by(Episode.podcast_id)
+                .all()
+            )
+
+            # Convert to dict and ensure all requested podcasts are in result (with 0 for missing)
+            count_map = {str(podcast_id): count for podcast_id, count in counts}
+
+            # Fill in 0 for podcasts with no episodes
+            for podcast_id in podcast_ids:
+                if podcast_id not in count_map:
+                    count_map[podcast_id] = 0
+
+            return count_map
 
     def get_overall_stats(self) -> Dict[str, Any]:
         """

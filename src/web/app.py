@@ -709,15 +709,18 @@ async def list_podcasts(
         }
 
     # Extended response with stats for podcasts grid page
+    # Use optimized batch counting instead of N separate queries
+    podcast_ids = [p.id for p in podcasts]
+    episode_counts = _repository.get_podcast_episode_counts(podcast_ids)
+
     podcast_list = []
     for p in podcasts:
-        stats = _repository.get_podcast_stats(p.id)
         podcast_list.append({
             "id": p.id,
             "title": p.title,
             "author": p.itunes_author or p.author,
             "image_url": p.image_url,
-            "episode_count": stats.get("total_episodes", 0)
+            "episode_count": episode_counts.get(p.id, 0)
         })
 
     return {"podcasts": podcast_list}
@@ -741,6 +744,12 @@ async def list_all_podcasts(
     user_id = current_user["sub"]
     all_podcasts = _repository.list_podcasts(subscribed_only=False)
 
+    # Batch get episode counts if needed
+    episode_counts = {}
+    if include_stats:
+        podcast_ids = [p.id for p in all_podcasts]
+        episode_counts = _repository.get_podcast_episode_counts(podcast_ids)
+
     podcast_list = []
     for p in all_podcasts:
         is_subscribed = _repository.is_user_subscribed(user_id, p.id)
@@ -751,11 +760,10 @@ async def list_all_podcasts(
         }
 
         if include_stats:
-            stats = _repository.get_podcast_stats(p.id)
             podcast_data.update({
                 "author": p.itunes_author or p.author,
                 "image_url": p.image_url,
-                "episode_count": stats.get("total_episodes", 0)
+                "episode_count": episode_counts.get(p.id, 0)
             })
 
         podcast_list.append(podcast_data)

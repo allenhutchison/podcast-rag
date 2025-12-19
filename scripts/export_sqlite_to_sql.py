@@ -53,6 +53,22 @@ def export_table_data(cursor, table_name, output_file):
         table_name: Name of table to export
         output_file: File object to write INSERT statements to
     """
+    # Get table schema to identify boolean columns
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    table_info = cursor.fetchall()
+
+    # Find boolean columns (SQLite stores as INTEGER with CHECK constraint or just convention)
+    # Common boolean column names in our schema
+    boolean_columns = {
+        'is_subscribed', 'itunes_explicit', 'is_active', 'is_admin',
+        'email_digest_enabled', 'smtp_use_tls'
+    }
+
+    # JSON/JSONB columns that should not be escaped
+    json_columns = {
+        'ai_keywords', 'ai_hosts', 'ai_guests'
+    }
+
     cursor.execute(f"SELECT * FROM {table_name}")
     rows = cursor.fetchall()
 
@@ -67,7 +83,23 @@ def export_table_data(cursor, table_name, output_file):
     output_file.write(f"-- Inserting {len(rows)} rows into {table_name}\n")
 
     for row in rows:
-        values = [escape_value(val) for val in row]
+        values = []
+        for idx, val in enumerate(row):
+            col_name = columns[idx]
+            # Handle JSON columns - keep as-is, just wrap in single quotes
+            if col_name in json_columns:
+                if val is None:
+                    values.append('NULL')
+                else:
+                    # JSON is already properly formatted, just wrap in quotes
+                    # Use dollar-quoted strings for JSON to avoid escaping issues
+                    values.append(f"$${val}$$")
+            # Convert 0/1 to true/false for known boolean columns
+            elif col_name in boolean_columns and isinstance(val, int) and val in (0, 1):
+                values.append('true' if val == 1 else 'false')
+            else:
+                values.append(escape_value(val))
+
         value_list = ", ".join(values)
         output_file.write(f"INSERT INTO {table_name} ({col_list}) VALUES ({value_list});\n")
 
