@@ -27,7 +27,9 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
     # Remove inline comments and export
     line="${line%%#*}"
-    [[ -n "$line" ]] && export "$line"
+    # Strip leading/trailing whitespace and export VAR=value
+    line="$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+    [[ -n "$line" ]] && eval "export $line"
 done < "$ENV_FILE"
 set +a
 
