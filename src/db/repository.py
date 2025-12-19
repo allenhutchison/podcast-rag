@@ -1930,7 +1930,9 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
     def get_overall_stats(self) -> Dict[str, Any]:
         """
         Return aggregated system-wide counts for podcasts and episodes across processing stages.
-        
+
+        Optimized to use SQL aggregations instead of loading all records into memory.
+
         @returns:
             stats (Dict[str, Any]): Mapping of statistic names to integer counts:
                 - total_podcasts: Total number of podcasts in the repository.
@@ -1948,45 +1950,60 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 - indexed: Episodes with file_search_status == "indexed".
                 - fully_processed: Episodes considered fully processed (all final processing steps complete).
         """
+        from sqlalchemy import case
+
         with self._get_session() as session:
-            podcasts = self.list_podcasts(subscribed_only=False, limit=None)
-            episodes = self.list_episodes(limit=None)
+            # Podcast counts (efficient SQL aggregations)
+            total_podcasts = session.scalar(select(func.count(Podcast.id))) or 0
+            subscribed_podcasts = session.scalar(
+                select(func.count(Podcast.id)).where(Podcast.is_subscribed.is_(True))
+            ) or 0
+
+            # Episode counts by status (single query with conditional aggregation)
+            episode_stats = session.execute(
+                select(
+                    func.count(Episode.id).label('total_episodes'),
+                    # Download status counts
+                    func.count(case((Episode.download_status == 'pending', 1))).label('pending_download'),
+                    func.count(case((Episode.download_status == 'downloading', 1))).label('downloading'),
+                    func.count(case((Episode.download_status == 'completed', 1))).label('downloaded'),
+                    func.count(case((Episode.download_status == 'failed', 1))).label('download_failed'),
+                    # Transcript status counts
+                    func.count(case((Episode.transcript_status == 'pending', 1))).label('pending_transcription'),
+                    func.count(case((Episode.transcript_status == 'processing', 1))).label('transcribing'),
+                    func.count(case((Episode.transcript_status == 'completed', 1))).label('transcribed'),
+                    func.count(case((Episode.transcript_status == 'failed', 1))).label('transcript_failed'),
+                    # File search status counts
+                    func.count(case((Episode.file_search_status == 'pending', 1))).label('pending_indexing'),
+                    func.count(case((Episode.file_search_status == 'indexed', 1))).label('indexed'),
+                )
+            ).one()
+
+            # Fully processed count (separate query as it involves computed property)
+            # Episodes are fully processed when all stages are complete
+            fully_processed = session.scalar(
+                select(func.count(Episode.id)).where(
+                    Episode.download_status == 'completed',
+                    Episode.transcript_status == 'completed',
+                    Episode.file_search_status == 'indexed'
+                )
+            ) or 0
 
             return {
-                "total_podcasts": len(podcasts),
-                "subscribed_podcasts": sum(1 for p in podcasts if p.is_subscribed),
-                "total_episodes": len(episodes),
-                "pending_download": sum(
-                    1 for e in episodes if e.download_status == "pending"
-                ),
-                "downloading": sum(
-                    1 for e in episodes if e.download_status == "downloading"
-                ),
-                "downloaded": sum(
-                    1 for e in episodes if e.download_status == "completed"
-                ),
-                "download_failed": sum(
-                    1 for e in episodes if e.download_status == "failed"
-                ),
-                "pending_transcription": sum(
-                    1 for e in episodes if e.transcript_status == "pending"
-                ),
-                "transcribing": sum(
-                    1 for e in episodes if e.transcript_status == "processing"
-                ),
-                "transcribed": sum(
-                    1 for e in episodes if e.transcript_status == "completed"
-                ),
-                "transcript_failed": sum(
-                    1 for e in episodes if e.transcript_status == "failed"
-                ),
-                "pending_indexing": sum(
-                    1 for e in episodes if e.file_search_status == "pending"
-                ),
-                "indexed": sum(
-                    1 for e in episodes if e.file_search_status == "indexed"
-                ),
-                "fully_processed": sum(1 for e in episodes if e.is_fully_processed),
+                "total_podcasts": total_podcasts,
+                "subscribed_podcasts": subscribed_podcasts,
+                "total_episodes": episode_stats.total_episodes,
+                "pending_download": episode_stats.pending_download,
+                "downloading": episode_stats.downloading,
+                "downloaded": episode_stats.downloaded,
+                "download_failed": episode_stats.download_failed,
+                "pending_transcription": episode_stats.pending_transcription,
+                "transcribing": episode_stats.transcribing,
+                "transcribed": episode_stats.transcribed,
+                "transcript_failed": episode_stats.transcript_failed,
+                "pending_indexing": episode_stats.pending_indexing,
+                "indexed": episode_stats.indexed,
+                "fully_processed": fully_processed,
             }
 
     # --- Pipeline Mode Methods ---
