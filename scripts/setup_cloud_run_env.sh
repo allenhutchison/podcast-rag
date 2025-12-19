@@ -56,6 +56,30 @@ echo ""
 echo "📦 Step 1: Creating/updating secrets in Secret Manager..."
 echo ""
 
+# Validate required secret variables
+REQUIRED_SECRETS=(
+    "DATABASE_URL"
+    "SUPABASE_SERVICE_ROLE_KEY"
+    "GEMINI_API_KEY"
+    "GOOGLE_CLIENT_SECRET"
+    "JWT_SECRET_KEY"
+)
+
+MISSING_SECRETS=()
+for var in "${REQUIRED_SECRETS[@]}"; do
+    if [[ -z "${!var}" ]]; then
+        MISSING_SECRETS+=("$var")
+    fi
+done
+
+if [[ ${#MISSING_SECRETS[@]} -gt 0 ]]; then
+    echo "❌ Error: Required secret variables not set in .env:"
+    for var in "${MISSING_SECRETS[@]}"; do
+        echo "  - $var"
+    done
+    exit 1
+fi
+
 create_or_update_secret() {
     local secret_name=$1
     local secret_value=$2
@@ -91,9 +115,98 @@ echo ""
 echo "✓ All secrets created/updated successfully!"
 echo ""
 
+# Step 1.5: Grant IAM permissions for Cloud Run service account to access secrets
+echo "🔐 Step 1.5: Granting secret access to Cloud Run service account..."
+echo ""
+
+# Get the project ID and Cloud Run service account
+PROJECT_ID=$(gcloud config get-value project 2>/dev/null)
+if [[ -z "$PROJECT_ID" ]]; then
+    echo "❌ Error: Could not determine GCP project ID"
+    exit 1
+fi
+
+# Get the Cloud Run service's service account
+SERVICE_ACCOUNT=$(gcloud run services describe "$CLOUD_RUN_SERVICE" \
+  --region "$CLOUD_RUN_REGION" \
+  --format='value(spec.template.spec.serviceAccountName)' 2>/dev/null)
+
+# If no custom service account, use default Compute Engine service account
+if [[ -z "$SERVICE_ACCOUNT" ]]; then
+    PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
+    SERVICE_ACCOUNT="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+    echo "  ℹ️  Using default Compute Engine service account: $SERVICE_ACCOUNT"
+fi
+
+# Grant access to each secret
+grant_secret_access() {
+    local secret_name=$1
+
+    # Check if secret exists before granting access
+    if ! gcloud secrets describe "$secret_name" &>/dev/null; then
+        return
+    fi
+
+    echo "  ✓ Granting access to: $secret_name"
+    gcloud secrets add-iam-policy-binding "$secret_name" \
+      --member="serviceAccount:$SERVICE_ACCOUNT" \
+      --role="roles/secretmanager.secretAccessor" \
+      --project="$PROJECT_ID" \
+      --quiet 2>/dev/null || true  # Ignore if binding already exists
+}
+
+grant_secret_access "podcast-rag-database-url"
+grant_secret_access "podcast-rag-supabase-service-key"
+grant_secret_access "podcast-rag-gemini-api-key"
+grant_secret_access "podcast-rag-google-client-secret"
+grant_secret_access "podcast-rag-jwt-secret"
+
+if [[ -n "$SMTP_PASSWORD" ]]; then
+    grant_secret_access "podcast-rag-smtp-password"
+fi
+
+echo ""
+echo "✓ IAM permissions granted successfully!"
+echo ""
+
 # Step 2: Build environment variables string (non-sensitive config)
 echo "⚙️  Step 2: Preparing environment variables..."
 echo ""
+
+# Validate required environment variables
+REQUIRED_VARS=(
+    "DB_POOL_SIZE"
+    "DB_MAX_OVERFLOW"
+    "DB_POOL_PRE_PING"
+    "DB_ECHO"
+    "SUPABASE_URL"
+    "SUPABASE_ANON_KEY"
+    "GEMINI_MODEL"
+    "GEMINI_FILE_SEARCH_STORE_NAME"
+    "GOOGLE_CLIENT_ID"
+    "JWT_EXPIRATION_DAYS"
+    "COOKIE_SECURE"
+    "ALLOWED_ORIGINS"
+    "MAX_CONVERSATION_TOKENS"
+    "STREAMING_DELAY"
+    "RATE_LIMIT"
+    "ADK_PARALLEL_TIMEOUT"
+)
+
+MISSING_VARS=()
+for var in "${REQUIRED_VARS[@]}"; do
+    if [[ -z "${!var}" ]]; then
+        MISSING_VARS+=("$var")
+    fi
+done
+
+if [[ ${#MISSING_VARS[@]} -gt 0 ]]; then
+    echo "❌ Error: Required environment variables not set in .env:"
+    for var in "${MISSING_VARS[@]}"; do
+        echo "  - $var"
+    done
+    exit 1
+fi
 
 # Build env vars string for gcloud command
 # Include all non-sensitive configuration
