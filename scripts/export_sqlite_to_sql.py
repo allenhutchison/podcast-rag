@@ -53,18 +53,15 @@ def export_table_data(cursor, table_name, output_file):
         table_name: Name of table to export
         output_file: File object to write INSERT statements to
     """
-    # Get table schema to identify boolean columns
-    cursor.execute(f"PRAGMA table_info({table_name})")
-    table_info = cursor.fetchall()
-
-    # Find boolean columns (SQLite stores as INTEGER with CHECK constraint or just convention)
-    # Common boolean column names in our schema
+    # Boolean columns (SQLite stores as INTEGER 0/1, PostgreSQL needs true/false)
+    # These are known boolean columns in our schema
     boolean_columns = {
         'is_subscribed', 'itunes_explicit', 'is_active', 'is_admin',
         'email_digest_enabled', 'smtp_use_tls'
     }
 
     # JSON/JSONB columns that should not be escaped
+    # Use dollar-quoted strings to preserve JSON syntax
     json_columns = {
         'ai_keywords', 'ai_hosts', 'ai_guests'
     }
