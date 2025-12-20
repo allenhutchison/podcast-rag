@@ -101,26 +101,11 @@ class TestChatEndpoint:
 class TestStaticFiles:
     """Tests for static file serving."""
 
-    def test_index_page_loads(self, client):
-        """Test that index.html loads successfully."""
-        response = client.get("/")
-        assert response.status_code == 200
-        assert "text/html" in response.headers["content-type"]
-
-    def test_index_contains_chat_form(self, client):
-        """Test that index page contains chat interface elements."""
-        response = client.get("/")
-        content = response.text
-        assert "chatForm" in content
-        assert "queryInput" in content
-        assert "submitBtn" in content
-        assert "newChatBtn" in content
-
-    def test_index_has_adk_branding(self, client):
-        """Test that index page shows ADK multi-agent branding."""
-        response = client.get("/")
-        content = response.text
-        assert "ADK" in content or "Multi-Agent" in content
+    def test_index_page_redirects_to_podcasts(self, client):
+        """Test that root URL redirects to podcasts page."""
+        response = client.get("/", follow_redirects=False)
+        assert response.status_code == 302
+        assert response.headers["location"] == "/podcasts.html"
 
 
 class TestCORSConfiguration:

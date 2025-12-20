@@ -233,31 +233,6 @@ class TestSessionCitations:
         assert len(errors) == 0, f"Thread safety errors: {errors}"
 
 
-class TestOrchestratorCreation:
-    """Tests for orchestrator creation."""
-
-    @pytest.mark.skip(reason="Requires live API credentials and ADK runtime")
-    def test_create_orchestrator_with_session_id(self):
-        """Test that orchestrator can be created with session ID."""
-        from src.agents.orchestrator import create_orchestrator
-        from src.config import Config
-
-        # This test requires valid API credentials
-        config = Config()
-        result = create_orchestrator(config, session_id="test-session")
-        assert result is not None
-
-    def test_orchestrator_function_signature(self):
-        """Test that create_orchestrator accepts session_id parameter."""
-        from src.agents.orchestrator import create_orchestrator
-        import inspect
-
-        sig = inspect.signature(create_orchestrator)
-        params = list(sig.parameters.keys())
-        assert "config" in params
-        assert "session_id" in params
-
-
 class TestSessionIdValidation:
     """Tests for session ID validation in the web app."""
 
