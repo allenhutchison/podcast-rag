@@ -44,74 +44,15 @@
             background-color: #e0e7ff;
             color: #3730a3;
         }
-
-        /* Chat drawer styles */
-        .drawer-backdrop {
-            position: fixed;
-            inset: 0;
-            background-color: rgba(0, 0, 0, 0.5);
-            z-index: 40;
-            opacity: 0;
-            visibility: hidden;
-            transition: opacity 0.3s ease, visibility 0.3s ease;
-        }
-        .drawer-backdrop.open {
-            opacity: 1;
-            visibility: visible;
-        }
-        .drawer {
-            position: fixed;
-            top: 0;
-            right: 0;
-            bottom: 0;
-            width: 100%;
-            max-width: 420px;
-            background: white;
-            z-index: 50;
-            transform: translateX(100%);
-            transition: transform 0.3s ease;
-            display: flex;
-            flex-direction: column;
-        }
-        .drawer.open {
-            transform: translateX(0);
-        }
-        .drawer-messages {
-            flex: 1;
-            overflow-y: auto;
-            padding: 1rem;
-        }
-        .drawer-messages::-webkit-scrollbar {
-            width: 6px;
-        }
-        .drawer-messages::-webkit-scrollbar-thumb {
-            background: #cbd5e1;
-            border-radius: 3px;
-        }
-
-        /* Typing indicator animation */
-        @keyframes pulse {
-            0%, 100% { opacity: 0.4; }
-            50% { opacity: 1; }
-        }
-        .typing-dot {
-            animation: pulse 1.4s ease-in-out infinite;
-        }
-        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
-        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
-
-        /* Markdown in chat */
-        .chat-markdown p { margin-bottom: 0.5em; }
-        .chat-markdown ul, .chat-markdown ol { margin-left: 1.5em; margin-bottom: 0.5em; }
-        .chat-markdown ul { list-style-type: disc; }
-        .chat-markdown ol { list-style-type: decimal; }
-        .chat-markdown li { margin-bottom: 0.25em; }
-        .chat-markdown code { background: #f1f5f9; padding: 0.125rem 0.25rem; border-radius: 0.25rem; font-size: 0.9em; }
     </style>
+
+    <!-- Chat Drawer Styles -->
+    <link rel="stylesheet" href="/chat-drawer.css">
+
     <!-- Marked.js for Markdown rendering -->
-    <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@17.0.1/marked.min.js"></script>
     <!-- DOMPurify for HTML sanitization (XSS prevention) -->
-    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.3.1/dist/purify.min.js"></script>
 </head>
 <body class="bg-gray-50 min-h-screen flex flex-col">
 
@@ -220,60 +161,6 @@
     </footer>
 
     <script src="/auth.js?v=1"></script>
-
-    <!-- Chat Drawer Backdrop -->
-    <div id="drawerBackdrop" class="drawer-backdrop" onclick="closeChatDrawer()"></div>
-
-    <!-- Chat Drawer -->
-    <div id="chatDrawer" class="drawer shadow-xl">
-        <!-- Drawer Header -->
-        <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
-            <div class="flex-1 min-w-0">
-                <h3 class="font-semibold text-gray-900 truncate">Ask about this episode</h3>
-                <p id="drawerEpisodeTitle" class="text-sm text-gray-500 truncate"></p>
-            </div>
-            <button
-                onclick="closeChatDrawer()"
-                class="ml-2 p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded-lg transition-colors"
-                title="Close"
-            >
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                </svg>
-            </button>
-        </div>
-
-        <!-- Messages Area -->
-        <div id="drawerMessages" class="drawer-messages space-y-4">
-            <!-- Welcome message -->
-            <div class="bg-gray-100 rounded-lg p-3 text-sm text-gray-700">
-                <p>Ask me anything about this episode. I'll search the transcript and provide answers with citations.</p>
-            </div>
-        </div>
-
-        <!-- Input Form -->
-        <form id="drawerChatForm" class="p-4 border-t border-gray-200 bg-white" onsubmit="handleDrawerSubmit(event)">
-            <div class="flex gap-2">
-                <input
-                    type="text"
-                    id="drawerInput"
-                    placeholder="Ask a question..."
-                    class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
-                    autocomplete="off"
-                    required
-                />
-                <button
-                    type="submit"
-                    id="drawerSubmitBtn"
-                    class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
-                    </svg>
-                </button>
-            </div>
-        </form>
-    </div>
 
     <script>
         const pageTitle = document.getElementById('pageTitle');
@@ -398,9 +285,6 @@
                 const data = await response.json();
                 const episode = data.episode;
                 const podcast = data.podcast;
-
-                // Store for drawer
-                setCurrentEpisodeData(episode, podcast);
 
                 // Update page title
                 document.title = `${episode.title} - Podcast RAG`;
@@ -533,215 +417,6 @@
             pageTitle.textContent = 'Error';
         }
 
-        // ========================================
-        // Chat Drawer Functions
-        // ========================================
-
-        const drawerBackdrop = document.getElementById('drawerBackdrop');
-        const chatDrawer = document.getElementById('chatDrawer');
-        const drawerMessages = document.getElementById('drawerMessages');
-        const drawerInput = document.getElementById('drawerInput');
-        const drawerSubmitBtn = document.getElementById('drawerSubmitBtn');
-        const drawerEpisodeTitle = document.getElementById('drawerEpisodeTitle');
-
-        let isDrawerProcessing = false;
-        let currentEpisodeData = null;
-        let currentPodcastData = null;
-
-        /**
-         * Open the chat drawer
-         */
-        function openChatDrawer() {
-            drawerBackdrop.classList.add('open');
-            chatDrawer.classList.add('open');
-            document.body.style.overflow = 'hidden';
-            drawerInput.focus();
-
-            // Update drawer title with episode name
-            if (currentEpisodeData) {
-                drawerEpisodeTitle.textContent = currentEpisodeData.title;
-            }
-        }
-
-        /**
-         * Close the chat drawer
-         */
-        function closeChatDrawer() {
-            drawerBackdrop.classList.remove('open');
-            chatDrawer.classList.remove('open');
-            document.body.style.overflow = '';
-        }
-
-        /**
-         * Handle drawer form submission
-         */
-        async function handleDrawerSubmit(e) {
-            e.preventDefault();
-            if (isDrawerProcessing) return;
-
-            const query = drawerInput.value.trim();
-            if (!query) return;
-
-            isDrawerProcessing = true;
-            drawerSubmitBtn.disabled = true;
-            drawerInput.value = '';
-
-            // Add user message
-            addDrawerMessage(query, 'user');
-
-            // Add typing indicator
-            const typingId = addTypingIndicator();
-
-            try {
-                const episodeId = getUrlParam('id');
-                const response = await fetch('/api/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'include',
-                    body: JSON.stringify({
-                        query: query,
-                        episode_id: episodeId
-                    })
-                });
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                // Process SSE stream
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder();
-                let buffer = '';
-                let responseText = '';
-                let citations = [];
-
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-
-                    buffer += decoder.decode(value, { stream: true });
-                    const parts = buffer.split(/\n\n+/);
-                    buffer = parts.pop() || '';
-
-                    for (const part of parts) {
-                        const lines = part.split('\n');
-                        let eventType = '';
-                        let eventData = '';
-
-                        for (const line of lines) {
-                            const trimmed = line.trim();
-                            if (trimmed.startsWith('event:')) {
-                                eventType = trimmed.substring(6).trim();
-                            } else if (trimmed.startsWith('data:')) {
-                                eventData = trimmed.substring(5).trim();
-                            }
-                        }
-
-                        if (!eventType || !eventData) continue;
-
-                        try {
-                            const data = JSON.parse(eventData);
-
-                            if (eventType === 'token') {
-                                responseText += data.token || '';
-                            } else if (eventType === 'citations') {
-                                citations = data.citations || [];
-                            } else if (eventType === 'error') {
-                                throw new Error(data.error || 'Unknown error');
-                            }
-                        } catch (parseError) {
-                            // Skip parse errors for incomplete events
-                        }
-                    }
-                }
-
-                // Remove typing indicator and add response
-                removeTypingIndicator(typingId);
-                addDrawerMessage(responseText, 'assistant', citations);
-
-            } catch (error) {
-                console.error('Chat error:', error);
-                removeTypingIndicator(typingId);
-                addDrawerMessage(`Error: ${error.message}`, 'error');
-            } finally {
-                isDrawerProcessing = false;
-                drawerSubmitBtn.disabled = false;
-            }
-        }
-
-        /**
-         * Add a message to the drawer
-         */
-        function addDrawerMessage(text, role, citations = []) {
-            const messageDiv = document.createElement('div');
-
-            if (role === 'user') {
-                messageDiv.className = 'bg-primary text-white rounded-lg p-3 text-sm ml-8';
-                messageDiv.textContent = text;
-            } else if (role === 'error') {
-                messageDiv.className = 'bg-red-100 text-red-700 rounded-lg p-3 text-sm';
-                messageDiv.textContent = text;
-            } else {
-                messageDiv.className = 'bg-gray-100 rounded-lg p-3 text-sm text-gray-700';
-
-                // Render markdown (sanitized to prevent XSS)
-                const contentDiv = document.createElement('div');
-                contentDiv.className = 'chat-markdown';
-                contentDiv.innerHTML = safeMarkdownToHtml(text);
-                messageDiv.appendChild(contentDiv);
-
-                // Add citations if present
-                if (citations.length > 0) {
-                    const citationsDiv = document.createElement('div');
-                    citationsDiv.className = 'mt-3 pt-3 border-t border-gray-200 text-xs text-gray-500';
-                    citationsDiv.innerHTML = '<p class="font-medium mb-2">Sources:</p>' +
-                        citations.filter(c => c.source_type === 'podcast').map(c =>
-                            `<p class="truncate">${escapeHtml(c.metadata?.podcast || '')} - ${escapeHtml(c.metadata?.episode || c.title || '')}</p>`
-                        ).join('');
-                    messageDiv.appendChild(citationsDiv);
-                }
-            }
-
-            drawerMessages.appendChild(messageDiv);
-            drawerMessages.scrollTop = drawerMessages.scrollHeight;
-        }
-
-        /**
-         * Add typing indicator
-         */
-        function addTypingIndicator() {
-            const id = 'typing-' + Date.now();
-            const div = document.createElement('div');
-            div.id = id;
-            div.className = 'bg-gray-100 rounded-lg p-3 text-sm text-gray-500 flex gap-1';
-            div.innerHTML = '<span class="typing-dot">●</span><span class="typing-dot">●</span><span class="typing-dot">●</span>';
-            drawerMessages.appendChild(div);
-            drawerMessages.scrollTop = drawerMessages.scrollHeight;
-            return id;
-        }
-
-        /**
-         * Remove typing indicator
-         */
-        function removeTypingIndicator(id) {
-            const el = document.getElementById(id);
-            if (el) el.remove();
-        }
-
-        /**
-         * Store episode data when loaded for drawer
-         */
-        function setCurrentEpisodeData(episode, podcast) {
-            currentEpisodeData = episode;
-            currentPodcastData = podcast;
-        }
-
-        // Close drawer with Escape key
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && chatDrawer.classList.contains('open')) {
-                closeChatDrawer();
-            }
-        });
 
         // Check auth and load episode on page load
         document.addEventListener('DOMContentLoaded', async () => {
@@ -750,6 +425,41 @@
             updateUserUIWithAdmin(user);
             loadEpisode();
         });
+    </script>
+
+    <!-- Chat Drawer Component -->
+    <script src="/chat-drawer.js"></script>
+    <script>
+        // Initialize chat drawer with episode scope
+        let chatDrawer;
+        const openChatBtn = document.getElementById('openChatBtn');
+
+        function initializeChatDrawer(episodeId, episodeTitle) {
+            chatDrawer = new ChatDrawer({
+                scope: 'episode',
+                episodeId: episodeId,
+                contextTitle: episodeTitle
+            });
+            chatDrawer.init();
+
+            // Add click handler to open button
+            openChatBtn.addEventListener('click', () => {
+                chatDrawer.open();
+            });
+        }
+
+        // Update the loadEpisode function to initialize the drawer after loading
+        const originalLoadEpisode = loadEpisode;
+        loadEpisode = async function() {
+            await originalLoadEpisode();
+
+            // Initialize chat drawer with episode data
+            const episodeId = getUrlParam('id');
+            const episodeTitleElement = document.getElementById('episodeTitle');
+            if (episodeId && episodeTitleElement && episodeTitleElement.textContent) {
+                initializeChatDrawer(episodeId, episodeTitleElement.textContent);
+            }
+        };
     </script>
 </body>
 </html>

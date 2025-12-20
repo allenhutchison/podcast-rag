@@ -208,24 +208,42 @@ def get_episode_filter(session_id: str) -> Optional[str]:
         return session_data.get('episode')
 
 
+def get_podcast_filter_list(session_id: str) -> Optional[list[str]]:
+    """
+    Get the podcast filter list for a specific session (for subscription filtering).
+
+    Args:
+        session_id: The session identifier
+
+    Returns:
+        Optional[list[str]]: List of podcast names to filter by, or None if no list filter
+    """
+    with _filter_lock:
+        session_data = _session_podcast_filter.get(session_id, {})
+        return session_data.get('podcast_list')
+
+
 def set_podcast_filter(
     session_id: str,
-    podcast_name: Optional[str],
-    episode_name: Optional[str] = None
+    podcast_name: Optional[str] = None,
+    episode_name: Optional[str] = None,
+    podcast_list: Optional[list[str]] = None
 ):
     """
     Set the podcast and episode filter for a specific session.
 
     Args:
         session_id: The session identifier
-        podcast_name: Podcast name to filter by, or None to clear
+        podcast_name: Single podcast name to filter by, or None to clear
         episode_name: Episode name to filter by (optional)
+        podcast_list: List of podcast names for subscription filtering (mutually exclusive with podcast_name)
     """
     with _filter_lock:
-        if podcast_name or episode_name:
+        if podcast_name or episode_name or podcast_list:
             _session_podcast_filter[session_id] = {
                 'podcast': podcast_name,
                 'episode': episode_name,
+                'podcast_list': podcast_list,
                 'timestamp': time.time()
             }
         elif session_id in _session_podcast_filter:
@@ -315,18 +333,34 @@ def create_podcast_search_tool(
             # Check for podcast and episode filters
             podcast_filter = get_podcast_filter(session_id)
             episode_filter = get_episode_filter(session_id)
+            podcast_filter_list = get_podcast_filter_list(session_id)
             file_search_config = types.FileSearch(
                 file_search_store_names=[store_name]
             )
 
             # Build metadata filter from podcast and/or episode
             # Values are escaped and quoted to handle special characters safely
-            if podcast_filter or episode_filter:
+            if podcast_filter or episode_filter or podcast_filter_list:
                 filter_parts = []
+
+                # Handle single podcast filter
                 if podcast_filter:
                     escaped_podcast = escape_filter_value(podcast_filter)
                     if escaped_podcast:
                         filter_parts.append(f'podcast="{escaped_podcast}"')
+
+                # Handle podcast list filter (for subscriptions)
+                elif podcast_filter_list:
+                    podcast_or_conditions = []
+                    for podcast_name in podcast_filter_list:
+                        escaped_podcast = escape_filter_value(podcast_name)
+                        if escaped_podcast:
+                            podcast_or_conditions.append(f'podcast="{escaped_podcast}"')
+                    if podcast_or_conditions:
+                        # Use OR to match any subscribed podcast
+                        filter_parts.append(f"({' OR '.join(podcast_or_conditions)})")
+
+                # Handle episode filter (only valid with single podcast, not with list)
                 if episode_filter:
                     escaped_episode = escape_filter_value(episode_filter)
                     if escaped_episode:

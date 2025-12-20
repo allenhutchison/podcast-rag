@@ -1,7 +1,7 @@
 """
 FastAPI web application for podcast RAG chat interface.
 
-Uses Google ADK multi-agent architecture for parallel podcast and web search.
+Uses Gemini File Search directly for semantic search over podcast transcripts.
 Provides streaming chat responses with citations using Server-Sent Events (SSE).
 """
 
@@ -16,14 +16,14 @@ from typing import AsyncGenerator, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from starlette.middleware.sessions import SessionMiddleware
 
-from src.agents import create_orchestrator, get_podcast_citations, clear_podcast_citations, set_podcast_filter
+from src.agents.podcast_search import get_podcast_citations, clear_podcast_citations, set_podcast_filter
 from src.config import Config
 from src.db.factory import create_repository
 from src.web.admin_routes import router as admin_router
@@ -138,69 +138,6 @@ app.include_router(admin_router)
 # Include user routes
 app.include_router(user_router)
 
-# Session service (shared across all sessions)
-_session_service = None
-
-# Per-session runners cache (keyed by session_id)
-# Each session needs its own runner with its own orchestrator for thread-safe citations
-import threading
-_session_runners: dict = {}
-_runners_lock = threading.Lock()
-
-
-def _get_session_service():
-    """
-    Get or create the shared session service.
-
-    Returns:
-        InMemorySessionService: Shared session service instance for all ADK sessions
-    """
-    global _session_service
-    if _session_service is None:
-        from google.adk.sessions import InMemorySessionService
-        _session_service = InMemorySessionService()
-        logger.info("Initialized ADK session service")
-    return _session_service
-
-
-def _get_runner_for_session(session_id: str):
-    """
-    Get or create a runner for the given session.
-
-    Each session gets its own orchestrator instance to ensure thread-safe
-    citation storage (the podcast search tool stores citations keyed by session_id).
-
-    Args:
-        session_id: The session identifier
-
-    Returns:
-        Runner: ADK Runner instance configured with a session-specific orchestrator
-            containing PodcastSearchAgent and WebSearchAgent sub-agents
-    """
-    with _runners_lock:
-        if session_id not in _session_runners:
-            from google.adk.runners import Runner
-
-            logger.info(f"Creating ADK runner for session: {session_id}")
-            orchestrator = create_orchestrator(config, _repository, session_id)
-            runner = Runner(
-                agent=orchestrator,
-                session_service=_get_session_service(),
-                app_name="podcast-rag"
-            )
-            _session_runners[session_id] = runner
-
-            # Clean up old sessions (keep max 100 runners)
-            if len(_session_runners) > 100:
-                # Remove oldest entries (first 20)
-                old_sessions = list(_session_runners.keys())[:20]
-                for old_sid in old_sessions:
-                    del _session_runners[old_sid]
-                logger.info(f"Cleaned up {len(old_sessions)} old session runners")
-
-        return _session_runners[session_id]
-
-
 def _validate_session_id(session_id: str) -> str:
     """
     Validate and sanitize session ID from client.
@@ -228,391 +165,459 @@ def _validate_session_id(session_id: str) -> str:
     return session_id
 
 
-def _extract_grounding_chunk(chunk) -> Optional[dict]:
-    """
-    Safely extract data from a grounding chunk with defensive type checking.
-
-    Args:
-        chunk: A grounding chunk object from Google's grounding metadata
-
-    Returns:
-        Dict with 'uri' and 'title' keys, or None if extraction fails
-    """
-    try:
-        if not chunk:
-            return None
-
-        chunk_data = {}
-
-        # Try to extract web data
-        web = getattr(chunk, 'web', None)
-        if web:
-            uri = getattr(web, 'uri', None)
-            title = getattr(web, 'title', None)
-
-            # Validate types
-            if uri is not None and isinstance(uri, str):
-                chunk_data['uri'] = uri
-            else:
-                chunk_data['uri'] = ''
-
-            if title is not None and isinstance(title, str):
-                chunk_data['title'] = title
-            else:
-                chunk_data['title'] = ''
-
-            return chunk_data if chunk_data.get('uri') or chunk_data.get('title') else None
-
-        return None
-
-    except Exception as e:
-        logger.warning(f"Error extracting grounding chunk: {e}")
-        return None
-
-
-def _extract_search_entry_point(grounding_metadata) -> str:
-    """
-    Safely extract search entry point HTML from grounding metadata.
-
-    Args:
-        grounding_metadata: Grounding metadata object from Google's response
-
-    Returns:
-        Rendered HTML string, or empty string if not available
-    """
-    try:
-        if not grounding_metadata:
-            return ""
-
-        search_entry_point = getattr(grounding_metadata, 'search_entry_point', None)
-        if not search_entry_point:
-            return ""
-
-        rendered = getattr(search_entry_point, 'rendered_content', None)
-        if rendered and isinstance(rendered, str):
-            return rendered
-
-        return ""
-
-    except Exception as e:
-        logger.warning(f"Error extracting search entry point: {e}")
-        return ""
-
-
-def _combine_citations(
-    podcast_results: dict,
-    web_results: dict,
-    podcast_filter_name: Optional[str] = None
-) -> List[dict]:
-    """
-    Combine citations from podcast and web search results.
-
-    Args:
-        podcast_results: Results from PodcastSearchAgent containing 'citations' list
-        web_results: Results from WebSearchAgent containing 'grounding_chunks' list
-        podcast_filter_name: Optional podcast name to filter citations
-
-    Returns:
-        List[dict]: Unified citations list where each citation dict contains:
-            - ref_id (str): Reference ID with prefix (e.g., 'P1', 'W2')
-            - source_type (str): Either 'podcast' or 'web'
-            - title (str): Source title
-            - text (str): Excerpt or snippet text
-            - metadata (dict): Source-specific metadata
-                - For podcasts: podcast, episode, release_date, hosts
-                - For web: url
-    """
-    combined = []
-    podcast_index = 1
-
-    # Add podcast citations with P prefix
-    if podcast_results and 'citations' in podcast_results:
-        for citation in podcast_results['citations']:
-            # Filter by podcast name if specified
-            if podcast_filter_name:
-                citation_podcast = citation.get('metadata', {}).get('podcast', '')
-                if citation_podcast and podcast_filter_name.lower() not in citation_podcast.lower():
-                    continue
-
-            combined.append({
-                'ref_id': f"P{podcast_index}",
-                'source_type': 'podcast',
-                'title': citation.get('title', ''),
-                'text': citation.get('text', ''),
-                'metadata': citation.get('metadata', {})
-            })
-            podcast_index += 1
-
-    # Add web citations with W prefix
-    if web_results and isinstance(web_results, dict):
-        # Handle grounding metadata from google_search
-        if 'grounding_chunks' in web_results:
-            for i, chunk in enumerate(web_results['grounding_chunks'], 1):
-                combined.append({
-                    'ref_id': f"W{i}",
-                    'source_type': 'web',
-                    'title': chunk.get('title', ''),
-                    'text': chunk.get('text', ''),
-                    'metadata': {
-                        'url': chunk.get('uri', chunk.get('url', ''))
-                    }
-                })
-
-    return combined
-
-
 async def generate_streaming_response(
     query: str,
     session_id: str,
-    _history: Optional[List[dict]] = None,  # TODO: Integrate with ADK session context
-    podcast_id: Optional[int] = None,
+    user_id: str,
+    _history: Optional[List[dict]] = None,
+    podcast_id: Optional[str] = None,
     episode_id: Optional[str] = None,
+    subscribed_only: Optional[bool] = None,
 ) -> AsyncGenerator[str, None]:
     """
-    Generate streaming response from ADK multi-agent pipeline.
+    Generate streaming response using Gemini File Search directly.
 
     Yields SSE events:
-    - event: status -> Agent execution status
+    - event: status -> Search execution status
     - event: token -> Streaming text chunks
-    - event: citations -> Consolidated citations
+    - event: citations -> Citations from File Search
     - event: done -> Completion signal
     - event: error -> Error information
 
     Args:
         query: User's question
         session_id: Session identifier
-        _history: Optional conversation history (unused, reserved for future ADK integration)
-        podcast_id: Optional podcast ID to filter results
+        user_id: User identifier for subscription filtering
+        _history: Optional conversation history (unused for now)
+        podcast_id: Optional podcast UUID to filter results
         episode_id: Optional episode ID to filter results to a specific episode
+        subscribed_only: Filter to user's subscribed podcasts only
 
     Yields:
         SSE formatted events
     """
+    from google import genai
     from google.genai import types
+    from src.agents.podcast_search import escape_filter_value, _extract_citations
 
     # Get podcast and episode names for filtering if specified
     podcast_filter_name: Optional[str] = None
     episode_filter_name: Optional[str] = None
+    podcast_filter_list: Optional[list[str]] = None
+    episode_obj = None  # Store full episode object for rich context
+    podcast_obj = None  # Store full podcast object for rich context
 
     if episode_id is not None:
-        episode = _repository.get_episode(episode_id)
-        if episode:
-            episode_filter_name = episode.title
-            # Also set podcast filter from the episode's podcast
-            if episode.podcast:
-                podcast_filter_name = episode.podcast.title
+        episode_obj = _repository.get_episode(episode_id)
+        if episode_obj:
+            episode_filter_name = episode_obj.title
+            if episode_obj.podcast:
+                podcast_filter_name = episode_obj.podcast.title
             logger.info(f"Filtering search to episode: {episode_filter_name}")
     elif podcast_id is not None:
-        podcast = _repository.get_podcast(podcast_id)
-        if podcast:
-            podcast_filter_name = podcast.title
+        podcast_obj = _repository.get_podcast(podcast_id)
+        if podcast_obj:
+            podcast_filter_name = podcast_obj.title
             logger.info(f"Filtering search to podcast: {podcast_filter_name}")
+    elif subscribed_only:
+        subscribed_podcasts = _repository.get_user_subscriptions(user_id)
+        if subscribed_podcasts:
+            podcast_filter_list = [p.title for p in subscribed_podcasts]
+            podcasts_for_discovery = subscribed_podcasts  # Use podcasts for discovery, not episodes
+            logger.info(f"Filtering search to {len(podcast_filter_list)} subscribed podcasts for user {user_id}")
+    else:
+        # Global scope - fetch all podcasts for discovery
+        try:
+            podcasts_for_discovery = _repository.list_podcasts()
+            logger.info(f"Fetched {len(podcasts_for_discovery)} podcasts for global search")
+        except Exception as e:
+            logger.warning(f"Could not fetch podcasts for global search: {e}")
+            podcasts_for_discovery = []
 
     try:
-        # Get session-specific runner (ensures thread-safe citation storage)
-        runner = _get_runner_for_session(session_id)
-        session_service = _get_session_service()
+        # Signal search phase
+        yield f"event: status\ndata: {json.dumps({'phase': 'searching', 'message': 'Searching podcast transcripts...'})}\n\n"
 
-        # Get or create session
-        session = await session_service.get_session(
-            app_name="podcast-rag",
-            user_id="default",
-            session_id=session_id
+        # Initialize Gemini client and File Search manager
+        client = genai.Client(api_key=config.GEMINI_API_KEY)
+        from src.db.gemini_file_search import GeminiFileSearchManager
+        file_search_manager = GeminiFileSearchManager(config=config)
+        store_name = file_search_manager.create_or_get_store()
+
+        # Build File Search configuration with metadata filter
+        file_search_config = types.FileSearch(
+            file_search_store_names=[store_name]
         )
-        if not session:
-            session = await session_service.create_session(
-                app_name="podcast-rag",
-                user_id="default",
-                session_id=session_id
+
+        # Build metadata filter if needed
+        if podcast_filter_name or episode_filter_name or podcast_filter_list:
+            filter_parts = []
+
+            # Single podcast filter
+            if podcast_filter_name:
+                escaped_podcast = escape_filter_value(podcast_filter_name)
+                if escaped_podcast:
+                    filter_parts.append(f'podcast="{escaped_podcast}"')
+
+            # Podcast list filter (for subscriptions)
+            elif podcast_filter_list:
+                podcast_or_conditions = []
+                for podcast_name in podcast_filter_list:
+                    escaped_podcast = escape_filter_value(podcast_name)
+                    if escaped_podcast:
+                        podcast_or_conditions.append(f'podcast="{escaped_podcast}"')
+                if podcast_or_conditions:
+                    filter_parts.append(f"({' OR '.join(podcast_or_conditions)})")
+
+            # Episode filter
+            if episode_filter_name:
+                escaped_episode = escape_filter_value(episode_filter_name)
+                if escaped_episode:
+                    filter_parts.append(f'episode="{escaped_episode}"')
+
+            if filter_parts:
+                metadata_filter = " AND ".join(filter_parts)
+                file_search_config = types.FileSearch(
+                    file_search_store_names=[store_name],
+                    metadata_filter=metadata_filter
+                )
+                logger.info(f"Applying metadata filter: {metadata_filter}")
+
+        # Classify query type for podcast/subscriptions/global scopes (using LLM)
+        is_episode_discovery_query = False
+        if podcast_obj or podcast_filter_list or (not episode_obj and not podcast_obj and not podcast_filter_list):
+            # Use LLM to classify the query intent
+            classification_prompt = f"""Classify this user query about a podcast:
+
+Query: "{query}"
+
+Is this query primarily asking to:
+A) Find or recommend specific episodes (e.g., "which episodes cover AI?", "what should I listen to about Tesla?")
+B) Get detailed content or quotes from episode transcripts (e.g., "what did they say about AI?", "summarize the discussion on Tesla")
+
+Answer with just the letter "A" or "B"."""
+
+            try:
+                classification_response = client.models.generate_content(
+                    model=config.GEMINI_MODEL,
+                    contents=classification_prompt,
+                    config=types.GenerateContentConfig(
+                        response_modalities=["TEXT"]
+                    )
+                )
+                classification = classification_response.text.strip().upper()
+                is_episode_discovery_query = classification == "A"
+                logger.info(f"Query classified as: {classification} (episode_discovery={is_episode_discovery_query})")
+            except Exception as e:
+                logger.warning(f"Query classification failed, defaulting to content mode: {e}")
+                is_episode_discovery_query = False
+
+        # Build query with context
+        query_text = query
+        if episode_obj:
+            # Rich episode context prompt
+            context_parts = [
+                f"Podcast: {podcast_filter_name}",
+                f"Episode: {episode_filter_name}"
+            ]
+
+            if episode_obj.published_date:
+                pub_date = episode_obj.published_date.strftime('%B %d, %Y')
+                context_parts.append(f"Published: {pub_date}")
+
+            if episode_obj.ai_summary:
+                context_parts.append(f"Summary: {episode_obj.ai_summary}")
+
+            context = "\n".join(context_parts)
+            query_text = f"""You are answering questions about a specific podcast episode. Here is the episode information:
+
+{context}
+
+User Question: {query}
+
+Please provide a comprehensive answer based on the episode transcript, citing specific details and quotes where relevant."""
+        elif podcast_obj:
+            # Rich podcast context prompt with episode list
+            context_parts = [f"Podcast: {podcast_obj.title}"]
+
+            if podcast_obj.author:
+                context_parts.append(f"Author/Host: {podcast_obj.author}")
+
+            if podcast_obj.description:
+                context_parts.append(f"Description: {podcast_obj.description}")
+
+            # Get episodes from repository (avoids lazy loading issue)
+            episodes = []
+            try:
+                episodes = _repository.list_episodes(podcast_id=podcast_obj.id)
+                if episodes:
+                    context_parts.append(f"Total Episodes: {len(episodes)}")
+            except Exception as e:
+                logger.warning(f"Could not fetch episodes: {e}")
+
+            context = "\n".join(context_parts)
+
+            # Build episode list with titles and summaries
+            episode_list = ""
+            if episodes:
+                episode_lines = []
+                for ep in episodes:
+                    # Format: "Episode Title (Date)" - Summary
+                    ep_line = f"- {ep.title}"
+                    if ep.published_date:
+                        ep_line += f" ({ep.published_date.strftime('%Y-%m-%d')})"
+                    if ep.ai_summary:
+                        ep_line += f": {ep.ai_summary}"
+                    episode_lines.append(ep_line)
+
+                episode_list = "\n\nEpisode List:\n" + "\n".join(episode_lines)
+
+            query_text = f"""You are answering questions about a podcast series. Here is the podcast information:
+
+{context}{episode_list}
+
+User Question: {query}
+
+IMPORTANT INSTRUCTIONS:
+1. If the question asks "which episodes" or is about finding/recommending episodes, ONLY use the Episode List above. Look for relevant keywords in episode titles and summaries.
+2. For questions about specific content or quotes FROM episodes, use the transcript search results.
+3. When recommending episodes, cite the episode title and date from the list above.
+
+Please provide a comprehensive answer following these instructions."""
+        elif podcast_filter_list:
+            # Subscriptions chat - build podcast list
+            context_parts = [f"Subscribed Podcasts ({len(podcast_filter_list)} total)"]
+
+            # Build podcast list with descriptions
+            podcast_list = ""
+            if 'podcasts_for_discovery' in locals() and podcasts_for_discovery:
+                podcast_lines = []
+                for podcast in podcasts_for_discovery:
+                    podcast_line = f"- **{podcast.title}**"
+                    if podcast.author:
+                        podcast_line += f" by {podcast.author}"
+                    if podcast.description:
+                        podcast_line += f"\n  {podcast.description}"
+                    podcast_lines.append(podcast_line)
+
+                podcast_list = "\n\nPodcast List:\n" + "\n".join(podcast_lines)
+
+            context = "\n".join(context_parts)
+            query_text = f"""You are helping a user explore their subscribed podcasts.
+
+{context}{podcast_list}
+
+User Question: {query}
+
+IMPORTANT INSTRUCTIONS:
+1. If the question asks "which podcasts" or is about finding/recommending podcasts, ONLY use the Podcast List above.
+2. For questions about specific content or quotes FROM podcasts, use the transcript search results.
+3. When recommending podcasts, cite the podcast title and description from the list above.
+
+Please provide a comprehensive answer following these instructions."""
+        else:
+            # Global chat - build podcast list
+            context_parts = ["Search across all available podcasts"]
+
+            # Build podcast list with descriptions
+            podcast_list = ""
+            if 'podcasts_for_discovery' in locals() and podcasts_for_discovery:
+                podcast_lines = []
+                for podcast in podcasts_for_discovery:
+                    podcast_line = f"- **{podcast.title}**"
+                    if podcast.author:
+                        podcast_line += f" by {podcast.author}"
+                    if podcast.description:
+                        podcast_line += f"\n  {podcast.description}"
+                    podcast_lines.append(podcast_line)
+
+                podcast_list = "\n\nPodcast List:\n" + "\n".join(podcast_lines)
+
+            context = "\n".join(context_parts)
+            query_text = f"""You are helping a user explore available podcasts.
+
+{context}{podcast_list}
+
+User Question: {query}
+
+IMPORTANT INSTRUCTIONS:
+1. If the question asks "which podcasts" or is about finding/recommending podcasts, ONLY use the Podcast List above.
+2. For questions about specific content or quotes FROM podcasts, use the transcript search results.
+3. When recommending podcasts, cite the podcast title and description from the list above.
+
+Please provide a comprehensive answer following these instructions."""
+
+        # Make streaming request (with or without File Search)
+        if is_episode_discovery_query:
+            # Two-stage approach for discovery:
+            # For podcast scope: discover episodes
+            # For subscriptions/global: discover podcasts
+
+            if podcast_obj:
+                # Episode discovery (for podcast scope)
+                yield f"event: status\ndata: {json.dumps({'phase': 'filtering', 'message': 'Finding relevant episodes...'})}\n\n"
+
+                identification_prompt = f"""You are helping a user find relevant podcast episodes.
+
+Podcast: {podcast_obj.title}
+{episode_list if 'episode_list' in locals() else ""}
+
+User Question: {query}
+
+Based on the episode list above, identify the most relevant episodes for this question.
+Return ONLY a JSON array of episode titles, like: ["Episode Title 1", "Episode Title 2"]
+Do not include any other text or explanation."""
+            else:
+                # Podcast discovery (for subscriptions/global)
+                yield f"event: status\ndata: {json.dumps({'phase': 'filtering', 'message': 'Finding relevant podcasts...'})}\n\n"
+
+                scope_context = ""
+                if podcast_filter_list:
+                    scope_context = f"User's Subscribed Podcasts ({len(podcast_filter_list)} total)"
+                else:
+                    scope_context = "All Available Podcasts"
+
+                identification_prompt = f"""You are helping a user find relevant podcasts.
+
+{scope_context}
+{podcast_list if 'podcast_list' in locals() else ""}
+
+User Question: {query}
+
+Based on the podcast list above, identify the most relevant podcasts for this question.
+Return ONLY a JSON array of podcast titles, like: ["Podcast Title 1", "Podcast Title 2"]
+Do not include any other text or explanation."""
+
+            try:
+                identification_response = client.models.generate_content(
+                    model=config.GEMINI_MODEL,
+                    contents=identification_prompt,
+                    config=types.GenerateContentConfig(
+                        response_modalities=["TEXT"]
+                    )
+                )
+
+                # Parse the episode titles from the response
+                import json as json_lib
+                response_text = identification_response.text.strip()
+                # Extract JSON array if it's wrapped in markdown code blocks
+                if "```json" in response_text:
+                    response_text = response_text.split("```json")[1].split("```")[0].strip()
+                elif "```" in response_text:
+                    response_text = response_text.split("```")[1].split("```")[0].strip()
+
+                relevant_titles = json_lib.loads(response_text)
+                logger.info(f"Identified {len(relevant_titles)} relevant items: {relevant_titles}")
+
+                # Stage 2: Build detailed response using relevant items
+                if podcast_obj and relevant_titles and 'episodes' in locals() and episodes:
+                    # Episode discovery (for podcast scope)
+                    relevant_episodes = [ep for ep in episodes if ep.title in relevant_titles]
+
+                    # Build focused episode list with full summaries
+                    focused_list = []
+                    for ep in relevant_episodes:
+                        ep_info = f"**{ep.title}**"
+                        if ep.published_date:
+                            ep_info += f" ({ep.published_date.strftime('%B %d, %Y')})"
+                        if ep.ai_summary:
+                            ep_info += f"\n{ep.ai_summary}"
+                        focused_list.append(ep_info)
+
+                    focused_context = "\n\n".join(focused_list)
+                    detailed_prompt = f"""Here are the relevant episodes from the {podcast_obj.title} podcast:
+
+{focused_context}
+
+User Question: {query}
+
+Please provide a comprehensive, detailed answer based on these episode summaries. Explain what each episode covers and how it relates to the question."""
+
+                elif relevant_titles and 'podcasts_for_discovery' in locals() and podcasts_for_discovery:
+                    # Podcast discovery (for subscriptions/global)
+                    relevant_podcasts = [p for p in podcasts_for_discovery if p.title in relevant_titles]
+
+                    # Build focused podcast list with full descriptions
+                    focused_list = []
+                    for podcast in relevant_podcasts:
+                        podcast_info = f"**{podcast.title}**"
+                        if podcast.author:
+                            podcast_info += f" by {podcast.author}"
+                        if podcast.description:
+                            podcast_info += f"\n{podcast.description}"
+                        focused_list.append(podcast_info)
+
+                    focused_context = "\n\n".join(focused_list)
+
+                    scope_description = "from your subscribed podcasts" if podcast_filter_list else "from available podcasts"
+                    detailed_prompt = f"""Here are the relevant podcasts {scope_description}:
+
+{focused_context}
+
+User Question: {query}
+
+Please provide a comprehensive, detailed answer based on these podcast descriptions. Explain what each podcast covers and how it relates to the question."""
+                else:
+                    # No relevant items found, skip to fallback
+                    raise ValueError("No relevant items found after filtering")
+
+                # Generate response using detailed_prompt
+                yield f"event: status\ndata: {json.dumps({'phase': 'synthesizing', 'message': 'Generating detailed response...'})}\n\n"
+
+                response = client.models.generate_content_stream(
+                    model=config.GEMINI_MODEL,
+                    contents=detailed_prompt,
+                    config=types.GenerateContentConfig(
+                        response_modalities=["TEXT"]
+                    )
+                )
+            except Exception as e:
+                logger.error(f"Two-stage discovery failed: {e}", exc_info=True)
+                # Fallback to single-stage approach
+                response = client.models.generate_content_stream(
+                    model=config.GEMINI_MODEL,
+                    contents=query_text,
+                    config=types.GenerateContentConfig(
+                        response_modalities=["TEXT"]
+                    )
+                )
+        else:
+            # For content queries, use File Search
+            response = client.models.generate_content_stream(
+                model=config.GEMINI_MODEL,
+                contents=query_text,
+                config=types.GenerateContentConfig(
+                    tools=[types.Tool(
+                        file_search=file_search_config
+                    )],
+                    response_modalities=["TEXT"]
+                )
             )
 
-        # Signal search phase
-        yield f"event: status\ndata: {json.dumps({'phase': 'searching', 'message': 'Searching podcasts and web...'})}\n\n"
+        # Stream the response
+        yield f"event: status\ndata: {json.dumps({'phase': 'responding'})}\n\n"
 
-        # Clear any previous podcast citations for this session
-        clear_podcast_citations(session_id)
+        full_text = ""
+        final_response = None
+        for chunk in response:
+            if hasattr(chunk, 'text') and chunk.text:
+                # Stream each chunk as it arrives
+                yield f"event: token\ndata: {json.dumps({'token': chunk.text})}\n\n"
+                full_text += chunk.text
+            # Keep reference to last chunk which may contain grounding metadata
+            final_response = chunk
 
-        # Set podcast and episode filters for the search tool
-        set_podcast_filter(session_id, podcast_filter_name, episode_filter_name)
+        # Extract citations from the streamed response (only for File Search queries)
+        citations = []
+        if not is_episode_discovery_query and final_response:
+            # Extract citations from the final streamed response
+            citations = _extract_citations(final_response, _repository)
+            logger.debug(f"Extracted {len(citations)} citations from File Search")
+        else:
+            logger.debug("Skipping citation extraction for episode discovery query")
 
-        # Build message content with optional podcast/episode filter context
-        query_text = query
-        if episode_filter_name:
-            query_text = f"[Focus only on the episode '{episode_filter_name}' from '{podcast_filter_name}'] {query}"
-        elif podcast_filter_name:
-            query_text = f"[Focus only on the podcast '{podcast_filter_name}'] {query}"
-
-        content = types.Content(
-            role='user',
-            parts=[types.Part(text=query_text)]
-        )
-
-        # Track search completion for status updates
-        podcast_complete = False
-        web_complete = False
-        final_text = ""
-        web_results = {}
-        grounding_chunks = []
-        search_entry_point = ""  # Required by Google ToS for grounding
-
-        # Track which agents we've seen
-        seen_agents = set()
-
-        # Run the orchestrator with timeout
-        # Use timeout for the overall execution to prevent hanging
-        timeout_seconds = config.ADK_PARALLEL_TIMEOUT
-
-        async def run_with_timeout():
-            """Wrapper to run orchestrator with timeout."""
-            async for event in runner.run_async(
-                user_id="default",
-                session_id=session_id,
-                new_message=content
-            ):
-                yield event
-
-        # Process events with per-iteration timeout check
-        event_iterator = run_with_timeout()
-        start_time = asyncio.get_event_loop().time()
-
-        async for event in event_iterator:
-            # Check if we've exceeded total timeout
-            elapsed = asyncio.get_event_loop().time() - start_time
-            if elapsed > timeout_seconds:
-                logger.warning(f"ADK execution timeout after {elapsed:.1f}s")
-                raise asyncio.TimeoutError(f"Search timed out after {timeout_seconds}s")
-            # Get agent/author info
-            author = getattr(event, 'author', None)
-            author_str = str(author) if author else ''
-
-            # Track agent starts
-            if author and author_str not in seen_agents:
-                seen_agents.add(author_str)
-                if 'PodcastSearch' in author_str:
-                    yield f"event: status\ndata: {json.dumps({'agent': 'podcast', 'status': 'started', 'message': 'Searching podcast transcripts...'})}\n\n"
-                elif 'WebSearch' in author_str:
-                    yield f"event: status\ndata: {json.dumps({'agent': 'web', 'status': 'started', 'message': 'Searching the web...'})}\n\n"
-                elif 'Synthesizer' in author_str:
-                    yield f"event: status\ndata: {json.dumps({'agent': 'synthesizer', 'status': 'started', 'message': 'Synthesizing results...'})}\n\n"
-
-            # Check for function/tool calls
-            if hasattr(event, 'content') and event.content:
-                if hasattr(event.content, 'parts'):
-                    for part in event.content.parts:
-                        # Check for function calls
-                        if hasattr(part, 'function_call') and part.function_call:
-                            fc = part.function_call
-                            func_name = getattr(fc, 'name', '')
-                            if func_name == 'search_podcasts':
-                                args = getattr(fc, 'args', {})
-                                query_arg = args.get('query', '') if isinstance(args, dict) else ''
-                                yield f"event: status\ndata: {json.dumps({'tool': 'search_podcasts', 'message': f'Searching podcasts for: {query_arg}'})}\n\n"
-                            elif func_name == 'google_search':
-                                yield f"event: status\ndata: {json.dumps({'tool': 'google_search', 'message': 'Performing web search...'})}\n\n"
-                            elif func_name == 'url_context':
-                                yield f"event: status\ndata: {json.dumps({'tool': 'url_context', 'message': 'Fetching page content...'})}\n\n"
-
-                        # Check for intermediate text (agent thoughts)
-                        if hasattr(part, 'text') and part.text:
-                            text = part.text.strip()
-                            # Only show non-final thoughts from search agents
-                            if text and not (hasattr(event, 'is_final_response') and event.is_final_response()):
-                                if 'PodcastSearch' in author_str or 'WebSearch' in author_str:
-                                    # Truncate long thoughts
-                                    preview = text[:200] + '...' if len(text) > 200 else text
-                                    yield f"event: status\ndata: {json.dumps({'agent': author_str.split('/')[-1], 'thought': preview})}\n\n"
-
-            # Track agent completions
-            if author:
-                if 'PodcastSearch' in author_str and not podcast_complete:
-                    if hasattr(event, 'is_final_response') and event.is_final_response():
-                        podcast_complete = True
-                        yield f"event: status\ndata: {json.dumps({'agent': 'podcast', 'status': 'complete', 'message': 'Podcast search complete'})}\n\n"
-
-                elif 'WebSearch' in author_str and not web_complete:
-                    if hasattr(event, 'is_final_response') and event.is_final_response():
-                        web_complete = True
-                        yield f"event: status\ndata: {json.dumps({'agent': 'web', 'status': 'complete', 'message': 'Web search complete'})}\n\n"
-
-            # Extract grounding metadata from google_search tool (with defensive type checking)
-            if hasattr(event, 'grounding_metadata') and event.grounding_metadata:
-                gm = event.grounding_metadata
-                if hasattr(gm, 'grounding_chunks') and gm.grounding_chunks:
-                    for chunk in gm.grounding_chunks:
-                        chunk_data = _extract_grounding_chunk(chunk)
-                        if chunk_data:
-                            grounding_chunks.append(chunk_data)
-                    if grounding_chunks:
-                        logger.debug(f"Extracted {len(grounding_chunks)} grounding chunks")
-
-                # Extract search entry point (required by Google ToS)
-                if not search_entry_point:
-                    search_entry_point = _extract_search_entry_point(gm)
-                    if search_entry_point:
-                        logger.debug("Extracted search entry point HTML")
-
-            # Check for final response
-            if hasattr(event, 'is_final_response') and event.is_final_response():
-                if hasattr(event, 'content') and event.content:
-                    if hasattr(event.content, 'parts'):
-                        for part in event.content.parts:
-                            if hasattr(part, 'text') and part.text:
-                                final_text = part.text
-
-                    # Also check for grounding metadata in the final response
-                    if hasattr(event.content, 'grounding_metadata'):
-                        gm = event.content.grounding_metadata
-                        if hasattr(gm, 'grounding_chunks') and gm.grounding_chunks:
-                            for chunk in gm.grounding_chunks:
-                                chunk_data = _extract_grounding_chunk(chunk)
-                                if chunk_data and chunk_data not in grounding_chunks:
-                                    grounding_chunks.append(chunk_data)
-
-                        # Extract search entry point from final response
-                        if not search_entry_point:
-                            search_entry_point = _extract_search_entry_point(gm)
-                            if search_entry_point:
-                                logger.debug("Extracted search entry point from final response")
-
-        # Stream the final response word by word
-        if final_text:
-            yield f"event: status\ndata: {json.dumps({'phase': 'responding'})}\n\n"
-
-            words = final_text.split()
-            for word in words:
-                yield f"event: token\ndata: {json.dumps({'token': word + ' '})}\n\n"
-                await asyncio.sleep(config.WEB_STREAMING_DELAY)
-
-        # Combine and send citations
-        # Get podcast citations from session-specific storage (set by the tool)
-        podcast_citations = get_podcast_citations(session_id)
-        podcast_results = {'citations': podcast_citations} if podcast_citations else {}
-        logger.debug(f"Retrieved {len(podcast_citations)} podcast citations for session {session_id}")
-
-        # Include grounding_chunks if we captured them from google_search
-        if grounding_chunks:
-            web_results = web_results or {}
-            web_results['grounding_chunks'] = grounding_chunks
-            logger.debug(f"Adding {len(grounding_chunks)} grounding chunks to web results")
-
-        citations = _combine_citations(podcast_results, web_results, podcast_filter_name)
-
-        # Log citation details for debugging
-        podcast_count = len([c for c in citations if c.get('source_type') == 'podcast'])
-        web_count = len([c for c in citations if c.get('source_type') == 'web'])
-        logger.debug(f"Citations: {podcast_count} podcast, {web_count} web")
-        if web_count > 0:
-            for c in citations:
-                if c.get('source_type') == 'web':
-                    url = c.get('metadata', {}).get('url', 'no url')
-                    logger.debug(f"Web citation: {c.get('ref_id')} - {c.get('title', 'no title')} - {url}")
-
-        # Include search entry point if available (required by Google ToS for grounding)
+        # Send citations
         citations_data = {'citations': citations}
-        if search_entry_point:
-            citations_data['search_entry_point'] = search_entry_point
-            logger.debug("Including Google search entry point in response")
-
         yield f"event: citations\ndata: {json.dumps(citations_data)}\n\n"
 
         # Signal completion
@@ -620,10 +625,6 @@ async def generate_streaming_response(
 
         logger.debug(f"Query completed with {len(citations)} citations")
 
-    except asyncio.TimeoutError:
-        logger.error("ADK orchestration timed out")
-        yield f"event: error\ndata: {json.dumps({'error': 'Search timed out'})}\n\n"
-        yield f"event: done\ndata: {json.dumps({'status': 'error'})}\n\n"
     except Exception as e:
         logger.error(f"Streaming error: {e}", exc_info=True)
         yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
@@ -640,12 +641,13 @@ async def chat(
     """
     Chat endpoint with Server-Sent Events streaming.
 
-    Uses ADK multi-agent architecture for parallel podcast and web search.
+    Uses Gemini File Search directly for podcast transcript search.
+    Supports filtering by episode, podcast, subscriptions, or global search.
     Requires authentication.
 
     Args:
         request: FastAPI Request object (for rate limiting)
-        chat_request: ChatRequest with query and optional conversation history
+        chat_request: ChatRequest with query and optional filters
         current_user: Authenticated user from JWT cookie
 
     Returns:
@@ -658,6 +660,9 @@ async def chat(
     raw_session_id = request.headers.get('X-Session-ID', '')
     session_id = _validate_session_id(raw_session_id)
 
+    # Get user ID from authenticated user
+    user_id = current_user["sub"]
+
     # Convert Pydantic models to dicts for the generator
     history_dicts = None
     if chat_request.history:
@@ -667,9 +672,11 @@ async def chat(
         generate_streaming_response(
             chat_request.query,
             session_id,
+            user_id,
             history_dicts,
             chat_request.podcast_id,
-            chat_request.episode_id
+            chat_request.episode_id,
+            chat_request.subscribed_only
         ),
         media_type="text/event-stream"
     )
@@ -1024,6 +1031,13 @@ async def search_episodes(
             for ep in episodes
         ]
     }
+
+
+# Redirect root to podcasts page (replacing old global chat interface)
+@app.get("/")
+async def root():
+    """Redirect root URL to podcasts library page."""
+    return RedirectResponse(url="/podcasts.html", status_code=302)
 
 
 # Mount static files (must be last to avoid route conflicts)
