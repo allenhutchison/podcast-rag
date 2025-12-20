@@ -434,13 +434,14 @@
             // For "Browse All" view, use the is_subscribed field
             const isSubscribed = podcast.is_subscribed !== undefined ? podcast.is_subscribed : true;
             const buttonClass = isSubscribed
-                ? 'w-full px-3 py-1.5 text-xs font-medium bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition-colors'
-                : 'w-full px-3 py-1.5 text-xs font-medium bg-primary text-white rounded hover:bg-blue-700 transition-colors';
+                ? 'subscribe-btn w-full px-3 py-1.5 text-xs font-medium bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition-colors'
+                : 'subscribe-btn w-full px-3 py-1.5 text-xs font-medium bg-primary text-white rounded hover:bg-blue-700 transition-colors';
             const buttonText = isSubscribed ? 'Unsubscribe' : 'Subscribe';
             const subscribeButtonHtml = `
                 <button
-                    onclick="toggleSubscription('${escapeHtml(podcast.id)}', ${isSubscribed}, event)"
                     class="${buttonClass}"
+                    data-podcast-id="${escapeHtml(podcast.id)}"
+                    data-subscribed="${isSubscribed}"
                 >
                     ${buttonText}
                 </button>
@@ -652,6 +653,18 @@
             // Load current view and prefetch the other
             loadPodcasts();
             prefetchPodcasts();
+        });
+
+        // Event delegation for subscribe/unsubscribe buttons
+        podcastGrid.addEventListener('click', function(e) {
+            const button = e.target.closest('.subscribe-btn');
+            if (button && !button.disabled) {
+                const podcastId = button.dataset.podcastId;
+                const isSubscribed = button.dataset.subscribed === 'true';
+                if (podcastId) {
+                    toggleSubscription(podcastId, isSubscribed, e);
+                }
+            }
         });
 
         // ========================================
