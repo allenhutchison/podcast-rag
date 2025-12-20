@@ -13,6 +13,7 @@ import pytest
 from src.agents.podcast_search import (
     set_podcast_filter,
     get_podcast_filter,
+    get_episode_filter,
     get_podcast_filter_list,
     escape_filter_value,
 )

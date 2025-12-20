@@ -251,7 +251,8 @@ def set_podcast_filter(
         raise ValueError("Cannot specify both podcast_name and podcast_list - they are mutually exclusive")
 
     with _filter_lock:
-        if podcast_name or episode_name or podcast_list:
+        # Check for None explicitly to allow empty lists
+        if podcast_name is not None or episode_name is not None or podcast_list is not None:
             _session_podcast_filter[session_id] = {
                 'podcast': podcast_name,
                 'episode': episode_name,
