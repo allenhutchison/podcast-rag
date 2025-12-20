@@ -6,7 +6,7 @@ All routes require admin authentication via the get_current_admin dependency.
 
 import logging
 from enum import Enum
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -16,6 +16,9 @@ from src.web.auth import get_current_admin
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+# Valid stages for episode retry - shared with repository
+StageType = Literal["download", "transcript", "metadata", "indexing"]
 
 
 class SetAdminRequest(BaseModel):
@@ -27,7 +30,7 @@ class SetAdminRequest(BaseModel):
 class RetryRequest(BaseModel):
     """Request body for episode retry."""
 
-    stage: str  # "download", "transcript", "metadata", or "indexing"
+    stage: StageType
 
 
 class EpisodeFilterType(str, Enum):
@@ -235,20 +238,12 @@ async def retry_episode(
     """
     repository: PodcastRepositoryInterface = request.app.state.repository
 
-    # Validate stage
-    valid_stages = ["download", "transcript", "metadata", "indexing"]
-    if body.stage not in valid_stages:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid stage. Must be one of: {', '.join(valid_stages)}",
-        )
-
     # Check episode exists
     episode = repository.get_episode(episode_id)
     if not episode:
         raise HTTPException(status_code=404, detail="Episode not found")
 
-    # Reset the episode for retry
+    # Reset the episode for retry (stage validated by Pydantic via StageType)
     repository.reset_episode_for_retry(episode_id, body.stage)
 
     logger.info(

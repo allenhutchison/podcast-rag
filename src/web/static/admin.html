@@ -930,6 +930,16 @@
          * Retry a failed episode
          */
         async function retryEpisode(episodeId, stage) {
+            // Find and disable the button to prevent double-clicks
+            const button = document.querySelector(
+                `button.retry-episode-btn[data-episode-id="${CSS.escape(episodeId)}"][data-stage="${stage}"]`
+            );
+            const originalText = button ? button.textContent : '';
+            if (button) {
+                button.disabled = true;
+                button.textContent = 'Retrying...';
+            }
+
             try {
                 const response = await fetch(`/api/admin/episodes/${encodeURIComponent(episodeId)}/retry`, {
                     method: 'POST',
@@ -954,6 +964,11 @@
                 errorDiv.textContent = `Failed to retry episode: ${error.message}`;
                 errorDiv.classList.remove('hidden');
                 setTimeout(() => errorDiv.classList.add('hidden'), 5000);
+                // Re-enable button on error
+                if (button) {
+                    button.disabled = false;
+                    button.textContent = originalText;
+                }
             }
         }
 
@@ -973,8 +988,8 @@
         function loadEpisodePage(direction) {
             if (direction === 'next') {
                 currentOffset += PAGE_SIZE;
-            } else if (direction === 'prev' && currentOffset >= PAGE_SIZE) {
-                currentOffset -= PAGE_SIZE;
+            } else if (direction === 'prev') {
+                currentOffset = Math.max(0, currentOffset - PAGE_SIZE);
             }
             loadEpisodes();
         }
