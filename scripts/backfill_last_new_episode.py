@@ -12,8 +12,6 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from sqlalchemy import select, func
-from db.models import Podcast, Episode
 from db.repository import SQLAlchemyPodcastRepository
 from config import Config
 
@@ -25,43 +23,36 @@ def backfill_last_new_episode():
 
     print("Backfilling last_new_episode for podcasts...")
 
-    with repo._get_session() as session:
-        # Get all podcasts
-        podcasts = session.scalars(select(Podcast)).all()
+    # Get all podcasts using public API
+    podcasts = repo.list_podcasts(subscribed_only=False)
 
-        updated_count = 0
-        skipped_count = 0
-        no_episodes_count = 0
+    updated_count = 0
+    skipped_count = 0
+    no_episodes_count = 0
 
-        try:
-            for podcast in podcasts:
-                # Get the most recent episode for this podcast
-                latest_episode = session.scalar(
-                    select(Episode)
-                    .where(Episode.podcast_id == podcast.id)
-                    .where(Episode.published_date.isnot(None))
-                    .order_by(Episode.published_date.desc())
-                    .limit(1)
-                )
+    try:
+        for podcast in podcasts:
+            # Get the most recent episode using public API
+            latest_episode = repo.get_latest_episode(podcast.id)
 
-                if latest_episode and latest_episode.published_date:
-                    # Update podcast if last_new_episode is None or different
-                    if podcast.last_new_episode != latest_episode.published_date:
-                        podcast.last_new_episode = latest_episode.published_date
-                        print(f"✓ Updated '{podcast.title}': {latest_episode.published_date}")
-                        updated_count += 1
-                    else:
-                        skipped_count += 1
+            if latest_episode and latest_episode.published_date:
+                # Update podcast if last_new_episode is None or different
+                if podcast.last_new_episode != latest_episode.published_date:
+                    repo.update_podcast(
+                        podcast.id,
+                        last_new_episode=latest_episode.published_date
+                    )
+                    print(f"✓ Updated '{podcast.title}': {latest_episode.published_date}")
+                    updated_count += 1
                 else:
-                    no_episodes_count += 1
-                    print(f"⚠ No episodes found for '{podcast.title}'")
+                    skipped_count += 1
+            else:
+                no_episodes_count += 1
+                print(f"⚠ No episodes found for '{podcast.title}'")
 
-            # Commit all changes in a single transaction
-            session.commit()
-        except Exception as e:
-            session.rollback()
-            print(f"\n❌ Error during backfill: {e}")
-            raise
+    except Exception as e:
+        print(f"\n❌ Error during backfill: {e}")
+        raise
 
     print("\nBackfill complete!")
     print(f"  Updated: {updated_count}")
