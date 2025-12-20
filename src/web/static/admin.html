@@ -831,6 +831,7 @@
 
         /**
          * Get status badge HTML for episode
+         * Note: status values are escaped to prevent XSS
          */
         function getStatusBadge(ep) {
             const stages = [
@@ -851,7 +852,7 @@
 
             return `
                 <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${displayStage.color}">
-                    ${displayStage.name}: ${displayStage.status}
+                    ${escapeHtml(displayStage.name)}: ${escapeHtml(displayStage.status || '')}
                 </span>
             `;
         }
