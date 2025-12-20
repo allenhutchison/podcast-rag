@@ -398,8 +398,8 @@ class TestValidatePodcastId:
         with pytest.raises(HTTPException) as exc_info:
             _validate_podcast_id("not-a-uuid")
 
-        assert exc_info.value.status_code == 400
-        assert "Invalid podcast_id format" in str(exc_info.value.detail)
+        assert exc_info.value.status_code == 422
+        assert "Invalid podcast_id" in str(exc_info.value.detail)
 
     def test_validate_podcast_id_empty_string_raises(self):
         """Test that empty string raises HTTPException."""
@@ -409,7 +409,7 @@ class TestValidatePodcastId:
         with pytest.raises(HTTPException) as exc_info:
             _validate_podcast_id("")
 
-        assert exc_info.value.status_code == 400
+        assert exc_info.value.status_code == 422
 
     def test_validate_podcast_id_sql_injection_attempt(self):
         """Test that SQL injection attempts are rejected."""
@@ -425,7 +425,7 @@ class TestValidatePodcastId:
         for malicious_id in malicious_ids:
             with pytest.raises(HTTPException) as exc_info:
                 _validate_podcast_id(malicious_id)
-            assert exc_info.value.status_code == 400
+            assert exc_info.value.status_code == 422
 
 
 class TestEscapeFilterValueIntegration:
