@@ -135,6 +135,7 @@ async def add_podcast_by_url(
 
 @router.get("/search", response_model=PodcastSearchResponse)
 async def search_podcasts(
+    request: Request,
     q: str,
     limit: int = 20,
     current_user: dict = Depends(get_current_user),
@@ -143,18 +144,21 @@ async def search_podcasts(
     Search for podcasts using the iTunes Search API.
 
     Args:
+        request: FastAPI request object for accessing repository
         q: Search query string
         limit: Maximum number of results (1-50, default 20)
         current_user: Authenticated user from JWT cookie
 
     Returns:
-        PodcastSearchResponse with search results
+        PodcastSearchResponse with search results including subscription status
     """
     if not q or not q.strip():
         raise HTTPException(status_code=400, detail="Search query cannot be empty")
 
     query = q.strip()
     limit = max(1, min(50, limit))  # Clamp between 1 and 50
+    repository = request.app.state.repository
+    user_id = current_user["sub"]
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -177,6 +181,14 @@ async def search_podcasts(
             if not feed_url:
                 continue
 
+            # Check if podcast exists in database and if user is subscribed
+            is_subscribed = False
+            podcast_id = None
+            existing_podcast = repository.get_podcast_by_feed_url(feed_url)
+            if existing_podcast:
+                podcast_id = existing_podcast.id
+                is_subscribed = repository.is_user_subscribed(user_id, existing_podcast.id)
+
             results.append(
                 PodcastSearchResult(
                     title=item.get("collectionName", item.get("trackName", "Unknown")),
@@ -185,6 +197,8 @@ async def search_podcasts(
                     image_url=item.get("artworkUrl600") or item.get("artworkUrl100"),
                     description=None,  # iTunes API doesn't return descriptions in search
                     genre=item.get("primaryGenreName"),
+                    is_subscribed=is_subscribed,
+                    podcast_id=podcast_id,
                 )
             )
 

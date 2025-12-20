@@ -114,6 +114,8 @@ class PodcastSearchResult(BaseModel):
     image_url: Optional[str] = Field(default=None, description="Podcast artwork URL")
     description: Optional[str] = Field(default=None, description="Podcast description")
     genre: Optional[str] = Field(default=None, description="Primary genre")
+    is_subscribed: bool = Field(default=False, description="Whether the user is subscribed to this podcast")
+    podcast_id: Optional[str] = Field(default=None, description="Podcast ID if it exists in the database")
 
 
 class PodcastSearchResponse(BaseModel):

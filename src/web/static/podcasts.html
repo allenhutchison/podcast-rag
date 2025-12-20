@@ -610,6 +610,13 @@
                 ? `<img src="${escapeHtml(podcast.image_url)}" alt="${escapeHtml(podcast.title)}" class="w-16 h-16 rounded-lg object-cover" referrerpolicy="no-referrer" onerror="this.parentElement.innerHTML='<div class=\\'placeholder-image w-16 h-16 rounded-lg flex items-center justify-center\\'><span class=\\'text-xl\\'>🎙️</span></div>'">`
                 : `<div class="placeholder-image w-16 h-16 rounded-lg flex items-center justify-center"><span class="text-xl">🎙️</span></div>`;
 
+            // Determine button text and style based on subscription status
+            const isSubscribed = podcast.is_subscribed || false;
+            const buttonText = isSubscribed ? 'Unsubscribe' : 'Subscribe';
+            const buttonClass = isSubscribed
+                ? 'add-podcast-btn flex-shrink-0 px-4 py-2 bg-gray-100 text-gray-600 text-sm rounded-lg hover:bg-gray-200 transition-colors font-medium'
+                : 'add-podcast-btn flex-shrink-0 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors font-medium';
+
             return `
                 <div class="search-result-card flex items-center gap-4 p-3 border border-gray-200 rounded-lg">
                     <div class="flex-shrink-0">${imageHtml}</div>
@@ -620,58 +627,100 @@
                     </div>
                     <button
                         data-feed-index="${index}"
-                        class="add-podcast-btn flex-shrink-0 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors font-medium"
+                        data-is-subscribed="${isSubscribed}"
+                        data-podcast-id="${podcast.podcast_id || ''}"
+                        class="${buttonClass}"
                     >
-                        Add
+                        ${buttonText}
                     </button>
                 </div>
             `;
         }
 
         /**
-         * Add a podcast from search results using index-based lookup
+         * Add or remove a podcast from search results using index-based lookup
          * This approach prevents XSS by not interpolating URLs into onclick handlers
          */
         async function addPodcastFromSearch(index, button) {
-            // Safely retrieve feed URL from stored results
+            // Safely retrieve podcast data from stored results
             const podcast = searchResultsData[index];
             if (!podcast || !podcast.feed_url) {
                 showToast('Invalid podcast selection', 'error');
                 return;
             }
 
+            const isSubscribed = button.dataset.isSubscribed === 'true';
+            const podcastId = button.dataset.podcastId;
+
             button.disabled = true;
-            button.textContent = 'Adding...';
+            const originalText = button.textContent;
 
             try {
-                const response = await fetch('/api/podcasts/add', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'include',
-                    body: JSON.stringify({ feed_url: podcast.feed_url })
-                });
+                if (isSubscribed) {
+                    // Unsubscribe from podcast
+                    if (!podcastId) {
+                        throw new Error('Podcast ID not found');
+                    }
 
-                const data = await response.json();
+                    button.textContent = 'Unsubscribing...';
 
-                if (!response.ok) {
-                    throw new Error(data.detail || 'Failed to add podcast');
+                    const response = await fetch(`/api/podcasts/${encodeURIComponent(podcastId)}/subscribe`, {
+                        method: 'DELETE',
+                        credentials: 'include'
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    // Update button to show subscribed state
+                    button.textContent = 'Subscribe';
+                    button.className = 'add-podcast-btn flex-shrink-0 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors font-medium';
+                    button.dataset.isSubscribed = 'false';
+                    button.disabled = false;
+
+                    // Show success message
+                    showToast(`Unsubscribed from: ${podcast.title}`, 'success');
+
+                    // Reload podcasts in the background
+                    loadPodcasts();
+
+                } else {
+                    // Subscribe to podcast (add if new, or just subscribe if existing)
+                    button.textContent = 'Subscribing...';
+
+                    const response = await fetch('/api/podcasts/add', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify({ feed_url: podcast.feed_url })
+                    });
+
+                    const data = await response.json();
+
+                    if (!response.ok) {
+                        throw new Error(data.detail || 'Failed to subscribe to podcast');
+                    }
+
+                    // Update button to show unsubscribed state
+                    button.textContent = 'Unsubscribe';
+                    button.className = 'add-podcast-btn flex-shrink-0 px-4 py-2 bg-gray-100 text-gray-600 text-sm rounded-lg hover:bg-gray-200 transition-colors font-medium';
+                    button.dataset.isSubscribed = 'true';
+                    button.dataset.podcastId = data.podcast_id;
+                    button.disabled = false;
+
+                    // Show success message
+                    showToast(`Subscribed to: ${data.title}`, 'success');
+
+                    // Reload podcasts in the background
+                    loadPodcasts();
                 }
 
-                // Update button to show success
-                button.textContent = 'Added!';
-                button.className = 'add-podcast-btn flex-shrink-0 px-4 py-2 bg-gray-300 text-gray-600 text-sm rounded-lg font-medium cursor-default';
-
-                // Show success message
-                showToast(`Added: ${data.title}`, 'success');
-
-                // Reload podcasts in the background
-                loadPodcasts();
-
             } catch (error) {
-                console.error('Add podcast error:', error);
+                console.error('Podcast subscription error:', error);
                 button.disabled = false;
-                button.textContent = 'Add';
-                showToast(error.message || 'Failed to add podcast', 'error');
+                button.textContent = originalText;
+                showToast(error.message || 'Failed to update subscription', 'error');
             }
         }
 
