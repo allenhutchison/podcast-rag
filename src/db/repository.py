@@ -1194,8 +1194,6 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         Returns:
             List[Podcast]: Podcasts ordered by the specified criteria.
         """
-        from sqlalchemy import func
-
         with self._get_session() as session:
             # Build base query
             stmt = select(Podcast)
@@ -2606,8 +2604,6 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         sort_order: str = "desc"
     ) -> List[Podcast]:
         """Get all podcasts a user is subscribed to."""
-        from sqlalchemy import func
-
         with self._get_session() as session:
             # Build base query
             stmt = (

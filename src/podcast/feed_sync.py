@@ -7,7 +7,7 @@ and updating metadata.
 import logging
 import os
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.exc import IntegrityError
@@ -90,7 +90,7 @@ class FeedSyncService:
             latest_episode = self.repository.get_latest_episode(podcast_id)
 
             # Update last checked timestamp and last_new_episode with actual episode date
-            update_fields = {"last_checked": datetime.utcnow()}
+            update_fields = {"last_checked": datetime.now(UTC)}
             if latest_episode and latest_episode.published_date:
                 update_fields["last_new_episode"] = latest_episode.published_date
             else:
