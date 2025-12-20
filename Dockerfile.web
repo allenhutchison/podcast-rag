@@ -15,7 +15,7 @@ COPY pyproject.toml uv.lock ./
 
 # Install only core + web dependencies (no encoding/Whisper)
 # This results in a much smaller image (~200MB vs ~2GB+)
-RUN uv sync --frozen --no-dev --extra web --no-install-project
+RUN uv sync --frozen --no-dev --group web --no-install-project
 
 # Final stage
 FROM python:3.12-slim

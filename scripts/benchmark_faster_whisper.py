@@ -57,7 +57,7 @@ def check_dependencies() -> None:
         print("Missing required dependencies:", ", ".join(missing))
         print()
         print("To install dependencies, run:")
-        print("  uv sync --extra encoding --extra benchmark")
+        print("  uv sync --group encoding --extra benchmark")
         print("  # or")
         print("  pip install openai-whisper faster-whisper")
         sys.exit(1)
