@@ -217,23 +217,49 @@ class PodcastRepositoryInterface(ABC):
         podcast_id: Optional[str] = None,
         download_status: Optional[str] = None,
         transcript_status: Optional[str] = None,
+        metadata_status: Optional[str] = None,
         file_search_status: Optional[str] = None,
         limit: Optional[int] = None,
         offset: int = 0,
     ) -> List[Episode]:
         """
         List episodes, optionally filtered and paginated.
-        
+
         Parameters:
             podcast_id (Optional[str]): If provided, only episodes belonging to this podcast are returned.
             download_status (Optional[str]): If provided, filter episodes by download status (e.g., "pending", "completed", "failed").
             transcript_status (Optional[str]): If provided, filter episodes by transcript status (e.g., "pending", "completed", "failed").
+            metadata_status (Optional[str]): If provided, filter episodes by metadata status (e.g., "pending", "completed", "failed").
             file_search_status (Optional[str]): If provided, filter episodes by file search/indexing status (e.g., "pending", "indexed", "failed").
             limit (Optional[int]): Maximum number of episodes to return. If None, no limit is applied.
             offset (int): Number of episodes to skip before returning results (for pagination).
-        
+
         Returns:
             List[Episode]: A list of Episode objects matching the provided filters, ordered by published date descending and subject to offset/limit.
+        """
+        pass
+
+    @abstractmethod
+    def count_episodes(
+        self,
+        podcast_id: Optional[str] = None,
+        download_status: Optional[str] = None,
+        transcript_status: Optional[str] = None,
+        metadata_status: Optional[str] = None,
+        file_search_status: Optional[str] = None,
+    ) -> int:
+        """
+        Count episodes matching the given filters.
+
+        Parameters:
+            podcast_id (Optional[str]): If provided, only count episodes belonging to this podcast.
+            download_status (Optional[str]): If provided, filter by download status.
+            transcript_status (Optional[str]): If provided, filter by transcript status.
+            metadata_status (Optional[str]): If provided, filter by metadata status.
+            file_search_status (Optional[str]): If provided, filter by file search status.
+
+        Returns:
+            int: Count of episodes matching the filters.
         """
         pass
 
@@ -730,7 +756,7 @@ class PodcastRepositoryInterface(ABC):
 
         Args:
             episode_id: ID of the episode.
-            stage: Processing stage ("transcript", "metadata", or "indexing").
+            stage: Processing stage ("download", "transcript", "metadata", or "indexing").
         """
         pass
 
@@ -1270,26 +1296,28 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         podcast_id: Optional[str] = None,
         download_status: Optional[str] = None,
         transcript_status: Optional[str] = None,
+        metadata_status: Optional[str] = None,
         file_search_status: Optional[str] = None,
         limit: Optional[int] = None,
         offset: int = 0,
     ) -> List[Episode]:
         """
         Retrieve episodes optionally filtered by podcast and processing statuses, with pagination.
-        
+
         Parameters:
             podcast_id (Optional[str]): Filter episodes belonging to the given podcast.
             download_status (Optional[str]): Filter by download status (e.g., "pending", "completed", "failed").
             transcript_status (Optional[str]): Filter by transcription status (e.g., "pending", "completed", "failed").
+            metadata_status (Optional[str]): Filter by metadata status (e.g., "pending", "completed", "failed").
             file_search_status (Optional[str]): Filter by file-search/indexing status (e.g., "pending", "indexed", "failed").
             limit (Optional[int]): Maximum number of episodes to return. If None, no limit is applied.
             offset (int): Number of episodes to skip before collecting results (for pagination).
-        
+
         Returns:
             List[Episode]: Episodes matching the supplied filters ordered by published date (newest first).
         """
         with self._get_session() as session:
-            stmt = select(Episode)
+            stmt = select(Episode).options(joinedload(Episode.podcast))
 
             if podcast_id:
                 stmt = stmt.where(Episode.podcast_id == podcast_id)
@@ -1297,6 +1325,8 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 stmt = stmt.where(Episode.download_status == download_status)
             if transcript_status:
                 stmt = stmt.where(Episode.transcript_status == transcript_status)
+            if metadata_status:
+                stmt = stmt.where(Episode.metadata_status == metadata_status)
             if file_search_status:
                 stmt = stmt.where(Episode.file_search_status == file_search_status)
 
@@ -1305,7 +1335,44 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             if limit:
                 stmt = stmt.limit(limit)
 
-            return list(session.scalars(stmt).all())
+            return list(session.scalars(stmt).unique().all())
+
+    def count_episodes(
+        self,
+        podcast_id: Optional[str] = None,
+        download_status: Optional[str] = None,
+        transcript_status: Optional[str] = None,
+        metadata_status: Optional[str] = None,
+        file_search_status: Optional[str] = None,
+    ) -> int:
+        """
+        Count episodes matching the given filters.
+
+        Parameters:
+            podcast_id (Optional[str]): If provided, only count episodes belonging to this podcast.
+            download_status (Optional[str]): If provided, filter by download status.
+            transcript_status (Optional[str]): If provided, filter by transcript status.
+            metadata_status (Optional[str]): If provided, filter by metadata status.
+            file_search_status (Optional[str]): If provided, filter by file search status.
+
+        Returns:
+            int: Count of episodes matching the filters.
+        """
+        with self._get_session() as session:
+            stmt = select(func.count(Episode.id))
+
+            if podcast_id:
+                stmt = stmt.where(Episode.podcast_id == podcast_id)
+            if download_status:
+                stmt = stmt.where(Episode.download_status == download_status)
+            if transcript_status:
+                stmt = stmt.where(Episode.transcript_status == transcript_status)
+            if metadata_status:
+                stmt = stmt.where(Episode.metadata_status == metadata_status)
+            if file_search_status:
+                stmt = stmt.where(Episode.file_search_status == file_search_status)
+
+            return session.scalar(stmt) or 0
 
     def update_episode(self, episode_id: str, **kwargs) -> Optional[Episode]:
         """
@@ -2192,9 +2259,10 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
 
         Args:
             episode_id: Episode to reset.
-            stage: Stage name ('transcript', 'metadata', or 'indexing').
+            stage: Stage name ('download', 'transcript', 'metadata', or 'indexing').
         """
         status_map = {
+            "download": ("download_status", "download_error"),
             "transcript": ("transcript_status", "transcript_error"),
             "metadata": ("metadata_status", "metadata_error"),
             "indexing": ("file_search_status", "file_search_error"),
