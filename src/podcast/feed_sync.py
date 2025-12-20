@@ -10,6 +10,8 @@ import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy.exc import IntegrityError
+
 from ..db.repository import PodcastRepositoryInterface
 from .feed_parser import FeedParser, ParsedEpisode, ParsedPodcast
 
@@ -256,41 +258,63 @@ class FeedSyncService:
     def _add_new_episodes(self, podcast, parsed: ParsedPodcast) -> int:
         """
         Add episodes from a parsed feed into the repository for the given podcast.
-        
+
+        Uses batch GUID lookup to avoid N+1 query problem - fetches all existing
+        GUIDs in one query, then only creates episodes that don't exist.
+
         Parameters:
             podcast: Podcast database object to associate new episodes with.
             parsed (ParsedPodcast): Parsed feed data containing episodes to add.
-        
+
         Returns:
             int: Number of episodes that were newly created and added to the repository.
         """
+        # Batch fetch all existing GUIDs in one query (instead of N queries)
+        existing_guids = self.repository.get_existing_episode_guids(podcast.id)
+
         new_count = 0
-
         for episode_data in parsed.episodes:
-            episode, created = self.repository.get_or_create_episode(
-                podcast_id=podcast.id,
-                guid=episode_data.guid,
-                title=episode_data.title,
-                enclosure_url=episode_data.enclosure_url,
-                enclosure_type=episode_data.enclosure_type,
-                description=episode_data.description,
-                link=episode_data.link,
-                published_date=episode_data.published_date,
-                duration_seconds=episode_data.duration_seconds,
-                episode_number=episode_data.episode_number,
-                season_number=episode_data.season_number,
-                episode_type=episode_data.episode_type,
-                itunes_title=episode_data.itunes_title,
-                itunes_episode=episode_data.itunes_episode,
-                itunes_season=episode_data.itunes_season,
-                itunes_explicit=episode_data.itunes_explicit,
-                itunes_duration=episode_data.itunes_duration,
-                enclosure_length=episode_data.enclosure_length,
-            )
+            # Skip if episode already exists (checked via in-memory set)
+            if episode_data.guid in existing_guids:
+                continue
 
-            if created:
+            # Only create new episodes
+            try:
+                self.repository.create_episode(
+                    podcast_id=podcast.id,
+                    guid=episode_data.guid,
+                    title=episode_data.title,
+                    enclosure_url=episode_data.enclosure_url,
+                    enclosure_type=episode_data.enclosure_type,
+                    description=episode_data.description,
+                    link=episode_data.link,
+                    published_date=episode_data.published_date,
+                    duration_seconds=episode_data.duration_seconds,
+                    episode_number=episode_data.episode_number,
+                    season_number=episode_data.season_number,
+                    episode_type=episode_data.episode_type,
+                    itunes_title=episode_data.itunes_title,
+                    itunes_episode=episode_data.itunes_episode,
+                    itunes_season=episode_data.itunes_season,
+                    itunes_explicit=episode_data.itunes_explicit,
+                    itunes_duration=episode_data.itunes_duration,
+                    enclosure_length=episode_data.enclosure_length,
+                )
                 new_count += 1
-                logger.debug(f"Added episode: {episode.title}")
+                logger.debug(f"Added episode: {episode_data.title}")
+            except IntegrityError:
+                # Race condition: another process created the episode between
+                # our GUID check and INSERT. This is expected and safe to ignore.
+                logger.warning(
+                    f"Episode already exists (race condition): "
+                    f"podcast={podcast.id}, guid={episode_data.guid}"
+                )
+            except Exception:
+                # Genuine error - log with full traceback for debugging
+                logger.exception(
+                    f"Failed to create episode: podcast={podcast.id}, "
+                    f"guid={episode_data.guid}"
+                )
 
         return new_count
 
