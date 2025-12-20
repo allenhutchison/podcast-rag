@@ -268,6 +268,22 @@ class PodcastRepositoryInterface(ABC):
     # --- Batch Operations ---
 
     @abstractmethod
+    def get_existing_episode_guids(self, podcast_id: str) -> set[str]:
+        """
+        Get all existing episode GUIDs for a podcast in a single query.
+
+        This is an optimized batch operation for sync - instead of checking
+        each episode individually (N queries), fetch all GUIDs at once (1 query).
+
+        Parameters:
+            podcast_id (str): ID of the podcast.
+
+        Returns:
+            set[str]: Set of GUIDs for all episodes belonging to this podcast.
+        """
+        pass
+
+    @abstractmethod
     def get_or_create_episode(
         self,
         podcast_id: str,
@@ -1346,6 +1362,23 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             return True
 
     # --- Batch Operations ---
+
+    def get_existing_episode_guids(self, podcast_id: str) -> set[str]:
+        """
+        Get all existing episode GUIDs for a podcast in a single query.
+
+        This is an optimized batch operation for sync - instead of checking
+        each episode individually (N queries), fetch all GUIDs at once (1 query).
+
+        Parameters:
+            podcast_id (str): ID of the podcast.
+
+        Returns:
+            set[str]: Set of GUIDs for all episodes belonging to this podcast.
+        """
+        with self._get_session() as session:
+            stmt = select(Episode.guid).where(Episode.podcast_id == podcast_id)
+            return set(session.scalars(stmt).all())
 
     def get_or_create_episode(
         self,
