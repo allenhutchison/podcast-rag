@@ -9,6 +9,7 @@ Example:
 """
 
 import sys
+from datetime import datetime
 from pathlib import Path
 
 # Add src to path for imports
@@ -36,7 +37,7 @@ def main():
         print("Please set RESEND_API_KEY in your .env file")
         sys.exit(1)
 
-    print(f"✓ Resend is configured")
+    print("✓ Resend is configured")
     print(f"✓ Sending from: {config.RESEND_FROM_NAME} <{config.RESEND_FROM_EMAIL}>")
     print(f"✓ Sending to: {recipient}")
     print()
@@ -61,7 +62,7 @@ def main():
             </div>
 
             <p style="color: #666; font-size: 14px; margin-top: 30px;">
-                Sent at: """ + __import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S') + """
+                Sent at: """ + datetime.now().strftime('%Y-%m-%d %H:%M:%S') + """
             </p>
         </div>
     </body>
@@ -78,7 +79,7 @@ def main():
     - From: """ + config.RESEND_FROM_EMAIL + """
     - Service: Resend
 
-    Sent at: """ + __import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S') + """
+    Sent at: """ + datetime.now().strftime('%Y-%m-%d %H:%M:%S') + """
     """
 
     print("Sending test email...")

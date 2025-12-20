@@ -29,7 +29,12 @@ def _redact_email(email: str) -> str:
 
 
 class EmailService:
-    """Service for sending emails via Resend."""
+    """Service for sending emails via Resend.
+
+    Note: This service sets the Resend API key at the module level,
+    which assumes a single configuration per process. This is appropriate
+    for the current architecture where Config is a singleton.
+    """
 
     def __init__(self, config: Config):
         """Initialize the email service.
@@ -40,6 +45,7 @@ class EmailService:
         self.config = config
 
         # Configure Resend API key if available
+        # Note: Sets module-level API key (appropriate for singleton config pattern)
         if self.config.RESEND_API_KEY:
             resend.api_key = self.config.RESEND_API_KEY
 
