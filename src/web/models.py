@@ -3,7 +3,7 @@ Pydantic models for web API request/response validation.
 """
 
 from typing import List, Literal, Optional
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class Message(BaseModel):
@@ -83,6 +83,18 @@ class AddPodcastByUrlRequest(BaseModel):
         description="RSS/Atom feed URL of the podcast"
     )
 
+    @field_validator('feed_url')
+    @classmethod
+    def validate_feed_url(cls, v: str) -> str:
+        """Validate that the feed URL has a valid scheme."""
+        v = v.strip()
+        valid_schemes = ('http://', 'https://', 'feed://')
+        if not v.lower().startswith(valid_schemes):
+            raise ValueError(
+                'Invalid URL scheme. Must start with http://, https://, or feed://'
+            )
+        return v
+
 
 class AddPodcastResponse(BaseModel):
     """Response model for adding a podcast."""
@@ -116,6 +128,7 @@ class OPMLImportRequest(BaseModel):
     content: str = Field(
         ...,
         min_length=1,
+        max_length=10 * 1024 * 1024,  # 10MB max for defense-in-depth
         description="OPML file content (XML string)"
     )
 

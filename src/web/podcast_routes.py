@@ -126,11 +126,11 @@ async def add_podcast_by_url(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error adding podcast from {feed_url}: {e}", exc_info=True)
+        logger.exception(f"Error adding podcast from {feed_url}")
         raise HTTPException(
             status_code=500,
             detail=f"Failed to add podcast: {str(e)}"
-        )
+        ) from e
 
 
 @router.get("/search", response_model=PodcastSearchResponse)
@@ -194,23 +194,23 @@ async def search_podcasts(
             count=len(results),
         )
 
-    except httpx.TimeoutException:
+    except httpx.TimeoutException as e:
         raise HTTPException(
             status_code=504,
             detail="iTunes search timed out. Please try again."
-        )
+        ) from e
     except httpx.HTTPStatusError as e:
-        logger.error(f"iTunes API error: {e.response.status_code}")
+        logger.exception(f"iTunes API error: {e.response.status_code}")
         raise HTTPException(
             status_code=502,
             detail="iTunes search service temporarily unavailable"
-        )
+        ) from e
     except Exception as e:
-        logger.error(f"Error searching podcasts: {e}", exc_info=True)
+        logger.exception("Error searching podcasts")
         raise HTTPException(
             status_code=500,
             detail="Failed to search podcasts"
-        )
+        ) from e
 
 
 @router.post("/import-opml", response_model=OPMLImportResponse)
@@ -241,11 +241,11 @@ async def import_opml(
     try:
         parsed = parser.parse_string(body.content)
     except Exception as e:
-        logger.error(f"OPML parse error: {e}")
+        logger.exception("OPML parse error")
         raise HTTPException(
             status_code=400,
             detail=f"Invalid OPML format: {str(e)}"
-        )
+        ) from e
 
     if not parsed.feeds:
         return OPMLImportResponse(
@@ -319,7 +319,7 @@ async def import_opml(
                     )
 
         except Exception as e:
-            logger.error(f"Error importing feed {feed_url}: {e}", exc_info=True)
+            logger.exception(f"Error importing feed {feed_url}")
             failed_count += 1
             results.append(
                 OPMLImportResult(

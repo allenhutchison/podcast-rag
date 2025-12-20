@@ -246,7 +246,7 @@
                     <div id="contentOpml" class="tab-content hidden">
                         <div class="mb-4">
                             <label class="block text-sm font-medium text-gray-700 mb-2">Upload OPML File</label>
-                            <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 transition-colors">
+                            <div id="opmlDropContainer" class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 transition-colors">
                                 <input
                                     type="file"
                                     id="opmlFileInput"
@@ -493,6 +493,7 @@
 
         let opmlFileContent = null;
         let currentTab = 'search';
+        let searchResultsData = []; // Store search results for safe feed URL lookup
 
         /**
          * Open the Add Podcast modal
@@ -582,11 +583,14 @@
 
                 if (data.results.length === 0) {
                     searchStatus.textContent = 'No podcasts found. Try a different search term.';
+                    searchResultsData = [];
                     return;
                 }
 
+                // Store results for safe lookup by index (prevents XSS via feed URLs)
+                searchResultsData = data.results;
                 searchStatus.classList.add('hidden');
-                searchResults.innerHTML = data.results.map(podcast => createSearchResultCard(podcast)).join('');
+                searchResults.innerHTML = data.results.map((podcast, index) => createSearchResultCard(podcast, index)).join('');
 
             } catch (error) {
                 console.error('Search error:', error);
@@ -599,8 +603,9 @@
 
         /**
          * Create a search result card HTML
+         * Uses data attributes instead of inline onclick to prevent XSS
          */
-        function createSearchResultCard(podcast) {
+        function createSearchResultCard(podcast, index) {
             const imageHtml = podcast.image_url
                 ? `<img src="${escapeHtml(podcast.image_url)}" alt="${escapeHtml(podcast.title)}" class="w-16 h-16 rounded-lg object-cover" referrerpolicy="no-referrer" onerror="this.parentElement.innerHTML='<div class=\\'placeholder-image w-16 h-16 rounded-lg flex items-center justify-center\\'><span class=\\'text-xl\\'>🎙️</span></div>'">`
                 : `<div class="placeholder-image w-16 h-16 rounded-lg flex items-center justify-center"><span class="text-xl">🎙️</span></div>`;
@@ -614,8 +619,8 @@
                         ${podcast.genre ? `<span class="inline-block mt-1 text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">${escapeHtml(podcast.genre)}</span>` : ''}
                     </div>
                     <button
-                        onclick="addPodcastFromSearch('${escapeHtml(podcast.feed_url).replace(/'/g, "\\'")}', this)"
-                        class="flex-shrink-0 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors font-medium"
+                        data-feed-index="${index}"
+                        class="add-podcast-btn flex-shrink-0 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors font-medium"
                     >
                         Add
                     </button>
@@ -624,9 +629,17 @@
         }
 
         /**
-         * Add a podcast from search results
+         * Add a podcast from search results using index-based lookup
+         * This approach prevents XSS by not interpolating URLs into onclick handlers
          */
-        async function addPodcastFromSearch(feedUrl, button) {
+        async function addPodcastFromSearch(index, button) {
+            // Safely retrieve feed URL from stored results
+            const podcast = searchResultsData[index];
+            if (!podcast || !podcast.feed_url) {
+                showToast('Invalid podcast selection', 'error');
+                return;
+            }
+
             button.disabled = true;
             button.textContent = 'Adding...';
 
@@ -635,7 +648,7 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'include',
-                    body: JSON.stringify({ feed_url: feedUrl })
+                    body: JSON.stringify({ feed_url: podcast.feed_url })
                 });
 
                 const data = await response.json();
@@ -646,7 +659,7 @@
 
                 // Update button to show success
                 button.textContent = 'Added!';
-                button.className = 'flex-shrink-0 px-4 py-2 bg-gray-300 text-gray-600 text-sm rounded-lg font-medium cursor-default';
+                button.className = 'add-podcast-btn flex-shrink-0 px-4 py-2 bg-gray-300 text-gray-600 text-sm rounded-lg font-medium cursor-default';
 
                 // Show success message
                 showToast(`Added: ${data.title}`, 'success');
@@ -661,6 +674,17 @@
                 showToast(error.message || 'Failed to add podcast', 'error');
             }
         }
+
+        // Event delegation for add podcast buttons (prevents XSS from inline handlers)
+        document.getElementById('searchResults').addEventListener('click', function(e) {
+            const button = e.target.closest('.add-podcast-btn');
+            if (button && !button.disabled) {
+                const index = parseInt(button.dataset.feedIndex, 10);
+                if (!isNaN(index)) {
+                    addPodcastFromSearch(index, button);
+                }
+            }
+        });
 
         /**
          * Add a podcast by URL
@@ -745,6 +769,9 @@
             };
             reader.onerror = function() {
                 showOpmlStatus('Failed to read file. Please try again.', 'error');
+            };
+            reader.onabort = function() {
+                showOpmlStatus('File reading was cancelled.', 'error');
             };
             reader.readAsText(file);
         }
@@ -853,9 +880,9 @@
             }
         });
 
-        // Setup drag and drop for OPML
+        // Setup drag and drop for OPML using specific ID selector
         document.addEventListener('DOMContentLoaded', function() {
-            const dropZone = document.querySelector('.border-dashed');
+            const dropZone = document.getElementById('opmlDropContainer');
             if (dropZone) {
                 dropZone.addEventListener('dragover', function(e) {
                     e.preventDefault();

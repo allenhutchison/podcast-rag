@@ -1,8 +1,9 @@
 """Tests for podcast routes - add, search, and import endpoints."""
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, MagicMock, AsyncMock
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
@@ -15,6 +16,7 @@ from src.web.models import (
     OPMLImportResult,
     OPMLImportResponse,
 )
+from src.web.podcast_routes import router
 
 
 class TestAddPodcastByUrlRequest:
@@ -316,3 +318,169 @@ class TestPodcastRoutesEndpoints:
         assert json_data["total"] == 3
         assert json_data["added"] == 1
         assert json_data["failed"] == 1
+
+
+class TestURLValidation:
+    """Tests for URL validation in AddPodcastByUrlRequest."""
+
+    def test_valid_http_scheme(self):
+        """Test http:// scheme is accepted."""
+        request = AddPodcastByUrlRequest(feed_url="http://example.com/feed.xml")
+        assert request.feed_url == "http://example.com/feed.xml"
+
+    def test_valid_https_scheme(self):
+        """Test https:// scheme is accepted."""
+        request = AddPodcastByUrlRequest(feed_url="https://example.com/feed.xml")
+        assert request.feed_url == "https://example.com/feed.xml"
+
+    def test_valid_feed_scheme(self):
+        """Test feed:// scheme is accepted."""
+        request = AddPodcastByUrlRequest(feed_url="feed://example.com/feed.xml")
+        assert request.feed_url == "feed://example.com/feed.xml"
+
+    def test_invalid_scheme_rejected(self):
+        """Test invalid URL schemes are rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            AddPodcastByUrlRequest(feed_url="ftp://example.com/feed.xml")
+        assert "Invalid URL scheme" in str(exc_info.value)
+
+    def test_no_scheme_rejected(self):
+        """Test URLs without scheme are rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            AddPodcastByUrlRequest(feed_url="example.com/feed.xml")
+        assert "Invalid URL scheme" in str(exc_info.value)
+
+    def test_javascript_scheme_rejected(self):
+        """Test javascript: URLs are rejected for security."""
+        with pytest.raises(ValidationError) as exc_info:
+            AddPodcastByUrlRequest(feed_url="javascript:alert(1)")
+        assert "Invalid URL scheme" in str(exc_info.value)
+
+    def test_whitespace_trimmed(self):
+        """Test whitespace is trimmed from URLs."""
+        request = AddPodcastByUrlRequest(feed_url="  https://example.com/feed.xml  ")
+        assert request.feed_url == "https://example.com/feed.xml"
+
+
+class TestOPMLContentMaxLength:
+    """Tests for OPML content max_length constraint."""
+
+    def test_normal_content_accepted(self):
+        """Test normal-sized content is accepted."""
+        content = '<?xml version="1.0"?><opml version="2.0"><body></body></opml>'
+        request = OPMLImportRequest(content=content)
+        assert request.content == content
+
+    def test_max_length_enforced(self):
+        """Test content exceeding 10MB is rejected."""
+        # Create content just over 10MB
+        content = "x" * (10 * 1024 * 1024 + 1)
+        with pytest.raises(ValidationError) as exc_info:
+            OPMLImportRequest(content=content)
+        # Pydantic will raise validation error for max_length
+        assert "String should have at most" in str(exc_info.value)
+
+
+class TestPodcastRoutesIntegration:
+    """Integration tests for podcast routes using TestClient."""
+
+    @pytest.fixture
+    def app_with_mocks(self):
+        """Create a test app with mocked dependencies."""
+        from src.web.auth import get_current_user
+
+        app = FastAPI()
+        app.include_router(router)
+
+        # Mock repository
+        mock_repo = Mock()
+        mock_repo.get_podcast_by_feed_url.return_value = None
+        mock_repo.is_user_subscribed.return_value = False
+        mock_repo.subscribe_user_to_podcast.return_value = None
+        mock_repo.list_episodes.return_value = []
+
+        # Mock config
+        mock_config = Mock()
+        mock_config.PODCAST_DOWNLOAD_DIRECTORY = "/tmp/podcasts"
+
+        app.state.repository = mock_repo
+        app.state.config = mock_config
+
+        # Override the auth dependency
+        def mock_get_current_user():
+            return {"sub": "test-user-id", "email": "test@example.com"}
+
+        app.dependency_overrides[get_current_user] = mock_get_current_user
+
+        return app, mock_repo
+
+    @pytest.fixture
+    def authenticated_client(self, app_with_mocks):
+        """Create an authenticated test client."""
+        app, mock_repo = app_with_mocks
+        client = TestClient(app)
+        yield client, mock_repo
+
+    def test_add_podcast_invalid_url_scheme(self, authenticated_client):
+        """Test adding a podcast with invalid URL scheme returns 422."""
+        client, _ = authenticated_client
+        response = client.post(
+            "/api/podcasts/add",
+            json={"feed_url": "ftp://example.com/feed.xml"}
+        )
+        assert response.status_code == 422
+        assert "Invalid URL scheme" in response.text
+
+    def test_add_podcast_missing_url(self, authenticated_client):
+        """Test adding a podcast without URL returns 422."""
+        client, _ = authenticated_client
+        response = client.post(
+            "/api/podcasts/add",
+            json={}
+        )
+        assert response.status_code == 422
+
+    def test_search_empty_query_rejected(self, authenticated_client):
+        """Test search with empty query returns 400."""
+        client, _ = authenticated_client
+        response = client.get("/api/podcasts/search?q=")
+        assert response.status_code == 400
+        assert "empty" in response.json()["detail"].lower()
+
+    def test_search_whitespace_query_rejected(self, authenticated_client):
+        """Test search with whitespace-only query returns 400."""
+        client, _ = authenticated_client
+        response = client.get("/api/podcasts/search?q=   ")
+        assert response.status_code == 400
+
+    def test_import_opml_empty_content(self, authenticated_client):
+        """Test OPML import with empty content returns 422."""
+        client, _ = authenticated_client
+        response = client.post(
+            "/api/podcasts/import-opml",
+            json={"content": ""}
+        )
+        assert response.status_code == 422
+
+    def test_add_existing_podcast_subscribes_user(self, authenticated_client):
+        """Test adding an existing podcast subscribes the user."""
+        client, mock_repo = authenticated_client
+
+        # Set up mock to return an existing podcast
+        mock_podcast = Mock()
+        mock_podcast.id = "existing-podcast-id"
+        mock_podcast.title = "Existing Podcast"
+        mock_repo.get_podcast_by_feed_url.return_value = mock_podcast
+        mock_repo.is_user_subscribed.return_value = False
+
+        response = client.post(
+            "/api/podcasts/add",
+            json={"feed_url": "https://example.com/feed.xml"}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["is_new"] is False
+        assert data["is_subscribed"] is True
+        assert data["podcast_id"] == "existing-podcast-id"
+        mock_repo.subscribe_user_to_podcast.assert_called_once()
