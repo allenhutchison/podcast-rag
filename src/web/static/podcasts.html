@@ -55,6 +55,25 @@
             background-size: 200% 100%;
             animation: shimmer 1.5s infinite;
         }
+
+        /* Modal styles */
+        .modal-overlay {
+            background-color: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(2px);
+        }
+        .modal-content {
+            max-height: 90vh;
+        }
+        .tab-active {
+            border-bottom: 2px solid #2563eb;
+            color: #2563eb;
+        }
+        .search-result-card {
+            transition: background-color 0.15s ease;
+        }
+        .search-result-card:hover {
+            background-color: #f9fafb;
+        }
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen flex flex-col">
@@ -67,6 +86,13 @@
                 <p class="text-sm text-gray-600 mt-1">Browse your podcast library</p>
             </div>
             <div class="flex items-center gap-4">
+                <button
+                    id="addPodcastBtn"
+                    onclick="openAddPodcastModal()"
+                    class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors font-medium text-sm"
+                >
+                    + Add Podcast
+                </button>
                 <button
                     id="openChatBtn"
                     class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm"
@@ -134,6 +160,129 @@
             </button>
         </div>
     </main>
+
+    <!-- Add Podcast Modal -->
+    <div id="addPodcastModal" class="fixed inset-0 z-50 hidden">
+        <div class="modal-overlay absolute inset-0" onclick="closeAddPodcastModal()"></div>
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            <div class="modal-content bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden relative">
+                <!-- Modal Header -->
+                <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                    <h2 class="text-xl font-semibold text-gray-900">Add Podcast</h2>
+                    <button onclick="closeAddPodcastModal()" class="text-gray-400 hover:text-gray-600 transition-colors">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Modal Tabs -->
+                <div class="flex border-b border-gray-200">
+                    <button id="tabSearch" onclick="switchTab('search')" class="flex-1 px-4 py-3 text-sm font-medium text-gray-600 hover:text-gray-900 tab-active">
+                        Search
+                    </button>
+                    <button id="tabUrl" onclick="switchTab('url')" class="flex-1 px-4 py-3 text-sm font-medium text-gray-600 hover:text-gray-900">
+                        Feed URL
+                    </button>
+                    <button id="tabOpml" onclick="switchTab('opml')" class="flex-1 px-4 py-3 text-sm font-medium text-gray-600 hover:text-gray-900">
+                        Import OPML
+                    </button>
+                </div>
+
+                <!-- Tab Content -->
+                <div class="p-6 overflow-y-auto" style="max-height: 60vh;">
+                    <!-- Search Tab -->
+                    <div id="contentSearch" class="tab-content">
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Search for podcasts</label>
+                            <div class="flex gap-2">
+                                <input
+                                    type="text"
+                                    id="searchInput"
+                                    placeholder="Enter podcast name..."
+                                    class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                                    onkeypress="if(event.key === 'Enter') searchPodcasts()"
+                                >
+                                <button
+                                    onclick="searchPodcasts()"
+                                    id="searchBtn"
+                                    class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                                >
+                                    Search
+                                </button>
+                            </div>
+                        </div>
+                        <div id="searchResults" class="space-y-3">
+                            <!-- Search results will appear here -->
+                        </div>
+                        <div id="searchStatus" class="text-center text-gray-500 py-8">
+                            Search for podcasts to add to your library
+                        </div>
+                    </div>
+
+                    <!-- URL Tab -->
+                    <div id="contentUrl" class="tab-content hidden">
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">RSS Feed URL</label>
+                            <input
+                                type="url"
+                                id="feedUrlInput"
+                                placeholder="https://example.com/podcast/feed.xml"
+                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                            >
+                            <p class="mt-2 text-xs text-gray-500">Enter the RSS feed URL of the podcast you want to add.</p>
+                        </div>
+                        <button
+                            onclick="addPodcastByUrl()"
+                            id="addUrlBtn"
+                            class="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+                        >
+                            Add Podcast
+                        </button>
+                        <div id="urlStatus" class="mt-4 hidden"></div>
+                    </div>
+
+                    <!-- OPML Tab -->
+                    <div id="contentOpml" class="tab-content hidden">
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Upload OPML File</label>
+                            <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 transition-colors">
+                                <input
+                                    type="file"
+                                    id="opmlFileInput"
+                                    accept=".opml,.xml"
+                                    class="hidden"
+                                    onchange="handleOpmlFileSelect(event)"
+                                >
+                                <div id="opmlDropZone">
+                                    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                                    </svg>
+                                    <p class="mt-2 text-sm text-gray-600">
+                                        <button type="button" onclick="document.getElementById('opmlFileInput').click()" class="text-primary hover:text-blue-700 font-medium">
+                                            Choose a file
+                                        </button>
+                                        or drag and drop
+                                    </p>
+                                    <p class="mt-1 text-xs text-gray-500">OPML or XML file up to 10MB</p>
+                                </div>
+                                <div id="opmlFileName" class="hidden mt-2 text-sm text-gray-700"></div>
+                            </div>
+                        </div>
+                        <button
+                            onclick="importOpml()"
+                            id="importOpmlBtn"
+                            class="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                            disabled
+                        >
+                            Import Podcasts
+                        </button>
+                        <div id="opmlStatus" class="mt-4 hidden"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Footer -->
     <footer class="bg-white border-t border-gray-200 px-6 py-3">
@@ -336,6 +485,396 @@
             if (!user) return;
             updateUserUIWithAdmin(user);
             loadPodcasts();
+        });
+
+        // ========================================
+        // Add Podcast Modal Functions
+        // ========================================
+
+        let opmlFileContent = null;
+        let currentTab = 'search';
+
+        /**
+         * Open the Add Podcast modal
+         */
+        function openAddPodcastModal() {
+            document.getElementById('addPodcastModal').classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+            // Focus search input
+            setTimeout(() => document.getElementById('searchInput').focus(), 100);
+        }
+
+        /**
+         * Close the Add Podcast modal
+         */
+        function closeAddPodcastModal() {
+            document.getElementById('addPodcastModal').classList.add('hidden');
+            document.body.style.overflow = '';
+            resetModal();
+        }
+
+        /**
+         * Reset modal state
+         */
+        function resetModal() {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('searchResults').innerHTML = '';
+            document.getElementById('searchStatus').classList.remove('hidden');
+            document.getElementById('searchStatus').textContent = 'Search for podcasts to add to your library';
+            document.getElementById('feedUrlInput').value = '';
+            document.getElementById('urlStatus').classList.add('hidden');
+            document.getElementById('opmlFileInput').value = '';
+            document.getElementById('opmlFileName').classList.add('hidden');
+            document.getElementById('opmlDropZone').classList.remove('hidden');
+            document.getElementById('opmlStatus').classList.add('hidden');
+            document.getElementById('importOpmlBtn').disabled = true;
+            opmlFileContent = null;
+        }
+
+        /**
+         * Switch between tabs
+         */
+        function switchTab(tab) {
+            currentTab = tab;
+            const tabs = ['search', 'url', 'opml'];
+
+            tabs.forEach(t => {
+                const tabBtn = document.getElementById(`tab${t.charAt(0).toUpperCase() + t.slice(1)}`);
+                const content = document.getElementById(`content${t.charAt(0).toUpperCase() + t.slice(1)}`);
+
+                if (t === tab) {
+                    tabBtn.classList.add('tab-active');
+                    content.classList.remove('hidden');
+                } else {
+                    tabBtn.classList.remove('tab-active');
+                    content.classList.add('hidden');
+                }
+            });
+        }
+
+        /**
+         * Search for podcasts
+         */
+        async function searchPodcasts() {
+            const query = document.getElementById('searchInput').value.trim();
+            if (!query) return;
+
+            const searchBtn = document.getElementById('searchBtn');
+            const searchResults = document.getElementById('searchResults');
+            const searchStatus = document.getElementById('searchStatus');
+
+            searchBtn.disabled = true;
+            searchBtn.textContent = 'Searching...';
+            searchResults.innerHTML = '';
+            searchStatus.classList.remove('hidden');
+            searchStatus.textContent = 'Searching...';
+
+            try {
+                const response = await fetch(`/api/podcasts/search?q=${encodeURIComponent(query)}&limit=20`, {
+                    credentials: 'include'
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                if (data.results.length === 0) {
+                    searchStatus.textContent = 'No podcasts found. Try a different search term.';
+                    return;
+                }
+
+                searchStatus.classList.add('hidden');
+                searchResults.innerHTML = data.results.map(podcast => createSearchResultCard(podcast)).join('');
+
+            } catch (error) {
+                console.error('Search error:', error);
+                searchStatus.textContent = 'Failed to search. Please try again.';
+            } finally {
+                searchBtn.disabled = false;
+                searchBtn.textContent = 'Search';
+            }
+        }
+
+        /**
+         * Create a search result card HTML
+         */
+        function createSearchResultCard(podcast) {
+            const imageHtml = podcast.image_url
+                ? `<img src="${escapeHtml(podcast.image_url)}" alt="${escapeHtml(podcast.title)}" class="w-16 h-16 rounded-lg object-cover" referrerpolicy="no-referrer" onerror="this.parentElement.innerHTML='<div class=\\'placeholder-image w-16 h-16 rounded-lg flex items-center justify-center\\'><span class=\\'text-xl\\'>🎙️</span></div>'">`
+                : `<div class="placeholder-image w-16 h-16 rounded-lg flex items-center justify-center"><span class="text-xl">🎙️</span></div>`;
+
+            return `
+                <div class="search-result-card flex items-center gap-4 p-3 border border-gray-200 rounded-lg">
+                    <div class="flex-shrink-0">${imageHtml}</div>
+                    <div class="flex-1 min-w-0">
+                        <h4 class="font-medium text-gray-900 truncate">${escapeHtml(podcast.title)}</h4>
+                        <p class="text-sm text-gray-500 truncate">${escapeHtml(podcast.author || '')}</p>
+                        ${podcast.genre ? `<span class="inline-block mt-1 text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">${escapeHtml(podcast.genre)}</span>` : ''}
+                    </div>
+                    <button
+                        onclick="addPodcastFromSearch('${escapeHtml(podcast.feed_url).replace(/'/g, "\\'")}', this)"
+                        class="flex-shrink-0 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors font-medium"
+                    >
+                        Add
+                    </button>
+                </div>
+            `;
+        }
+
+        /**
+         * Add a podcast from search results
+         */
+        async function addPodcastFromSearch(feedUrl, button) {
+            button.disabled = true;
+            button.textContent = 'Adding...';
+
+            try {
+                const response = await fetch('/api/podcasts/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ feed_url: feedUrl })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Failed to add podcast');
+                }
+
+                // Update button to show success
+                button.textContent = 'Added!';
+                button.className = 'flex-shrink-0 px-4 py-2 bg-gray-300 text-gray-600 text-sm rounded-lg font-medium cursor-default';
+
+                // Show success message
+                showToast(`Added: ${data.title}`, 'success');
+
+                // Reload podcasts in the background
+                loadPodcasts();
+
+            } catch (error) {
+                console.error('Add podcast error:', error);
+                button.disabled = false;
+                button.textContent = 'Add';
+                showToast(error.message || 'Failed to add podcast', 'error');
+            }
+        }
+
+        /**
+         * Add a podcast by URL
+         */
+        async function addPodcastByUrl() {
+            const feedUrl = document.getElementById('feedUrlInput').value.trim();
+            if (!feedUrl) {
+                showUrlStatus('Please enter a feed URL', 'error');
+                return;
+            }
+
+            const addBtn = document.getElementById('addUrlBtn');
+            addBtn.disabled = true;
+            addBtn.textContent = 'Adding...';
+            showUrlStatus('Adding podcast...', 'info');
+
+            try {
+                const response = await fetch('/api/podcasts/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ feed_url: feedUrl })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Failed to add podcast');
+                }
+
+                showUrlStatus(
+                    `${data.is_new ? 'Added' : 'Subscribed to'}: ${data.title} (${data.episode_count} episodes)`,
+                    'success'
+                );
+                document.getElementById('feedUrlInput').value = '';
+
+                // Reload podcasts
+                loadPodcasts();
+
+            } catch (error) {
+                console.error('Add podcast error:', error);
+                showUrlStatus(error.message || 'Failed to add podcast', 'error');
+            } finally {
+                addBtn.disabled = false;
+                addBtn.textContent = 'Add Podcast';
+            }
+        }
+
+        /**
+         * Show status message for URL tab
+         */
+        function showUrlStatus(message, type) {
+            const status = document.getElementById('urlStatus');
+            status.classList.remove('hidden');
+            status.className = `mt-4 p-3 rounded-lg text-sm ${
+                type === 'success' ? 'bg-green-100 text-green-800' :
+                type === 'error' ? 'bg-red-100 text-red-800' :
+                'bg-blue-100 text-blue-800'
+            }`;
+            status.textContent = message;
+        }
+
+        /**
+         * Handle OPML file selection
+         */
+        function handleOpmlFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (file.size > 10 * 1024 * 1024) {
+                showOpmlStatus('File is too large. Maximum size is 10MB.', 'error');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                opmlFileContent = e.target.result;
+                document.getElementById('opmlDropZone').classList.add('hidden');
+                document.getElementById('opmlFileName').classList.remove('hidden');
+                document.getElementById('opmlFileName').textContent = `Selected: ${file.name}`;
+                document.getElementById('importOpmlBtn').disabled = false;
+            };
+            reader.onerror = function() {
+                showOpmlStatus('Failed to read file. Please try again.', 'error');
+            };
+            reader.readAsText(file);
+        }
+
+        /**
+         * Import OPML file
+         */
+        async function importOpml() {
+            if (!opmlFileContent) {
+                showOpmlStatus('Please select a file first', 'error');
+                return;
+            }
+
+            const importBtn = document.getElementById('importOpmlBtn');
+            importBtn.disabled = true;
+            importBtn.textContent = 'Importing...';
+            showOpmlStatus('Importing podcasts...', 'info');
+
+            try {
+                const response = await fetch('/api/podcasts/import-opml', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ content: opmlFileContent })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Failed to import OPML');
+                }
+
+                // Build status message
+                let statusParts = [];
+                if (data.added > 0) statusParts.push(`${data.added} added`);
+                if (data.existing > 0) statusParts.push(`${data.existing} already existed`);
+                if (data.failed > 0) statusParts.push(`${data.failed} failed`);
+
+                showOpmlStatus(
+                    `Import complete: ${statusParts.join(', ')}`,
+                    data.failed > 0 && data.added === 0 ? 'error' : 'success'
+                );
+
+                // Reset file input
+                document.getElementById('opmlFileInput').value = '';
+                document.getElementById('opmlDropZone').classList.remove('hidden');
+                document.getElementById('opmlFileName').classList.add('hidden');
+                opmlFileContent = null;
+
+                // Reload podcasts
+                loadPodcasts();
+
+            } catch (error) {
+                console.error('OPML import error:', error);
+                showOpmlStatus(error.message || 'Failed to import OPML', 'error');
+            } finally {
+                importBtn.disabled = false;
+                importBtn.textContent = 'Import Podcasts';
+            }
+        }
+
+        /**
+         * Show status message for OPML tab
+         */
+        function showOpmlStatus(message, type) {
+            const status = document.getElementById('opmlStatus');
+            status.classList.remove('hidden');
+            status.className = `mt-4 p-3 rounded-lg text-sm ${
+                type === 'success' ? 'bg-green-100 text-green-800' :
+                type === 'error' ? 'bg-red-100 text-red-800' :
+                'bg-blue-100 text-blue-800'
+            }`;
+            status.textContent = message;
+        }
+
+        /**
+         * Show a toast notification
+         */
+        function showToast(message, type = 'info') {
+            // Create toast element
+            const toast = document.createElement('div');
+            toast.className = `fixed bottom-4 right-4 px-4 py-3 rounded-lg shadow-lg z-50 transform transition-all duration-300 translate-y-full opacity-0 ${
+                type === 'success' ? 'bg-green-600 text-white' :
+                type === 'error' ? 'bg-red-600 text-white' :
+                'bg-gray-800 text-white'
+            }`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+
+            // Animate in
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-y-full', 'opacity-0');
+            });
+
+            // Remove after 3 seconds
+            setTimeout(() => {
+                toast.classList.add('translate-y-full', 'opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // Close modal on Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && !document.getElementById('addPodcastModal').classList.contains('hidden')) {
+                closeAddPodcastModal();
+            }
+        });
+
+        // Setup drag and drop for OPML
+        document.addEventListener('DOMContentLoaded', function() {
+            const dropZone = document.querySelector('.border-dashed');
+            if (dropZone) {
+                dropZone.addEventListener('dragover', function(e) {
+                    e.preventDefault();
+                    dropZone.classList.add('border-primary', 'bg-blue-50');
+                });
+                dropZone.addEventListener('dragleave', function(e) {
+                    e.preventDefault();
+                    dropZone.classList.remove('border-primary', 'bg-blue-50');
+                });
+                dropZone.addEventListener('drop', function(e) {
+                    e.preventDefault();
+                    dropZone.classList.remove('border-primary', 'bg-blue-50');
+                    const file = e.dataTransfer.files[0];
+                    if (file) {
+                        document.getElementById('opmlFileInput').files = e.dataTransfer.files;
+                        handleOpmlFileSelect({ target: { files: e.dataTransfer.files } });
+                    }
+                });
+            }
         });
     </script>
 
