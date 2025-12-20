@@ -1,14 +1,12 @@
-"""Email service for sending emails via SMTP.
+"""Email service for sending emails via Resend.
 
-Provides a simple interface for sending HTML emails using generic SMTP.
+Provides a simple interface for sending HTML emails using Resend's API.
 """
 
 import logging
-import smtplib
-import ssl
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from typing import Optional
+
+import resend
 
 from src.config import Config
 
@@ -31,27 +29,27 @@ def _redact_email(email: str) -> str:
 
 
 class EmailService:
-    """Service for sending emails via SMTP."""
+    """Service for sending emails via Resend."""
 
     def __init__(self, config: Config):
         """Initialize the email service.
 
         Args:
-            config: Application configuration with SMTP settings.
+            config: Application configuration with Resend settings.
         """
         self.config = config
 
+        # Configure Resend API key if available
+        if self.config.RESEND_API_KEY:
+            resend.api_key = self.config.RESEND_API_KEY
+
     def is_configured(self) -> bool:
-        """Check if SMTP is properly configured.
+        """Check if Resend is properly configured.
 
         Returns:
-            True if SMTP host and credentials are set.
+            True if Resend API key is set.
         """
-        return bool(
-            self.config.SMTP_HOST
-            and self.config.SMTP_USERNAME
-            and self.config.SMTP_PASSWORD
-        )
+        return bool(self.config.RESEND_API_KEY)
 
     def send_email(
         self,
@@ -60,7 +58,7 @@ class EmailService:
         html_content: str,
         text_content: Optional[str] = None,
     ) -> bool:
-        """Send an email.
+        """Send an email using Resend.
 
         Args:
             to_email: Recipient email address.
@@ -72,41 +70,31 @@ class EmailService:
             True if email sent successfully, False otherwise.
         """
         if not self.is_configured():
-            logger.warning("SMTP not configured, skipping email send")
+            logger.warning("Resend API key not configured, skipping email send")
             return False
 
         try:
-            msg = MIMEMultipart("alternative")
-            msg["Subject"] = subject
-            msg["From"] = f"{self.config.SMTP_FROM_NAME} <{self.config.SMTP_FROM_EMAIL}>"
-            msg["To"] = to_email
+            # Build sender address
+            from_address = f"{self.config.RESEND_FROM_NAME} <{self.config.RESEND_FROM_EMAIL}>"
 
-            # Add plain text version (fallback)
+            # Prepare email parameters
+            params: resend.Emails.SendParams = {
+                "from": from_address,
+                "to": [to_email],
+                "subject": subject,
+                "html": html_content,
+            }
+
+            # Add text version if provided
             if text_content:
-                msg.attach(MIMEText(text_content, "plain", "utf-8"))
+                params["text"] = text_content
 
-            # Add HTML version
-            msg.attach(MIMEText(html_content, "html", "utf-8"))
+            # Send email via Resend
+            email = resend.Emails.send(params)
 
-            # Connect and send
-            with smtplib.SMTP(
-                self.config.SMTP_HOST,
-                self.config.SMTP_PORT,
-                timeout=self.config.SMTP_TIMEOUT,
-            ) as server:
-                server.ehlo()
-                if self.config.SMTP_USE_TLS:
-                    server.starttls(context=ssl.create_default_context())
-                    server.ehlo()
-                server.login(self.config.SMTP_USERNAME, self.config.SMTP_PASSWORD)
-                server.send_message(msg)
-
-            logger.info("Email sent successfully to %s", _redact_email(to_email))
+            logger.info("Email sent successfully to %s (ID: %s)", _redact_email(to_email), email.get("id", "unknown"))
             return True
 
-        except smtplib.SMTPException:
-            logger.exception("SMTP error sending email to %s", _redact_email(to_email))
-            return False
         except Exception:
             logger.exception("Failed to send email to %s", _redact_email(to_email))
             return False
