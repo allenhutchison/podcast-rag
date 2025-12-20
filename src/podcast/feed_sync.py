@@ -7,7 +7,7 @@ and updating metadata.
 import logging
 import os
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.exc import IntegrityError
@@ -86,17 +86,18 @@ class FeedSyncService:
             new_count = self._add_new_episodes(podcast, parsed)
             result["new_episodes"] = new_count
 
-            # Update last checked timestamp
-            self.repository.update_podcast(
-                podcast_id,
-                last_checked=datetime.utcnow(),
-            )
+            # Get the actual latest episode's published date
+            latest_episode = self.repository.get_latest_episode(podcast_id)
 
-            if new_count > 0:
-                self.repository.update_podcast(
-                    podcast_id,
-                    last_new_episode=datetime.utcnow(),
-                )
+            # Update last checked timestamp and last_new_episode with actual episode date
+            update_fields = {"last_checked": datetime.now(UTC)}
+            if latest_episode and latest_episode.published_date:
+                update_fields["last_new_episode"] = latest_episode.published_date
+            else:
+                # Clear last_new_episode if no valid episodes exist
+                update_fields["last_new_episode"] = None
+
+            self.repository.update_podcast(podcast_id, **update_fields)
 
             logger.info(f"Sync complete for '{podcast.title}': {new_count} new episodes")
 

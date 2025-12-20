@@ -44,6 +44,20 @@
             background-color: #e0e7ff;
             color: #3730a3;
         }
+
+        /* Audio player styling */
+        audio {
+            background-color: transparent !important;
+            border-radius: 0.5rem;
+            outline: none;
+        }
+        audio::-webkit-media-controls-panel {
+            background-color: #f3f4f6 !important;
+        }
+        audio::-webkit-media-controls-enclosure {
+            background-color: transparent !important;
+            border-radius: 0.5rem;
+        }
     </style>
 
     <!-- Chat Drawer Styles -->
@@ -67,8 +81,9 @@
                 <button
                     id="openChatBtn"
                     class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm"
+                    title="Ask questions about this episode using AI"
                 >
-                    Ask about this episode
+                    AI Podcast Chat
                 </button>
                 <div id="userInfo" class="border-l pl-4 border-gray-200"></div>
             </div>
@@ -153,12 +168,9 @@
     </main>
 
     <!-- Footer -->
-    <footer class="bg-white border-t border-gray-200 px-6 py-3">
-        <div class="max-w-4xl mx-auto text-center text-sm text-gray-600">
-            Powered by Gemini
-        </div>
-    </footer>
+    <div id="app-footer"></div>
 
+    <script src="/footer.js"></script>
     <script src="/auth.js?v=1"></script>
 
     <script>
@@ -331,14 +343,18 @@
 
                 // Update audio player
                 if (episode.enclosure_url) {
+                    // Remove skeleton classes
+                    audioPlayer.className = '';
                     audioPlayer.innerHTML = `
-                        <audio controls class="w-full" preload="metadata">
-                            <source src="${escapeHtml(episode.enclosure_url)}" type="audio/mpeg">
-                            Your browser does not support the audio element.
-                        </audio>
-                        <a href="${escapeHtml(episode.enclosure_url)}" target="_blank" rel="noopener noreferrer" class="text-sm text-primary hover:underline mt-2 inline-block">
-                            Download MP3
-                        </a>
+                        <div class="space-y-3">
+                            <audio controls class="w-full" preload="metadata">
+                                <source src="${escapeHtml(episode.enclosure_url)}" type="audio/mpeg">
+                                Your browser does not support the audio element.
+                            </audio>
+                            <a href="${escapeHtml(episode.enclosure_url)}" target="_blank" rel="noopener noreferrer" class="text-sm text-primary hover:underline inline-block">
+                                Download MP3
+                            </a>
+                        </div>
                     `;
                 } else {
                     audioSection.classList.add('hidden');

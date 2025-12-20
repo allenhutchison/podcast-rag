@@ -692,6 +692,8 @@ async def health():
 @app.get("/api/podcasts")
 async def list_podcasts(
     include_stats: bool = False,
+    sort_by: str = "recency",
+    sort_order: str = "desc",
     current_user: dict = Depends(get_current_user)
 ):
     """
@@ -699,13 +701,19 @@ async def list_podcasts(
 
     Args:
         include_stats: If True, include image_url, author, and episode counts
+        sort_by: Field to sort by ("recency", "subscribers", "alphabetical")
+        sort_order: Sort direction ("asc" or "desc")
         current_user: Authenticated user from JWT cookie
 
     Returns:
         List of podcasts with id, title, and optionally more metadata
     """
     user_id = current_user["sub"]
-    podcasts = _repository.get_user_subscriptions(user_id)
+    podcasts = _repository.get_user_subscriptions(
+        user_id,
+        sort_by=sort_by,
+        sort_order=sort_order
+    )
 
     if not include_stats:
         # Simple response for filter dropdown
@@ -720,6 +728,7 @@ async def list_podcasts(
     # Use optimized batch counting instead of N separate queries
     podcast_ids = [p.id for p in podcasts]
     episode_counts = _repository.get_podcast_episode_counts(podcast_ids)
+    subscriber_counts = _repository.get_podcast_subscriber_counts(podcast_ids)
 
     podcast_list = []
     for p in podcasts:
@@ -728,7 +737,9 @@ async def list_podcasts(
             "title": p.title,
             "author": p.itunes_author or p.author,
             "image_url": p.image_url,
-            "episode_count": episode_counts.get(p.id, 0)
+            "episode_count": episode_counts.get(p.id, 0),
+            "subscriber_count": subscriber_counts.get(p.id, 0),
+            "last_new_episode": p.last_new_episode.isoformat() if p.last_new_episode else None
         })
 
     return {"podcasts": podcast_list}
@@ -737,6 +748,8 @@ async def list_podcasts(
 @app.get("/api/podcasts/all")
 async def list_all_podcasts(
     include_stats: bool = False,
+    sort_by: str = "recency",
+    sort_order: str = "desc",
     current_user: dict = Depends(get_current_user)
 ):
     """
@@ -744,19 +757,27 @@ async def list_all_podcasts(
 
     Args:
         include_stats: If True, include image_url, author, and episode counts
+        sort_by: Field to sort by ("recency", "subscribers", "alphabetical")
+        sort_order: Sort direction ("asc" or "desc")
         current_user: Authenticated user from JWT cookie
 
     Returns:
         List of all podcasts with subscription status for current user
     """
     user_id = current_user["sub"]
-    all_podcasts = _repository.list_podcasts(subscribed_only=False)
+    all_podcasts = _repository.list_podcasts(
+        subscribed_only=False,
+        sort_by=sort_by,
+        sort_order=sort_order
+    )
 
-    # Batch get episode counts if needed
+    # Batch get episode counts and subscriber counts if needed
     episode_counts = {}
+    subscriber_counts = {}
     if include_stats:
         podcast_ids = [p.id for p in all_podcasts]
         episode_counts = _repository.get_podcast_episode_counts(podcast_ids)
+        subscriber_counts = _repository.get_podcast_subscriber_counts(podcast_ids)
 
     podcast_list = []
     for p in all_podcasts:
@@ -771,7 +792,9 @@ async def list_all_podcasts(
             podcast_data.update({
                 "author": p.itunes_author or p.author,
                 "image_url": p.image_url,
-                "episode_count": episode_counts.get(p.id, 0)
+                "episode_count": episode_counts.get(p.id, 0),
+                "subscriber_count": subscriber_counts.get(p.id, 0),
+                "last_new_episode": p.last_new_episode.isoformat() if p.last_new_episode else None
             })
 
         podcast_list.append(podcast_data)

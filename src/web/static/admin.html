@@ -123,10 +123,10 @@
             </div>
             <div class="flex items-center gap-4">
                 <a
-                    href="/"
+                    href="/podcasts.html"
                     class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm"
                 >
-                    Back to Chat
+                    Back to Podcasts
                 </a>
                 <div id="userInfo" class="border-l pl-4 border-gray-200"></div>
             </div>
@@ -172,7 +172,7 @@
             <!-- Pipeline Visualization -->
             <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
                 <h3 class="text-sm font-medium text-gray-700 mb-4">Pipeline Stages <span class="text-xs font-normal text-gray-400">(click to view episodes)</span></h3>
-                <div class="flex items-center justify-between gap-4 overflow-x-auto pb-2">
+                <div class="flex items-center justify-between gap-4 overflow-x-auto p-2">
                     <div class="pipeline-stage flex-1 min-w-[140px] bg-blue-50 rounded-lg p-4 text-center cursor-pointer hover:ring-2 hover:ring-blue-300 transition-all"
                          onclick="loadEpisodesByFilter('pending_download', 'Pending Download')">
                         <div class="text-2xl font-bold text-blue-600" id="stat-pending-download">-</div>
@@ -406,12 +406,9 @@
     </main>
 
     <!-- Footer -->
-    <footer class="bg-white border-t border-gray-200 px-6 py-3">
-        <div class="max-w-6xl mx-auto text-center text-sm text-gray-600">
-            Powered by Gemini &amp; ADK Multi-Agent Search
-        </div>
-    </footer>
+    <div id="app-footer"></div>
 
+    <script src="/footer.js"></script>
     <script src="/auth.js?v=1"></script>
     <script>
         let currentTab = 'workflow';
