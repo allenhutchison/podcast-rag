@@ -195,13 +195,13 @@ def get_podcast_filter(session_id: str) -> Optional[str]:
 
 def get_episode_filter(session_id: str) -> Optional[str]:
     """
-    Get the episode filter for a specific session.
-
-    Args:
-        session_id: The session identifier
-
+    Retrieve the episode filter for a session.
+    
+    Parameters:
+        session_id (str): Session identifier whose episode filter to retrieve.
+    
     Returns:
-        Optional[str]: Episode name to filter by, or None if no filter
+        Optional[str]: The episode name to filter by, or None if no episode filter is set.
     """
     with _filter_lock:
         session_data = _session_podcast_filter.get(session_id, {})
@@ -210,13 +210,13 @@ def get_episode_filter(session_id: str) -> Optional[str]:
 
 def get_podcast_filter_list(session_id: str) -> Optional[list[str]]:
     """
-    Get the podcast filter list for a specific session (for subscription filtering).
-
-    Args:
-        session_id: The session identifier
-
+    Retrieve the list-based podcast filter for a session.
+    
+    Parameters:
+        session_id (str): Session identifier whose podcast filter list should be retrieved.
+    
     Returns:
-        Optional[list[str]]: List of podcast names to filter by, or None if no list filter
+        Optional[list[str]]: List of podcast display names to filter by, or `None` if no list filter is set.
     """
     with _filter_lock:
         session_data = _session_podcast_filter.get(session_id, {})
@@ -230,13 +230,18 @@ def set_podcast_filter(
     podcast_list: Optional[list[str]] = None
 ):
     """
-    Set the podcast and episode filter for a specific session.
-
-    Args:
-        session_id: The session identifier
-        podcast_name: Single podcast name to filter by, or None to clear
-        episode_name: Episode name to filter by (optional)
-        podcast_list: List of podcast names for subscription filtering (mutually exclusive with podcast_name)
+    Set per-session podcast/episode filters used by podcast searches.
+    
+    Stores the provided podcast name, episode name, or list of podcast names for the given session_id; if no filter values are provided the session's filter is removed.
+    
+    Parameters:
+    	session_id (str): Session identifier to associate the filter with.
+    	podcast_name (Optional[str]): Single podcast name to filter by. Mutually exclusive with `podcast_list`.
+    	episode_name (Optional[str]): Episode name to filter by.
+    	podcast_list (Optional[list[str]]): List of podcast names for subscription-style filtering. Mutually exclusive with `podcast_name`.
+    
+    Notes:
+    	The filter is saved with a timestamp and will be subject to TTL-based cleanup.
     """
     with _filter_lock:
         if podcast_name or episode_name or podcast_list:
@@ -295,26 +300,40 @@ def create_podcast_search_tool(
     session_id: str = "_default"
 ):
     """
-    Create a custom tool that wraps Gemini File Search for podcast transcripts.
-
-    Args:
-        config: Application configuration
-        file_search_manager: Initialized GeminiFileSearchManager instance
-        repository: Repository for database metadata lookups
-        session_id: Session identifier for thread-safe citation storage
-
+    Create a podcast-search tool function that queries Gemini File Search and returns structured results while storing per-session citations.
+    
+    The returned function performs query sanitization, optionally applies per-session podcast, episode, or subscription-list filters to Gemini File Search, invokes Gemini to find and summarize relevant transcript content, extracts and enriches citations from the response using the provided repository, stores those citations under the given session, and returns a result dictionary. On failure it returns a dictionary containing an error message and an empty citations list.
+    
+    Parameters:
+        config: Application configuration object containing Gemini credentials and model selection.
+        file_search_manager: GeminiFileSearchManager used to obtain or create the File Search store.
+        repository: Repository used to look up episode/podcast metadata for citation enrichment.
+        session_id: Session identifier used for thread-safe storage and retrieval of per-session citations and filters.
+    
     Returns:
-        Function tool for searching podcasts
+        search_podcasts (callable): A function that accepts a single `query` (str) and returns a dict with keys:
+            - response_text: The model's textual response or an error message.
+            - citations: A list of enriched citation dicts (may be empty).
+            - source: Static string 'podcast_archive'.
+            - query: The sanitized query string.
+            - error: Present only on failure with the error text.
     """
     def search_podcasts(query: str) -> Dict:
         """
-        Search podcast transcripts for relevant content.
-
-        Args:
-            query: The search query to find relevant podcast content
-
+        Search podcast transcripts for content relevant to the given natural-language query.
+        
+        This function sanitizes the provided query, clears any existing session citations, performs a Gemini File Search (applying any session-level podcast/episode filters), extracts and enriches citations from the search response, stores those citations in session storage, and returns a structured result. On error, returns an error payload instead of raising.
+        
+        Parameters:
+            query (str): User-supplied natural-language search string to find relevant podcast transcript content.
+        
         Returns:
-            Dict containing response_text and citations with metadata
+            dict: Result object with the following keys:
+                - response_text (str): Textual result or error message from the search operation.
+                - citations (list[dict]): List of extracted citation entries (may be empty). Each citation includes metadata such as title, text, source_type, index, and any repository-derived metadata when available.
+                - source (str): Fixed identifier 'podcast_archive'.
+                - query (str): The sanitized query string used for the search.
+                - error (str, optional): Error text when the operation failed.
         """
         from google import genai
         from google.genai import types
