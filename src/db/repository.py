@@ -94,19 +94,26 @@ class PodcastRepositoryInterface(ABC):
 
     @abstractmethod
     def list_podcasts(
-        self, subscribed_only: bool = True, limit: Optional[int] = None
+        self,
+        subscribed_only: bool = True,
+        limit: Optional[int] = None,
+        sort_by: str = "recency",
+        sort_order: str = "desc"
     ) -> List[Podcast]:
         """
         Return podcasts optionally filtered to subscribed ones and limited in count.
-        
-        Queries podcasts ordered by title. If `subscribed_only` is True, only podcasts with an active subscription are returned. `limit` caps the number of results when provided.
-        
+
+        Queries podcasts with configurable sorting. If `subscribed_only` is True, only podcasts
+        with an active subscription are returned. `limit` caps the number of results when provided.
+
         Parameters:
             subscribed_only (bool): If True, include only subscribed podcasts. Default is True.
             limit (Optional[int]): Maximum number of podcasts to return; if None, no limit is applied.
-        
+            sort_by (str): Field to sort by ("recency", "subscribers", "alphabetical"). Default is "recency".
+            sort_order (str): Sort direction ("asc" or "desc"). Default is "desc".
+
         Returns:
-            List[Podcast]: Podcasts matching the filters, ordered by title.
+            List[Podcast]: Podcasts matching the filters, sorted according to parameters.
         """
         pass
 
@@ -191,6 +198,19 @@ class PodcastRepositoryInterface(ABC):
 
         Returns:
             Optional[Episode]: The matching Episode if found, `None` otherwise.
+        """
+        pass
+
+    @abstractmethod
+    def get_latest_episode(self, podcast_id: str) -> Optional[Episode]:
+        """
+        Retrieve the most recent episode for a podcast based on published_date.
+
+        Parameters:
+            podcast_id (str): The podcast's primary identifier.
+
+        Returns:
+            Optional[Episode]: The most recent Episode if found, `None` otherwise.
         """
         pass
 
@@ -667,6 +687,23 @@ class PodcastRepositoryInterface(ABC):
         pass
 
     @abstractmethod
+    def get_podcast_subscriber_counts(self, podcast_ids: List[str]) -> Dict[str, int]:
+        """
+        Efficiently get subscriber counts for multiple podcasts in a single query.
+
+        This method is optimized for batch operations and uses a single SQL GROUP BY
+        query instead of N separate queries. Ideal for listing podcasts with stats.
+
+        Parameters:
+            podcast_ids (List[str]): List of podcast IDs to get counts for.
+
+        Returns:
+            Dict[str, int]: Mapping of podcast_id -> subscriber_count.
+                            Podcasts with 0 subscribers will have count = 0.
+        """
+        pass
+
+    @abstractmethod
     def get_overall_stats(self) -> Dict[str, Any]:
         """
         Collects system-wide statistics for podcasts and episodes.
@@ -910,14 +947,21 @@ class PodcastRepositoryInterface(ABC):
         pass
 
     @abstractmethod
-    def get_user_subscriptions(self, user_id: str) -> List[Podcast]:
+    def get_user_subscriptions(
+        self,
+        user_id: str,
+        sort_by: str = "recency",
+        sort_order: str = "desc"
+    ) -> List[Podcast]:
         """Get all podcasts a user is subscribed to.
 
         Args:
             user_id: The user's UUID.
+            sort_by: Field to sort by ("recency", "subscribers", "alphabetical"). Defaults to "recency".
+            sort_order: Sort direction ("asc" or "desc"). Defaults to "desc".
 
         Returns:
-            List[Podcast]: List of podcasts the user is subscribed to.
+            List[Podcast]: List of podcasts the user is subscribed to, sorted according to parameters.
         """
         pass
 
@@ -1132,23 +1176,63 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             return session.scalar(stmt)
 
     def list_podcasts(
-        self, subscribed_only: bool = True, limit: Optional[int] = None
+        self,
+        subscribed_only: bool = True,
+        limit: Optional[int] = None,
+        sort_by: str = "recency",
+        sort_order: str = "desc"
     ) -> List[Podcast]:
         """
         List podcasts, optionally restricting results to subscribed podcasts.
-        
+
         Parameters:
             subscribed_only (bool): If True, include only podcasts with `is_subscribed` set to True.
             limit (Optional[int]): Maximum number of podcasts to return; if None, no limit is applied.
-        
+            sort_by (str): Field to sort by ("recency", "subscribers", "alphabetical")
+            sort_order (str): Sort direction ("asc" or "desc")
+
         Returns:
-            List[Podcast]: Podcasts ordered by title.
+            List[Podcast]: Podcasts ordered by the specified criteria.
         """
+        from sqlalchemy import func
+
         with self._get_session() as session:
+            # Build base query
             stmt = select(Podcast)
             if subscribed_only:
                 stmt = stmt.where(Podcast.is_subscribed.is_(True))
-            stmt = stmt.order_by(Podcast.title)
+
+            # Determine sort column
+            if sort_by == "recency":
+                order_col = Podcast.last_new_episode
+            elif sort_by == "alphabetical":
+                order_col = Podcast.title
+            elif sort_by == "subscribers":
+                # Subquery to count subscribers per podcast
+                subscriber_count = (
+                    select(func.count(UserSubscription.user_id))
+                    .where(UserSubscription.podcast_id == Podcast.id)
+                    .correlate(Podcast)
+                    .scalar_subquery()
+                )
+                order_col = subscriber_count
+            else:
+                # Fallback to alphabetical for invalid sort_by
+                order_col = Podcast.title
+
+            # Apply sort direction
+            # For recency, handle nulls by placing them last regardless of direction
+            if sort_by == "recency":
+                if sort_order == "desc":
+                    stmt = stmt.order_by(order_col.desc().nullslast())
+                else:
+                    stmt = stmt.order_by(order_col.asc().nullslast())
+            else:
+                if sort_order == "desc":
+                    stmt = stmt.order_by(order_col.desc())
+                else:
+                    stmt = stmt.order_by(order_col.asc())
+
             if limit:
                 stmt = stmt.limit(limit)
             return list(session.scalars(stmt).all())
@@ -1270,6 +1354,22 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         with self._get_session() as session:
             stmt = select(Episode).where(
                 Episode.podcast_id == podcast_id, Episode.guid == guid
+            )
+            return session.scalar(stmt)
+
+    def get_latest_episode(self, podcast_id: str) -> Optional[Episode]:
+        """
+        Retrieve the most recent episode for a podcast based on published_date.
+
+        @returns The most recent Episode if found, `None` otherwise.
+        """
+        with self._get_session() as session:
+            stmt = (
+                select(Episode)
+                .where(Episode.podcast_id == podcast_id)
+                .where(Episode.published_date.isnot(None))
+                .order_by(Episode.published_date.desc())
+                .limit(1)
             )
             return session.scalar(stmt)
 
@@ -2027,6 +2127,47 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
 
             return count_map
 
+    def get_podcast_subscriber_counts(self, podcast_ids: List[str]) -> Dict[str, int]:
+        """
+        Efficiently get subscriber counts for multiple podcasts in a single query.
+
+        Uses a single SQL GROUP BY query instead of N separate queries, resulting
+        in significantly better performance when fetching counts for many podcasts.
+
+        Parameters:
+            podcast_ids (List[str]): List of podcast IDs to get counts for.
+
+        Returns:
+            Dict[str, int]: Mapping of podcast_id -> subscriber_count.
+                            Podcasts with 0 subscribers will have count = 0.
+        """
+        from sqlalchemy import func
+
+        if not podcast_ids:
+            return {}
+
+        with self._get_session() as session:
+            # Single query with GROUP BY to count subscribers per podcast
+            counts = (
+                session.query(
+                    UserSubscription.podcast_id,
+                    func.count(UserSubscription.user_id).label('subscriber_count')
+                )
+                .filter(UserSubscription.podcast_id.in_(podcast_ids))
+                .group_by(UserSubscription.podcast_id)
+                .all()
+            )
+
+            # Convert to dict and ensure all requested podcasts are in result (with 0 for missing)
+            count_map = {str(podcast_id): count for podcast_id, count in counts}
+
+            # Fill in 0 for podcasts with no subscribers
+            for podcast_id in podcast_ids:
+                if podcast_id not in count_map:
+                    count_map[podcast_id] = 0
+
+            return count_map
+
     def get_overall_stats(self) -> Dict[str, Any]:
         """
         Return aggregated system-wide counts for podcasts and episodes across processing stages.
@@ -2458,15 +2599,54 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             logger.info(f"User {user_id} unsubscribed from podcast {podcast_id}")
             return True
 
-    def get_user_subscriptions(self, user_id: str) -> List[Podcast]:
+    def get_user_subscriptions(
+        self,
+        user_id: str,
+        sort_by: str = "recency",
+        sort_order: str = "desc"
+    ) -> List[Podcast]:
         """Get all podcasts a user is subscribed to."""
+        from sqlalchemy import func
+
         with self._get_session() as session:
+            # Build base query
             stmt = (
                 select(Podcast)
                 .join(UserSubscription, Podcast.id == UserSubscription.podcast_id)
                 .where(UserSubscription.user_id == user_id)
-                .order_by(Podcast.title)
             )
+
+            # Determine sort column
+            if sort_by == "recency":
+                order_col = Podcast.last_new_episode
+            elif sort_by == "alphabetical":
+                order_col = Podcast.title
+            elif sort_by == "subscribers":
+                # Subquery to count subscribers per podcast
+                subscriber_count = (
+                    select(func.count(UserSubscription.user_id))
+                    .where(UserSubscription.podcast_id == Podcast.id)
+                    .correlate(Podcast)
+                    .scalar_subquery()
+                )
+                order_col = subscriber_count
+            else:
+                # Fallback to alphabetical for invalid sort_by
+                order_col = Podcast.title
+
+            # Apply sort direction
+            # For recency, handle nulls by placing them last regardless of direction
+            if sort_by == "recency":
+                if sort_order == "desc":
+                    stmt = stmt.order_by(order_col.desc().nullslast())
+                else:
+                    stmt = stmt.order_by(order_col.asc().nullslast())
+            else:
+                if sort_order == "desc":
+                    stmt = stmt.order_by(order_col.desc())
+                else:
+                    stmt = stmt.order_by(order_col.asc())
+
             return list(session.scalars(stmt).all())
 
     def is_user_subscribed(self, user_id: str, podcast_id: str) -> bool:
