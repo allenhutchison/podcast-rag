@@ -413,7 +413,7 @@ def create_podcast_search_tool(
             )
 
             # Extract citations with metadata enrichment from database
-            citations = _extract_citations(response, repository)
+            citations = extract_citations(response, repository)
 
             # Store citations in session-specific storage for retrieval
             set_podcast_citations(session_id, citations)

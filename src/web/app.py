@@ -203,6 +203,12 @@ async def generate_streaming_response(
     episode_obj = None  # Store full episode object for rich context
     podcast_obj = None  # Store full podcast object for rich context
 
+    # Initialize variables used in conditional branches
+    podcasts_for_discovery = []
+    episodes = []
+    episode_list = ""
+    podcast_list = ""
+
     if episode_id is not None:
         episode_obj = _repository.get_episode(episode_id)
         if episode_obj:
@@ -386,7 +392,7 @@ Please provide a comprehensive answer following these instructions."""
 
             # Build podcast list with descriptions
             podcast_list = ""
-            if 'podcasts_for_discovery' in locals() and podcasts_for_discovery:
+            if podcasts_for_discovery:
                 podcast_lines = []
                 for podcast in podcasts_for_discovery:
                     podcast_line = f"- **{podcast.title}**"
@@ -417,7 +423,7 @@ Please provide a comprehensive answer following these instructions."""
 
             # Build podcast list with descriptions
             podcast_list = ""
-            if 'podcasts_for_discovery' in locals() and podcasts_for_discovery:
+            if podcasts_for_discovery:
                 podcast_lines = []
                 for podcast in podcasts_for_discovery:
                     podcast_line = f"- **{podcast.title}**"
@@ -456,7 +462,7 @@ Please provide a comprehensive answer following these instructions."""
                 identification_prompt = f"""You are helping a user find relevant podcast episodes.
 
 Podcast: {podcast_obj.title}
-{episode_list if 'episode_list' in locals() else ""}
+{episode_list}
 
 User Question: {query}
 
@@ -476,7 +482,7 @@ Do not include any other text or explanation."""
                 identification_prompt = f"""You are helping a user find relevant podcasts.
 
 {scope_context}
-{podcast_list if 'podcast_list' in locals() else ""}
+{podcast_list}
 
 User Question: {query}
 
@@ -506,7 +512,7 @@ Do not include any other text or explanation."""
                 logger.info(f"Identified {len(relevant_titles)} relevant items: {relevant_titles}")
 
                 # Stage 2: Build detailed response using relevant items
-                if podcast_obj and relevant_titles and 'episodes' in locals() and episodes:
+                if podcast_obj and relevant_titles and episodes:
                     # Episode discovery (for podcast scope)
                     relevant_episodes = [ep for ep in episodes if ep.title in relevant_titles]
 
@@ -529,7 +535,7 @@ User Question: {query}
 
 Please provide a comprehensive, detailed answer based on these episode summaries. Explain what each episode covers and how it relates to the question."""
 
-                elif relevant_titles and 'podcasts_for_discovery' in locals() and podcasts_for_discovery:
+                elif relevant_titles and podcasts_for_discovery:
                     # Podcast discovery (for subscriptions/global)
                     relevant_podcasts = [p for p in podcasts_for_discovery if p.title in relevant_titles]
 
