@@ -201,9 +201,9 @@ All commands can be run with `uv run` or directly if you've activated the virtua
 ### Run the processing pipeline:
 ```bash
 # Run the pipeline (continuous processing optimized for GPU)
-uv run python src/scheduler.py
+uv run poe pipeline
 
-# Or using the CLI
+# Or using the CLI directly
 uv run python -m src.cli podcast pipeline
 ```
 
@@ -214,6 +214,9 @@ uv run python -m src.cli podcast status
 
 ### Query the RAG system:
 ```bash
+uv run poe query --query "your question here"
+
+# Or directly
 uv run python -m src.rag --query "your question here"
 ```
 
@@ -259,15 +262,15 @@ When processing fails for any episodes, the pipeline will log detailed error inf
 Use `python -m src.cli podcast status` to view current processing status and any failures.
 
 ## Testing
-Unit tests can be run using `pytest`. To install `pytest`:
+
+Run tests using the poe task runner:
 
 ```bash
-pip install pytest
-```
+# Run all tests
+uv run poe test
 
-To run the tests:
-```bash
-pytest
+# Run tests with coverage
+uv run poe cov
 ```
 
 ## Contributing

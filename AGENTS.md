@@ -127,12 +127,22 @@ alembic upgrade head
 
 ### Common Tasks
 
+This project uses [poethepoet](https://poethepoet.naez.io/) for task running. Available tasks:
+
+| Command | Description |
+|---------|-------------|
+| `uv run poe test` | Run pytest |
+| `uv run poe cov` | Run tests with coverage |
+| `uv run poe serve` | Start web server on port 8080 |
+| `uv run poe pipeline` | Run the processing pipeline |
+| `uv run poe query` | Run a RAG query |
+
 **Process Podcasts:**
 ```bash
 # Run the processing pipeline (continuous, GPU-optimized)
-python src/scheduler.py
+uv run poe pipeline
 
-# Or using the CLI
+# Or using the CLI directly
 python -m src.cli podcast pipeline
 
 # Check processing status
@@ -142,10 +152,10 @@ python -m src.cli podcast status
 **Query & Search:**
 ```bash
 # RAG query with Gemini File Search (CLI)
-python -m src.rag --query "your question"
+uv run poe query --query "your question"
 
 # Web application (ADK multi-agent with web search)
-uvicorn src.web.app:app --reload --port 8080
+uv run poe serve
 
 # Manage File Search store (list, find duplicates, delete)
 python scripts/file_search_utils.py --action list
@@ -157,16 +167,13 @@ python scripts/rebuild_cache.py
 **Testing:**
 ```bash
 # Run all tests
-pytest
+uv run poe test
+
+# Run tests with coverage
+uv run poe cov
 
 # Run specific test file
-pytest tests/test_workflow.py
-
-# Verbose output
-pytest -v
-
-# With coverage
-pytest --cov=src tests/
+pytest tests/test_workflow.py -v
 ```
 
 ## Coding Conventions
@@ -318,7 +325,7 @@ Check current branch with: `git branch --show-current`
 3. Update Pydantic schemas in `src/schemas.py` for validation
 4. Add tests in `tests/test_*.py`
 5. Add new dependencies with `uv add <package>` (updates pyproject.toml and uv.lock)
-6. Run full test suite: `pytest`
+6. Run full test suite: `uv run poe test`
 7. Run code review: `coderabbit --prompt-only` and address findings
 8. Document in README.md or docs/
 9. Commit changes
@@ -326,7 +333,7 @@ Check current branch with: `git branch --show-current`
 ### When Fixing Bugs
 1. Write failing test first (TDD approach)
 2. Fix code to pass test
-3. Run full test suite: `pytest`
+3. Run full test suite: `uv run poe test`
 4. Check for regressions in related components
 5. Run code review: `coderabbit --prompt-only` and address findings
 6. Update documentation if behavior changes
@@ -342,7 +349,7 @@ Check current branch with: `git branch --show-current`
 
 ---
 
-**Last Updated:** 2025-12-10
+**Last Updated:** 2025-12-20
 **Project Version:** See `git log -1` for latest commit
 **Python Version:** 3.11+
 **License:** Apache 2.0

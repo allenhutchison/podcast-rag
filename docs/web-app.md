@@ -137,7 +137,7 @@ cloudbuild.yaml             # Google Cloud Build configuration
 
 3. **Run the development server:**
    ```bash
-   uvicorn src.web.app:app --reload --port 8080
+   uv run poe serve
    ```
 
 4. **Open in browser:**
