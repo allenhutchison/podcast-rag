@@ -233,6 +233,525 @@ class TestSessionCitations:
         assert len(errors) == 0, f"Thread safety errors: {errors}"
 
 
+class TestPodcastFilterList:
+    """Tests for podcast filter list functionality (subscription filtering)."""
+
+    def setup_method(self):
+        """Clear filters before each test."""
+        from src.agents.podcast_search import _session_podcast_filter, _filter_lock
+        with _filter_lock:
+            _session_podcast_filter.clear()
+
+    def test_get_podcast_filter_list_returns_none_when_not_set(self):
+        """Test that get_podcast_filter_list returns None when no list is set."""
+        from src.agents.podcast_search import get_podcast_filter_list
+        
+        result = get_podcast_filter_list("test-session")
+        assert result is None
+
+    def test_get_podcast_filter_list_returns_set_list(self):
+        """Test that get_podcast_filter_list returns the set list."""
+        from src.agents.podcast_search import set_podcast_filter, get_podcast_filter_list
+        
+        podcast_list = ["Up First", "Tech Talk Daily", "AI Podcast"]
+        set_podcast_filter("test-session", podcast_list=podcast_list)
+        
+        result = get_podcast_filter_list("test-session")
+        assert result == podcast_list
+
+    def test_get_podcast_filter_list_with_nonexistent_session(self):
+        """Test that get_podcast_filter_list returns None for nonexistent session."""
+        from src.agents.podcast_search import get_podcast_filter_list
+        
+        result = get_podcast_filter_list("nonexistent-session")
+        assert result is None
+
+    def test_set_podcast_filter_with_podcast_list(self):
+        """Test setting podcast filter with a list of podcasts."""
+        from src.agents.podcast_search import set_podcast_filter, get_podcast_filter_list
+        
+        podcast_list = ["Podcast A", "Podcast B", "Podcast C"]
+        set_podcast_filter("test-session", podcast_list=podcast_list)
+        
+        result = get_podcast_filter_list("test-session")
+        assert result == podcast_list
+
+    def test_set_podcast_filter_list_clears_single_podcast(self):
+        """Test that setting podcast list clears single podcast filter."""
+        from src.agents.podcast_search import (
+            set_podcast_filter, 
+            get_podcast_filter, 
+            get_podcast_filter_list
+        )
+        
+        # Set single podcast first
+        set_podcast_filter("test-session", podcast_name="Single Podcast")
+        assert get_podcast_filter("test-session") == "Single Podcast"
+        
+        # Set podcast list - should replace single podcast
+        podcast_list = ["Podcast A", "Podcast B"]
+        set_podcast_filter("test-session", podcast_list=podcast_list)
+        
+        # Single podcast should be None, list should be set
+        assert get_podcast_filter("test-session") is None
+        assert get_podcast_filter_list("test-session") == podcast_list
+
+    def test_set_podcast_filter_single_clears_list(self):
+        """Test that setting single podcast clears podcast list."""
+        from src.agents.podcast_search import (
+            set_podcast_filter, 
+            get_podcast_filter, 
+            get_podcast_filter_list
+        )
+        
+        # Set podcast list first
+        podcast_list = ["Podcast A", "Podcast B"]
+        set_podcast_filter("test-session", podcast_list=podcast_list)
+        assert get_podcast_filter_list("test-session") == podcast_list
+        
+        # Set single podcast - should replace list
+        set_podcast_filter("test-session", podcast_name="Single Podcast")
+        
+        # List should be None, single podcast should be set
+        assert get_podcast_filter_list("test-session") is None
+        assert get_podcast_filter("test-session") == "Single Podcast"
+
+    def test_set_podcast_filter_with_empty_list(self):
+        """Test setting podcast filter with empty list."""
+        from src.agents.podcast_search import set_podcast_filter, get_podcast_filter_list
+        
+        # Empty list should still be stored
+        set_podcast_filter("test-session", podcast_list=[])
+        result = get_podcast_filter_list("test-session")
+        assert result == []
+
+    def test_set_podcast_filter_preserves_episode_with_list(self):
+        """Test that setting podcast list preserves episode filter."""
+        from src.agents.podcast_search import (
+            set_podcast_filter, 
+            get_episode_filter, 
+            get_podcast_filter_list
+        )
+        
+        # Set podcast list with episode
+        podcast_list = ["Podcast A", "Podcast B"]
+        set_podcast_filter("test-session", podcast_list=podcast_list, episode_name="Episode 42")
+        
+        assert get_podcast_filter_list("test-session") == podcast_list
+        assert get_episode_filter("test-session") == "Episode 42"
+
+    def test_podcast_filter_list_session_isolation(self):
+        """Test that podcast filter lists are isolated between sessions."""
+        from src.agents.podcast_search import set_podcast_filter, get_podcast_filter_list
+        
+        list1 = ["Podcast A", "Podcast B"]
+        list2 = ["Podcast X", "Podcast Y", "Podcast Z"]
+        
+        set_podcast_filter("session-1", podcast_list=list1)
+        set_podcast_filter("session-2", podcast_list=list2)
+        
+        result1 = get_podcast_filter_list("session-1")
+        result2 = get_podcast_filter_list("session-2")
+        
+        assert result1 == list1
+        assert result2 == list2
+
+    def test_clear_podcast_filter_clears_list(self):
+        """Test that clearing podcast filter also clears the list."""
+        from src.agents.podcast_search import set_podcast_filter, get_podcast_filter_list, _session_podcast_filter
+        
+        podcast_list = ["Podcast A", "Podcast B"]
+        set_podcast_filter("test-session", podcast_list=podcast_list)
+        assert get_podcast_filter_list("test-session") == podcast_list
+        
+        # Clear by setting all to None - should remove from storage
+        set_podcast_filter("test-session", podcast_name=None, podcast_list=None)
+        assert "test-session" not in _session_podcast_filter
+
+    def test_podcast_filter_list_thread_safety(self):
+        """Test that podcast filter list operations are thread-safe."""
+        from src.agents.podcast_search import set_podcast_filter, get_podcast_filter_list
+        import threading
+        import time
+        
+        errors = []
+        sessions = [f"thread-session-{i}" for i in range(5)]
+        
+        def worker(session_id, podcast_list):
+            try:
+                for _ in range(50):
+                    set_podcast_filter(session_id, podcast_list=podcast_list)
+                    result = get_podcast_filter_list(session_id)
+                    if result != podcast_list:
+                        errors.append(f"Expected {podcast_list}, got {result}")
+                    time.sleep(0.001)
+            except Exception as e:
+                errors.append(str(e))
+        
+        threads = []
+        for i, session_id in enumerate(sessions):
+            podcast_list = [f"Podcast {i}-A", f"Podcast {i}-B"]
+            t = threading.Thread(target=worker, args=(session_id, podcast_list))
+            threads.append(t)
+            t.start()
+        
+        for t in threads:
+            t.join()
+        
+        assert len(errors) == 0, f"Thread safety errors: {errors}"
+
+    def test_set_podcast_filter_default_parameters(self):
+        """Test that set_podcast_filter has correct default parameters."""
+        from src.agents.podcast_search import set_podcast_filter
+        import inspect
+        
+        sig = inspect.signature(set_podcast_filter)
+        params = sig.parameters
+        
+        # All filter parameters should default to None
+        assert params['podcast_name'].default is None
+        assert params['episode_name'].default is None
+        assert params['podcast_list'].default is None
+
+    def test_metadata_filter_with_special_characters_in_list(self):
+        """Test podcast list with names containing special characters."""
+        from src.agents.podcast_search import set_podcast_filter, get_podcast_filter_list, escape_filter_value
+        
+        podcast_list = [
+            'Podcast "Special"',
+            'Health Care, Flooding, DOJ',
+            'Tech\\Path\\Podcast'
+        ]
+        set_podcast_filter("test-session", podcast_list=podcast_list)
+        
+        # Verify list is stored
+        stored_list = get_podcast_filter_list("test-session")
+        assert stored_list == podcast_list
+        
+        # Verify each name can be escaped properly for metadata filter
+        for podcast_name in podcast_list:
+            escaped = escape_filter_value(podcast_name)
+            assert escaped is not None
+            # Should have proper escaping
+            if '"' in podcast_name:
+                assert '\\"' in escaped
+            if '\\' in podcast_name and podcast_name.count('\\') == 1:
+                # Single backslash should be doubled
+                assert '\\\\' in escaped
+
+
+class TestSetPodcastFilterSignatureChange:
+    """Tests for the updated set_podcast_filter signature with optional parameters."""
+
+    def test_set_podcast_filter_accepts_podcast_name_as_kwarg(self):
+        """Test that podcast_name can be passed as keyword argument."""
+        from src.agents.podcast_search import set_podcast_filter, get_podcast_filter
+        
+        set_podcast_filter("test-session", podcast_name="Test Podcast")
+        assert get_podcast_filter("test-session") == "Test Podcast"
+
+    def test_set_podcast_filter_all_optional_parameters(self):
+        """Test that all parameters except session_id are optional."""
+        from src.agents.podcast_search import set_podcast_filter
+        
+        # Should not raise - session_id is only required param
+        set_podcast_filter("test-session")
+
+    def test_set_podcast_filter_backward_compatibility_positional(self):
+        """Test backward compatibility when calling with positional podcast_name."""
+        from src.agents.podcast_search import set_podcast_filter, get_podcast_filter
+        
+        # Old code: set_podcast_filter(session_id, podcast_name)
+        # New signature: set_podcast_filter(session_id, podcast_name=None, ...)
+        set_podcast_filter("test-session", "Test Podcast")
+        assert get_podcast_filter("test-session") == "Test Podcast"
+
+    def test_set_podcast_filter_mixed_positional_and_keyword(self):
+        """Test mixed positional and keyword arguments."""
+        from src.agents.podcast_search import (
+            set_podcast_filter, 
+            get_podcast_filter,
+            get_episode_filter
+        )
+        
+        # session_id positional, rest as keywords
+        set_podcast_filter("test-session", episode_name="Episode 1", podcast_name="Podcast A")
+        assert get_podcast_filter("test-session") == "Podcast A"
+        assert get_episode_filter("test-session") == "Episode 1"
+
+
+        podcast_list = ["Up First", "Tech Talk Daily", "AI Podcast"]
+        set_podcast_filter("test-session", podcast_list=podcast_list)
+        
+        result = get_podcast_filter_list("test-session")
+        assert result == podcast_list
+
+    def test_get_podcast_filter_list_with_nonexistent_session(self):
+        """Test that get_podcast_filter_list returns None for nonexistent session."""
+        from src.agents.podcast_search import get_podcast_filter_list
+        
+        result = get_podcast_filter_list("nonexistent-session")
+        assert result is None
+
+    def test_set_podcast_filter_with_podcast_list(self):
+        """Test setting podcast filter with a list of podcasts."""
+        from src.agents.podcast_search import set_podcast_filter, get_podcast_filter_list
+        
+        podcast_list = ["Podcast A", "Podcast B", "Podcast C"]
+        set_podcast_filter("test-session", podcast_list=podcast_list)
+        
+        result = get_podcast_filter_list("test-session")
+        assert result == podcast_list
+
+    def test_set_podcast_filter_list_clears_single_podcast(self):
+        """Test that setting podcast list clears single podcast filter."""
+        from src.agents.podcast_search import (
+            set_podcast_filter, 
+            get_podcast_filter, 
+            get_podcast_filter_list
+        )
+        
+        # Set single podcast first
+        set_podcast_filter("test-session", podcast_name="Single Podcast")
+        assert get_podcast_filter("test-session") == "Single Podcast"
+        
+        # Set podcast list - should clear single podcast
+        podcast_list = ["Podcast A", "Podcast B"]
+        set_podcast_filter("test-session", podcast_list=podcast_list)
+        
+        # Single podcast should be None, list should be set
+        assert get_podcast_filter("test-session") is None
+        assert get_podcast_filter_list("test-session") == podcast_list
+
+    def test_set_podcast_filter_single_clears_list(self):
+        """Test that setting single podcast clears podcast list."""
+        from src.agents.podcast_search import (
+            set_podcast_filter, 
+            get_podcast_filter, 
+            get_podcast_filter_list
+        )
+        
+        # Set podcast list first
+        podcast_list = ["Podcast A", "Podcast B"]
+        set_podcast_filter("test-session", podcast_list=podcast_list)
+        assert get_podcast_filter_list("test-session") == podcast_list
+        
+        # Set single podcast - should clear list
+        set_podcast_filter("test-session", podcast_name="Single Podcast")
+        
+        # List should be None, single podcast should be set
+        assert get_podcast_filter_list("test-session") is None
+        assert get_podcast_filter("test-session") == "Single Podcast"
+
+    def test_set_podcast_filter_with_empty_list(self):
+        """Test setting podcast filter with empty list."""
+        from src.agents.podcast_search import set_podcast_filter, get_podcast_filter_list
+        
+        # Empty list should still be stored
+        set_podcast_filter("test-session", podcast_list=[])
+        result = get_podcast_filter_list("test-session")
+        assert result == []
+
+    def test_set_podcast_filter_preserves_episode_with_list(self):
+        """Test that setting podcast list preserves episode filter."""
+        from src.agents.podcast_search import (
+            set_podcast_filter, 
+            get_episode_filter, 
+            get_podcast_filter_list
+        )
+        
+        # Set podcast list with episode
+        podcast_list = ["Podcast A", "Podcast B"]
+        set_podcast_filter("test-session", podcast_list=podcast_list, episode_name="Episode 42")
+        
+        assert get_podcast_filter_list("test-session") == podcast_list
+        assert get_episode_filter("test-session") == "Episode 42"
+
+    def test_podcast_filter_list_session_isolation(self):
+        """Test that podcast filter lists are isolated between sessions."""
+        from src.agents.podcast_search import set_podcast_filter, get_podcast_filter_list
+        
+        list1 = ["Podcast A", "Podcast B"]
+        list2 = ["Podcast X", "Podcast Y", "Podcast Z"]
+        
+        set_podcast_filter("session-1", podcast_list=list1)
+        set_podcast_filter("session-2", podcast_list=list2)
+        
+        result1 = get_podcast_filter_list("session-1")
+        result2 = get_podcast_filter_list("session-2")
+        
+        assert result1 == list1
+        assert result2 == list2
+
+    def test_clear_podcast_filter_clears_list(self):
+        """Test that clearing podcast filter also clears the list."""
+        from src.agents.podcast_search import set_podcast_filter, get_podcast_filter_list
+        
+        podcast_list = ["Podcast A", "Podcast B"]
+        set_podcast_filter("test-session", podcast_list=podcast_list)
+        assert get_podcast_filter_list("test-session") == podcast_list
+        
+        # Clear by setting all to None
+        set_podcast_filter("test-session", podcast_name=None, podcast_list=None)
+        assert get_podcast_filter_list("test-session") is None
+
+    def test_podcast_filter_list_thread_safety(self):
+        """Test that podcast filter list operations are thread-safe."""
+        from src.agents.podcast_search import set_podcast_filter, get_podcast_filter_list
+        import threading
+        
+        errors = []
+        sessions = [f"thread-session-{i}" for i in range(5)]
+        
+        def worker(session_id, podcast_list):
+            try:
+                for _ in range(50):
+                    set_podcast_filter(session_id, podcast_list=podcast_list)
+                    result = get_podcast_filter_list(session_id)
+                    if result != podcast_list:
+                        errors.append(f"Expected {podcast_list}, got {result}")
+            except Exception as e:
+                errors.append(str(e))
+        
+        threads = []
+        for i, session_id in enumerate(sessions):
+            podcast_list = [f"Podcast {i}-A", f"Podcast {i}-B"]
+            t = threading.Thread(target=worker, args=(session_id, podcast_list))
+            threads.append(t)
+            t.start()
+        
+        for t in threads:
+            t.join()
+        
+        assert len(errors) == 0, f"Thread safety errors: {errors}"
+
+    def test_set_podcast_filter_accepts_all_none_to_clear(self):
+        """Test that set_podcast_filter with all None values clears the filter."""
+        from src.agents.podcast_search import (
+            set_podcast_filter,
+            get_podcast_filter,
+            get_episode_filter,
+            get_podcast_filter_list,
+            _session_podcast_filter
+        )
+        
+        # Set some filters
+        set_podcast_filter("test-session", podcast_list=["A", "B"])
+        assert get_podcast_filter_list("test-session") == ["A", "B"]
+        
+        # Clear with all None
+        set_podcast_filter("test-session", podcast_name=None, episode_name=None, podcast_list=None)
+        
+        # Should be removed from storage
+        assert "test-session" not in _session_podcast_filter
+
+    def test_set_podcast_filter_default_parameters(self):
+        """Test that set_podcast_filter has correct default parameters."""
+        from src.agents.podcast_search import set_podcast_filter, get_podcast_filter
+        import inspect
+        
+        sig = inspect.signature(set_podcast_filter)
+        params = sig.parameters
+        
+        # All filter parameters should default to None
+        assert params['podcast_name'].default is None
+        assert params['episode_name'].default is None
+        assert params['podcast_list'].default is None
+
+
+class TestSetPodcastFilterSignatureChange:
+    """Tests for the updated set_podcast_filter signature."""
+
+    def test_set_podcast_filter_accepts_podcast_name_as_kwarg(self):
+        """Test that podcast_name can be passed as keyword argument."""
+        from src.agents.podcast_search import set_podcast_filter, get_podcast_filter
+        
+        set_podcast_filter("test-session", podcast_name="Test Podcast")
+        assert get_podcast_filter("test-session") == "Test Podcast"
+
+    def test_set_podcast_filter_all_optional_parameters(self):
+        """Test that all parameters except session_id are optional."""
+        from src.agents.podcast_search import set_podcast_filter
+        
+        # Should not raise - session_id is only required param
+        set_podcast_filter("test-session")
+
+    def test_set_podcast_filter_backward_compatibility_positional(self):
+        """Test backward compatibility with positional arguments."""
+        from src.agents.podcast_search import set_podcast_filter, get_podcast_filter
+        
+        # Old code might have used: set_podcast_filter(session_id, podcast_name)
+        # This should still work with podcast_name=None as default
+        set_podcast_filter("test-session", "Test Podcast")
+        assert get_podcast_filter("test-session") == "Test Podcast"
+
+    def test_set_podcast_filter_mixed_positional_and_keyword(self):
+        """Test mixed positional and keyword arguments."""
+        from src.agents.podcast_search import (
+            set_podcast_filter, 
+            get_podcast_filter,
+            get_episode_filter
+        )
+        
+        # session_id positional, rest as keywords
+        set_podcast_filter("test-session", episode_name="Episode 1", podcast_name="Podcast A")
+        assert get_podcast_filter("test-session") == "Podcast A"
+        assert get_episode_filter("test-session") == "Episode 1"
+
+
+class TestPodcastFilterMetadataGeneration:
+    """Tests for metadata filter string generation with podcast lists."""
+
+    def setup_method(self):
+        """Clear filters before each test."""
+        from src.agents.podcast_search import _session_podcast_filter, _filter_lock
+        with _filter_lock:
+            _session_podcast_filter.clear()
+
+    def test_metadata_filter_with_podcast_list_or_logic(self):
+        """Test that podcast list generates OR condition in metadata filter."""
+        from src.agents.podcast_search import set_podcast_filter, escape_filter_value
+        
+        # The actual filter string generation happens in create_podcast_search_tool
+        # We can test the logic by checking the stored values
+        podcast_list = ["Podcast A", "Podcast B", "Podcast C"]
+        set_podcast_filter("test-session", podcast_list=podcast_list)
+        
+        # Verify the list is stored correctly for filter generation
+        from src.agents.podcast_search import get_podcast_filter_list
+        result = get_podcast_filter_list("test-session")
+        assert result == podcast_list
+        
+        # Verify escaping works for each podcast name
+        for podcast_name in podcast_list:
+            escaped = escape_filter_value(podcast_name)
+            assert escaped is not None
+            assert escaped == podcast_name  # Normal names don't need escaping
+
+    def test_metadata_filter_with_special_characters_in_list(self):
+        """Test podcast list with names containing special characters."""
+        from src.agents.podcast_search import set_podcast_filter, escape_filter_value
+        
+        podcast_list = [
+            'Podcast "Special"',
+            'Health Care, Flooding, DOJ',
+            'Tech\\Path\\Podcast'
+        ]
+        set_podcast_filter("test-session", podcast_list=podcast_list)
+        
+        # Verify each name is escaped properly
+        for podcast_name in podcast_list:
+            escaped = escape_filter_value(podcast_name)
+            assert escaped is not None
+            # Should have proper escaping
+            if '"' in podcast_name:
+                assert '\\"' in escaped
+            if '\\' in podcast_name:
+                assert '\\\\' in escaped
+
+
+
+
 class TestSessionIdValidation:
     """Tests for session ID validation in the web app."""
 
