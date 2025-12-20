@@ -21,8 +21,9 @@ class ChatRequest(BaseModel):
     """Request model for chat endpoint."""
     query: str = Field(..., min_length=1, max_length=1000, description="User's question")
     history: Optional[List[Message]] = Field(default=None, description="Conversation history")
-    podcast_id: Optional[int] = Field(default=None, description="Filter to specific podcast")
+    podcast_id: Optional[str] = Field(default=None, description="Filter to specific podcast (UUID)")
     episode_id: Optional[str] = Field(default=None, description="Filter to specific episode")
+    subscribed_only: Optional[bool] = Field(default=None, description="Filter to user's subscribed podcasts only")
 
 
 class CitationMetadata(BaseModel):
@@ -66,50 +67,5 @@ class ChatResponse(BaseModel):
                     }
                 ]
             }
-        }
-    )
-
-
-class UnifiedCitation(BaseModel):
-    """
-    Unified citation model supporting both podcast and web sources.
-
-    Used by the ADK multi-agent endpoint to return citations from
-    parallel podcast and web searches.
-    """
-    ref_id: str = Field(..., description="Citation reference ID (P1, P2 for podcast; W1, W2 for web)")
-    source_type: Literal["podcast", "web"] = Field(..., description="Source type")
-
-    # Podcast-specific fields
-    podcast: Optional[str] = Field(default=None, description="Podcast series name")
-    episode: Optional[str] = Field(default=None, description="Episode title")
-    release_date: Optional[str] = Field(default=None, description="Release date")
-
-    # Web-specific fields
-    url: Optional[str] = Field(default=None, description="Source URL")
-    title: Optional[str] = Field(default=None, description="Page/article title")
-
-    # Common fields
-    text: Optional[str] = Field(default=None, description="Excerpt text")
-
-    model_config = ConfigDict(
-        json_schema_extra={
-            "examples": [
-                {
-                    "ref_id": "P1",
-                    "source_type": "podcast",
-                    "podcast": "Tech Talk",
-                    "episode": "AI Revolution",
-                    "release_date": "2024-01-15",
-                    "text": "In this episode we discuss..."
-                },
-                {
-                    "ref_id": "W1",
-                    "source_type": "web",
-                    "url": "https://example.com/article",
-                    "title": "Latest AI News",
-                    "text": "Recent developments show..."
-                }
-            ]
         }
     )

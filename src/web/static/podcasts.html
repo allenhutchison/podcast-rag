@@ -22,6 +22,14 @@
         }
     </script>
 
+    <!-- Chat Drawer Styles -->
+    <link rel="stylesheet" href="/chat-drawer.css">
+
+    <!-- Marked.js for Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@17.0.1/marked.min.js"></script>
+    <!-- DOMPurify for HTML sanitization (XSS prevention) -->
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.3.1/dist/purify.min.js"></script>
+
     <style>
         /* Hover effect for podcast cards */
         .podcast-card {
@@ -59,12 +67,12 @@
                 <p class="text-sm text-gray-600 mt-1">Browse your podcast library</p>
             </div>
             <div class="flex items-center gap-4">
-                <a
-                    href="/"
+                <button
+                    id="openChatBtn"
                     class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm"
                 >
-                    Back to Chat
-                </a>
+                    Ask a Question
+                </button>
                 <div id="userInfo" class="border-l pl-4 border-gray-200"></div>
             </div>
         </div>
@@ -130,7 +138,7 @@
     <!-- Footer -->
     <footer class="bg-white border-t border-gray-200 px-6 py-3">
         <div class="max-w-6xl mx-auto text-center text-sm text-gray-600">
-            Powered by Gemini &amp; ADK Multi-Agent Search
+            Powered by Gemini
         </div>
     </footer>
 
@@ -329,6 +337,48 @@
             updateUserUIWithAdmin(user);
             loadPodcasts();
         });
+    </script>
+
+    <!-- Chat Drawer Component -->
+    <script src="/chat-drawer.js"></script>
+    <script>
+        // Initialize chat drawer with scope based on current view
+        let chatDrawer;
+        const openChatBtn = document.getElementById('openChatBtn');
+
+        function initializeChatDrawer() {
+            // Determine scope based on current view
+            const scope = currentView === 'subscribed' ? 'subscriptions' : 'all';
+            const subscribedOnly = currentView === 'subscribed';
+
+            chatDrawer = new ChatDrawer({
+                scope: scope,
+                subscribedOnly: subscribedOnly
+            });
+            chatDrawer.init();
+        }
+
+        // Initialize chat drawer after DOM is ready
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeChatDrawer();
+
+            // Add click handler to open button
+            openChatBtn.addEventListener('click', () => {
+                chatDrawer.open();
+            });
+        });
+
+        // Update drawer scope when view changes
+        const originalSwitchView = switchView;
+        switchView = function(view) {
+            originalSwitchView(view);
+
+            // Destroy and reinitialize drawer with new scope
+            if (chatDrawer) {
+                chatDrawer.destroy();
+            }
+            initializeChatDrawer();
+        };
     </script>
 </body>
 </html>

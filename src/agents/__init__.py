@@ -1,20 +1,10 @@
 """
-Google ADK agents for podcast RAG with parallel search capabilities.
+Podcast search utilities for RAG with Gemini File Search.
 
-This module provides a multi-agent architecture using Google ADK that combines:
-- Podcast transcript search (via Gemini File Search)
-- Web search (via google_search built-in tool)
-- Result synthesis with equal weighting
-
-Architecture:
-    SequentialAgent (Orchestrator)
-    ├── ParallelAgent
-    │   ├── PodcastSearchAgent (custom File Search tool)
-    │   └── WebSearchAgent (google_search)
-    └── SynthesizerAgent (combines results)
+This module provides helper functions for managing citations and filters
+when searching podcast transcripts using Gemini File Search directly.
 """
 
-from src.agents.orchestrator import create_orchestrator
 from src.agents.podcast_search import (
     get_podcast_citations,
     set_podcast_citations,
@@ -26,7 +16,6 @@ from src.agents.podcast_search import (
 )
 
 __all__ = [
-    "create_orchestrator",
     "get_podcast_citations",
     "set_podcast_citations",
     "clear_podcast_citations",
