@@ -38,6 +38,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Benchmarking dependencies (for comparing transcription backends)
+benchmark = [
+    "faster-whisper>=1.0.0",
+    "openai-whisper>=20231117",  # For comparison benchmarks only
+]
+
+[dependency-groups]
 # Encoding/transcription service dependencies
 encoding = [
     "faster-whisper>=1.0.0",
@@ -62,20 +69,24 @@ web = [
     "python-jose[cryptography]>=3.5.0",
     "itsdangerous>=2.1.0",
 ]
-# Development dependencies
+# Development dependencies - includes all groups for local development
 dev = [
+    {include-group = "encoding"},
+    {include-group = "web"},
     "pytest>=9.0.1",
     "pytest-cov>=4.1.0",
+    "poethepoet>=0.38.0",
 ]
-# Benchmarking dependencies (for comparing transcription backends)
-benchmark = [
-    "faster-whisper>=1.0.0",
-    "openai-whisper>=20231117",  # For comparison benchmarks only
-]
-# All dependencies (for local development)
-all = [
-    "podcast-rag[encoding,web]",
-]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[tool.poe.tasks]
+test = "pytest"
+cov = "pytest --cov=src tests/"
+serve = "uvicorn src.web.app:app --reload --port 8080"
+pipeline = "python src/scheduler.py"
+query = "python -m src.rag --query"
 
 [project.urls]
 Homepage = "https://github.com/allenhutchison/podcast-rag"
