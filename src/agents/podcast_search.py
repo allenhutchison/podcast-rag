@@ -231,18 +231,25 @@ def set_podcast_filter(
 ):
     """
     Set per-session podcast/episode filters used by podcast searches.
-    
+
     Stores the provided podcast name, episode name, or list of podcast names for the given session_id; if no filter values are provided the session's filter is removed.
-    
+
     Parameters:
     	session_id (str): Session identifier to associate the filter with.
     	podcast_name (Optional[str]): Single podcast name to filter by. Mutually exclusive with `podcast_list`.
     	episode_name (Optional[str]): Episode name to filter by.
     	podcast_list (Optional[list[str]]): List of podcast names for subscription-style filtering. Mutually exclusive with `podcast_name`.
-    
+
+    Raises:
+    	ValueError: If both `podcast_name` and `podcast_list` are provided.
+
     Notes:
     	The filter is saved with a timestamp and will be subject to TTL-based cleanup.
     """
+    # Enforce mutual exclusivity
+    if podcast_name and podcast_list:
+        raise ValueError("Cannot specify both podcast_name and podcast_list - they are mutually exclusive")
+
     with _filter_lock:
         if podcast_name or episode_name or podcast_list:
             _session_podcast_filter[session_id] = {
@@ -433,7 +440,7 @@ def create_podcast_search_tool(
     return search_podcasts
 
 
-def _extract_citations(
+def extract_citations(
     response,
     repository: PodcastRepositoryInterface
 ) -> List[Dict]:

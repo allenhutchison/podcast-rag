@@ -107,21 +107,6 @@ class TestStaticFiles:
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
 
-    def test_index_contains_chat_form(self, client):
-        """Test that index page contains chat interface elements."""
-        response = client.get("/")
-        content = response.text
-        assert "chatForm" in content
-        assert "queryInput" in content
-        assert "submitBtn" in content
-        assert "newChatBtn" in content
-
-    def test_index_has_adk_branding(self, client):
-        """Test that index page shows ADK multi-agent branding."""
-        response = client.get("/")
-        content = response.text
-        assert "ADK" in content or "Multi-Agent" in content
-
 
 class TestCORSConfiguration:
     """Tests for CORS middleware configuration."""

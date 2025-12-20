@@ -194,7 +194,7 @@ async def generate_streaming_response(
     """
     from google import genai
     from google.genai import types
-    from src.agents.podcast_search import escape_filter_value, _extract_citations
+    from src.agents.podcast_search import escape_filter_value, extract_citations
 
     # Get podcast and episode names for filtering if specified
     podcast_filter_name: Optional[str] = None
@@ -607,7 +607,7 @@ Please provide a comprehensive, detailed answer based on these podcast descripti
         citations = []
         if not is_episode_discovery_query and final_response:
             # Extract citations from the final streamed response
-            citations = _extract_citations(final_response, _repository)
+            citations = extract_citations(final_response, _repository)
             logger.debug(f"Extracted {len(citations)} citations from File Search")
         else:
             logger.debug("Skipping citation extraction for episode discovery query")
