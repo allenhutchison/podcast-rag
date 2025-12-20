@@ -175,26 +175,22 @@ async def generate_streaming_response(
     subscribed_only: Optional[bool] = None,
 ) -> AsyncGenerator[str, None]:
     """
-    Generate streaming response using Gemini File Search directly.
-
-    Yields SSE events:
-    - event: status -> Search execution status
-    - event: token -> Streaming text chunks
-    - event: citations -> Citations from File Search
-    - event: done -> Completion signal
-    - event: error -> Error information
-
-    Args:
-        query: User's question
-        session_id: Session identifier
-        user_id: User identifier for subscription filtering
-        _history: Optional conversation history (unused for now)
-        podcast_id: Optional podcast UUID to filter results
-        episode_id: Optional episode ID to filter results to a specific episode
-        subscribed_only: Filter to user's subscribed podcasts only
-
-    Yields:
-        SSE formatted events
+    Stream Server-Sent Events (SSE) for a user query using Gemini File Search with optional podcast or episode filtering.
+    
+    Streams SSE-formatted strings representing the processing lifecycle:
+    - status: search/filtering/responding phases
+    - token: incremental text tokens from the model
+    - citations: extracted File Search citations (when applicable)
+    - done: completion signal
+    - error: error details if processing fails
+    
+    Parameters:
+        podcast_id (Optional[str]): If provided, restricts search and context to the given podcast.
+        episode_id (Optional[str]): If provided, restricts search and context to the given episode.
+        subscribed_only (Optional[bool]): If true, restricts discovery scope to the user's subscribed podcasts.
+    
+    Returns:
+        str: SSE-formatted event strings (one per yield) containing JSON-serializable payloads for the events described above.
     """
     from google import genai
     from google.genai import types
@@ -639,19 +635,14 @@ async def chat(
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Chat endpoint with Server-Sent Events streaming.
-
-    Uses Gemini File Search directly for podcast transcript search.
-    Supports filtering by episode, podcast, subscriptions, or global search.
-    Requires authentication.
-
-    Args:
-        request: FastAPI Request object (for rate limiting)
-        chat_request: ChatRequest with query and optional filters
-        current_user: Authenticated user from JWT cookie
-
+    Handle a chat request and stream Server-Sent Events (SSE) responses for a podcast-aware conversational search.
+    
+    Parameters:
+        request (Request): Incoming FastAPI request; used to read headers such as X-Session-ID.
+        chat_request (ChatRequest): Client-provided query and optional filters (podcast_id, episode_id, subscribed_only, history).
+    
     Returns:
-        StreamingResponse with SSE formatted tokens and citations
+        StreamingResponse: An SSE stream that emits events for search/response lifecycle, including status updates, incremental token events, a final citations event, and a done or error event.
     """
     if not chat_request.query or not chat_request.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
@@ -990,15 +981,32 @@ async def search_episodes(
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Search for episodes by keyword or person (host/guest).
-
-    Args:
-        type: Search type - 'keyword' or 'person'
-        q: Search query string
-        current_user: Authenticated user from JWT cookie
-
+    Search episodes by keyword or person and return matching episode records with podcast metadata.
+    
+    Parameters:
+        type (str): Search mode, either "keyword" to match episode content/keywords or "person" to match hosts/guests.
+        q (str): Search query string; must be non-empty after trimming.
+    
     Returns:
-        Matching episodes with podcast info
+        dict: {
+            "query": str,        # trimmed query string
+            "type": str,         # echo of the requested search type
+            "results": [         # list of matching episodes
+                {
+                    "id": str,
+                    "title": str,
+                    "published_date": str | None,  # ISO 8601 or None
+                    "duration_seconds": int | None,
+                    "ai_summary": str | None,     # truncated to ~200 chars with "..." if longer
+                    "podcast": {
+                        "id": str | None,
+                        "title": str | None,
+                        "image_url": str | None
+                    }
+                },
+                ...
+            ]
+        }
     """
     if not q or not q.strip():
         raise HTTPException(status_code=400, detail="Search query cannot be empty")
@@ -1036,7 +1044,12 @@ async def search_episodes(
 # Redirect root to podcasts page (replacing old global chat interface)
 @app.get("/")
 async def root():
-    """Redirect root URL to podcasts library page."""
+    """
+    Redirect the root URL to the podcasts library page.
+    
+    Returns:
+        RedirectResponse: HTTP redirect to "/podcasts.html" (status code 302).
+    """
     return RedirectResponse(url="/podcasts.html", status_code=302)
 
 
