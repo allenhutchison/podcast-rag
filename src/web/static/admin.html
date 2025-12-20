@@ -883,39 +883,41 @@
 
         /**
          * Get action buttons for episode
+         * Uses data attributes instead of inline onclick to prevent XSS
          */
         function getActionButtons(ep) {
             const buttons = [];
+            const escapedId = escapeHtml(ep.id);
 
             // Determine which stage needs retry
             if (ep.download_status === 'failed') {
                 buttons.push(`
-                    <button onclick="retryEpisode('${ep.id}', 'download')"
-                        class="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors">
+                    <button class="retry-episode-btn text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors"
+                        data-episode-id="${escapedId}" data-stage="download">
                         Retry Download
                     </button>
                 `);
             }
             if (ep.transcript_status === 'failed' || ep.transcript_status === 'permanently_failed') {
                 buttons.push(`
-                    <button onclick="retryEpisode('${ep.id}', 'transcript')"
-                        class="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors">
+                    <button class="retry-episode-btn text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors"
+                        data-episode-id="${escapedId}" data-stage="transcript">
                         Retry Transcript
                     </button>
                 `);
             }
             if (ep.metadata_status === 'failed' || ep.metadata_status === 'permanently_failed') {
                 buttons.push(`
-                    <button onclick="retryEpisode('${ep.id}', 'metadata')"
-                        class="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors">
+                    <button class="retry-episode-btn text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors"
+                        data-episode-id="${escapedId}" data-stage="metadata">
                         Retry Metadata
                     </button>
                 `);
             }
             if (ep.file_search_status === 'failed' || ep.file_search_status === 'permanently_failed') {
                 buttons.push(`
-                    <button onclick="retryEpisode('${ep.id}', 'indexing')"
-                        class="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors">
+                    <button class="retry-episode-btn text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors"
+                        data-episode-id="${escapedId}" data-stage="indexing">
                         Retry Indexing
                     </button>
                 `);
@@ -1022,6 +1024,17 @@
                     const userId = e.target.dataset.userId;
                     const isAdmin = e.target.checked;
                     toggleAdmin(userId, isAdmin, e.target);
+                }
+            });
+
+            // Event delegation for episode retry buttons
+            document.getElementById('episodes-table-body').addEventListener('click', (e) => {
+                if (e.target.classList.contains('retry-episode-btn')) {
+                    const episodeId = e.target.dataset.episodeId;
+                    const stage = e.target.dataset.stage;
+                    if (episodeId && stage) {
+                        retryEpisode(episodeId, stage);
+                    }
                 }
             });
         });
