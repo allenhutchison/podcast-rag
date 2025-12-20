@@ -73,15 +73,10 @@ class Config:
         self.COOKIE_DOMAIN = os.getenv("COOKIE_DOMAIN", None) or None  # None = current domain
         self.COOKIE_SECURE = os.getenv("COOKIE_SECURE", "true").lower() == "true"
 
-        # SMTP Email configuration
-        self.SMTP_HOST = os.getenv("SMTP_HOST", "")
-        self.SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-        self.SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
-        self.SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
-        self.SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
-        self.SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", "noreply@podcast-rag.local")
-        self.SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "Podcast RAG")
-        self.SMTP_TIMEOUT = int(os.getenv("SMTP_TIMEOUT", "30"))  # seconds
+        # Email configuration (Resend)
+        self.RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+        self.RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "noreply@podcasts.hutchison.org")
+        self.RESEND_FROM_NAME = os.getenv("RESEND_FROM_NAME", "Podcast RAG")
 
         # Email digest settings
         self.EMAIL_DIGEST_SEND_HOUR = int(os.getenv("EMAIL_DIGEST_SEND_HOUR", "8"))  # 8 AM
