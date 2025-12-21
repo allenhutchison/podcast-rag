@@ -91,6 +91,11 @@ function updateUserUI(user, options = {}) {
     const userInfoContainer = document.getElementById('userInfo');
     if (!userInfoContainer) return;
 
+    // Clean up existing listener if present
+    if (window._userMenuCloseListener) {
+        document.removeEventListener('click', window._userMenuCloseListener);
+    }
+
     // Clear existing content
     userInfoContainer.innerHTML = '';
 
@@ -102,6 +107,8 @@ function updateUserUI(user, options = {}) {
     const userButton = document.createElement('button');
     userButton.className = 'flex items-center gap-2 focus:outline-none hover:opacity-80 transition-opacity';
     userButton.id = 'userMenuButton';
+    userButton.setAttribute('aria-haspopup', 'true');
+    userButton.setAttribute('aria-expanded', 'false');
 
     // Create and configure image element
     const validPictureUrl = validatePictureUrl(user.picture);
@@ -142,10 +149,14 @@ function updateUserUI(user, options = {}) {
     const dropdown = document.createElement('div');
     dropdown.id = 'userMenuDropdown';
     dropdown.className = 'hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50';
+    dropdown.setAttribute('role', 'menu');
+    dropdown.setAttribute('aria-hidden', 'true');
+    userButton.setAttribute('aria-controls', dropdown.id);
 
     // Add user name/email header
     const header = document.createElement('div');
     header.className = 'px-4 py-2 border-b border-gray-200';
+    header.setAttribute('role', 'presentation');
     const nameDiv = document.createElement('div');
     nameDiv.className = 'text-sm font-medium text-gray-900 truncate';
     nameDiv.textContent = user.name || '';
@@ -163,6 +174,7 @@ function updateUserUI(user, options = {}) {
     settingsLink.href = '/settings.html';
     settingsLink.className = 'block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors';
     settingsLink.textContent = 'Settings';
+    settingsLink.setAttribute('role', 'menuitem');
     dropdown.appendChild(settingsLink);
 
     // Add admin link for admin users (if enabled)
@@ -171,53 +183,103 @@ function updateUserUI(user, options = {}) {
         adminLink.href = '/admin.html';
         adminLink.className = 'block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors';
         adminLink.textContent = 'Admin';
+        adminLink.setAttribute('role', 'menuitem');
         dropdown.appendChild(adminLink);
     }
 
     // Add separator
     const separator = document.createElement('div');
     separator.className = 'border-t border-gray-200 my-1';
+    separator.setAttribute('role', 'presentation');
     dropdown.appendChild(separator);
 
     // Add Sign Out button
     const signOutBtn = document.createElement('button');
     signOutBtn.className = 'block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors';
     signOutBtn.textContent = 'Sign Out';
+    signOutBtn.setAttribute('role', 'menuitem');
     signOutBtn.addEventListener('click', logout);
     dropdown.appendChild(signOutBtn);
 
     container.appendChild(dropdown);
     userInfoContainer.appendChild(container);
 
-function updateUserUI(user, options = {}) {
-    const { showAdminLink = false } = options;
-    const userInfoContainer = document.getElementById('userInfo');
-    if (!userInfoContainer) return;
-
-    // Clean up existing listener if present
-    if (window._userMenuCloseListener) {
-        document.removeEventListener('click', window._userMenuCloseListener);
+    function getMenuItems() {
+        return Array.from(
+            dropdown.querySelectorAll('[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]')
+        );
     }
 
-    // Clear existing content
-    userInfoContainer.innerHTML = '';
+    function setMenuState(isOpen, focusTarget) {
+        dropdown.classList.toggle('hidden', !isOpen);
+        dropdown.setAttribute('aria-hidden', String(!isOpen));
+        userButton.setAttribute('aria-expanded', String(isOpen));
 
-    // ... existing code ...
+        if (isOpen && focusTarget) {
+            focusTarget.focus();
+        }
+    }
+
+    function openMenu(focusTarget) {
+        if (!dropdown.classList.contains('hidden')) return;
+        setMenuState(true, focusTarget);
+    }
+
+    function closeMenu() {
+        if (dropdown.classList.contains('hidden')) return;
+        setMenuState(false);
+    }
 
     // Toggle dropdown on button click
     userButton.addEventListener('click', function(e) {
         e.stopPropagation();
-        dropdown.classList.toggle('hidden');
+        const shouldOpen = dropdown.classList.contains('hidden');
+        const items = getMenuItems();
+        setMenuState(shouldOpen, shouldOpen ? items[0] : null);
+    });
+
+    userButton.addEventListener('keydown', function(e) {
+        const items = getMenuItems();
+        if (!items.length) return;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            openMenu(items[0]);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            openMenu(items[items.length - 1]);
+        } else if (e.key === 'Escape') {
+            closeMenu();
+        }
+    });
+
+    dropdown.addEventListener('keydown', function(e) {
+        const items = getMenuItems();
+        if (!items.length) return;
+
+        const currentIndex = items.indexOf(document.activeElement);
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            closeMenu();
+            userButton.focus();
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % items.length;
+            items[nextIndex].focus();
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            const prevIndex = currentIndex === -1 ? items.length - 1 : (currentIndex - 1 + items.length) % items.length;
+            items[prevIndex].focus();
+        }
     });
 
     // Close dropdown when clicking outside
     window._userMenuCloseListener = function(e) {
         if (!container.contains(e.target)) {
-            dropdown.classList.add('hidden');
+            closeMenu();
         }
     };
     document.addEventListener('click', window._userMenuCloseListener);
-}
 }
 
 /**
