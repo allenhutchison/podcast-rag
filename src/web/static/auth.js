@@ -189,6 +189,21 @@ function updateUserUI(user, options = {}) {
     container.appendChild(dropdown);
     userInfoContainer.appendChild(container);
 
+function updateUserUI(user, options = {}) {
+    const { showAdminLink = false } = options;
+    const userInfoContainer = document.getElementById('userInfo');
+    if (!userInfoContainer) return;
+
+    // Clean up existing listener if present
+    if (window._userMenuCloseListener) {
+        document.removeEventListener('click', window._userMenuCloseListener);
+    }
+
+    // Clear existing content
+    userInfoContainer.innerHTML = '';
+
+    // ... existing code ...
+
     // Toggle dropdown on button click
     userButton.addEventListener('click', function(e) {
         e.stopPropagation();
@@ -196,11 +211,13 @@ function updateUserUI(user, options = {}) {
     });
 
     // Close dropdown when clicking outside
-    document.addEventListener('click', function(e) {
+    window._userMenuCloseListener = function(e) {
         if (!container.contains(e.target)) {
             dropdown.classList.add('hidden');
         }
-    });
+    };
+    document.addEventListener('click', window._userMenuCloseListener);
+}
 }
 
 /**
