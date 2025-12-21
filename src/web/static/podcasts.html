@@ -186,10 +186,13 @@
     </main>
 
     <!-- Add Podcast Modal -->
-    <div id="addPodcastModal" class="fixed inset-0 z-50 hidden">
-        <div class="modal-overlay absolute inset-0" onclick="closeAddPodcastModal()"></div>
-        <div class="absolute inset-0 flex items-center justify-center p-4">
-            <div class="modal-content bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden relative">
+    <div id="addPodcastModal" class="fixed inset-0 z-50 hidden" style="height: 100vh; height: 100lvh;">
+        <!-- Overlay - covers entire viewport -->
+        <div class="modal-overlay absolute inset-0" style="height: 100%; min-height: 100%;" onclick="closeAddPodcastModal()"></div>
+        <!-- Scrollable container -->
+        <div class="absolute inset-0 overflow-y-auto">
+            <div class="min-h-full flex items-center justify-center p-4">
+                <div class="modal-content bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden relative z-10">
                 <!-- Modal Header -->
                 <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
                     <h2 class="text-xl font-semibold text-gray-900">Add Podcast</h2>
@@ -678,13 +681,13 @@
         let opmlFileContent = null;
         let currentTab = 'search';
         let searchResultsData = []; // Store search results for safe feed URL lookup
-
         /**
          * Open the Add Podcast modal
          */
         function openAddPodcastModal() {
             document.getElementById('addPodcastModal').classList.remove('hidden');
             document.body.style.overflow = 'hidden';
+
             // Focus search input
             setTimeout(() => document.getElementById('searchInput').focus(), 100);
         }
