@@ -110,9 +110,13 @@
     <!-- Main Content -->
     <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-8">
         <!-- View Toggle and Controls -->
-        <div class="flex flex-col gap-3 mb-6">
-            <!-- Line 1: Sorting and View Toggle -->
-            <div class="flex items-center gap-2 overflow-x-auto pb-1">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+            <!-- Stats Bar (first on mobile, left on desktop) -->
+            <div id="statsBar" class="text-sm text-gray-600 order-1 sm:order-1">
+                Loading podcasts...
+            </div>
+            <!-- Sorting and View Toggle (second on mobile, right on desktop) -->
+            <div class="flex items-center gap-2 overflow-x-auto pb-1 order-2 sm:order-2">
                 <!-- Sorting Controls -->
                 <div class="flex items-center gap-2 flex-shrink-0">
                     <label class="text-sm text-gray-600 whitespace-nowrap hidden sm:inline">Sort by:</label>
@@ -146,10 +150,6 @@
                         Browse All
                     </button>
                 </div>
-            </div>
-            <!-- Line 2: Stats Bar -->
-            <div id="statsBar" class="text-sm text-gray-600">
-                Loading podcasts...
             </div>
         </div>
 
