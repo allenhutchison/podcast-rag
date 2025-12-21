@@ -79,28 +79,30 @@
 <body class="bg-gray-50 min-h-screen flex flex-col">
 
     <!-- Header -->
-    <header class="bg-white border-b border-gray-200 px-6 py-4 shadow-sm">
-        <div class="max-w-6xl mx-auto flex justify-between items-center">
-            <div>
+    <header class="bg-white border-b border-gray-200 px-4 sm:px-6 py-4 shadow-sm">
+        <div class="max-w-6xl mx-auto flex justify-between items-center gap-2">
+            <div class="min-w-0">
                 <h1 class="text-2xl font-bold text-gray-900">Podcasts</h1>
-                <p class="text-sm text-gray-600 mt-1">Browse your podcast library</p>
+                <p class="text-sm text-gray-600 mt-1 hidden sm:block">Browse your podcast library</p>
             </div>
-            <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2 sm:gap-4 flex-shrink-0">
                 <button
                     id="addPodcastBtn"
                     onclick="openAddPodcastModal()"
-                    class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors font-medium text-sm"
+                    class="px-3 sm:px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors font-medium text-sm h-10 flex items-center justify-center whitespace-nowrap"
                 >
-                    + Add Podcast
+                    <span class="hidden sm:inline">+ Add Podcast</span>
+                    <span class="sm:hidden">+ Add</span>
                 </button>
                 <button
                     id="openChatBtn"
-                    class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm"
+                    class="px-3 sm:px-4 py-2.5 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm h-10 flex items-center justify-center whitespace-nowrap"
                     title="Ask questions about your podcast episodes using AI"
                 >
-                    AI Podcast Chat
+                    <span class="hidden sm:inline">AI Podcast Chat</span>
+                    <span class="sm:hidden">AI Chat</span>
                 </button>
-                <div id="userInfo" class="border-l pl-4 border-gray-200"></div>
+                <div id="userInfo" class="border-l pl-2 sm:pl-4 border-gray-200"></div>
             </div>
         </div>
     </header>
@@ -108,21 +110,23 @@
     <!-- Main Content -->
     <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-8">
         <!-- View Toggle and Controls -->
-        <div class="flex items-center justify-between mb-6">
-            <div id="statsBar" class="text-sm text-gray-600">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+            <!-- Stats Bar (first on mobile, left on desktop) -->
+            <div id="statsBar" class="text-sm text-gray-600 order-1 sm:order-1">
                 Loading podcasts...
             </div>
-            <div class="flex items-center gap-4">
+            <!-- Sorting and View Toggle (second on mobile, right on desktop) -->
+            <div class="flex items-center gap-2 overflow-x-auto pb-1 order-2 sm:order-2">
                 <!-- Sorting Controls -->
-                <div class="flex items-center gap-2">
-                    <label class="text-sm text-gray-600">Sort by:</label>
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    <label class="text-sm text-gray-600 whitespace-nowrap hidden sm:inline">Sort by:</label>
                     <select
                         id="sortSelect"
                         onchange="changeSorting()"
-                        class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                        class="px-2 sm:px-3 py-1.5 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                     >
-                        <option value="recency-desc">Newest Episodes First</option>
-                        <option value="recency-asc">Oldest Episodes First</option>
+                        <option value="recency-desc">Newest First</option>
+                        <option value="recency-asc">Oldest First</option>
                         <option value="subscribers-desc">Most Subscribers</option>
                         <option value="subscribers-asc">Least Subscribers</option>
                         <option value="alphabetical-asc">A → Z</option>
@@ -130,18 +134,18 @@
                     </select>
                 </div>
                 <!-- View Toggle -->
-                <div class="flex rounded-lg overflow-hidden border border-gray-300">
+                <div class="flex rounded-lg overflow-hidden border border-gray-300 flex-shrink-0">
                     <button
                         id="myPodcastsBtn"
                         onclick="switchView('subscribed')"
-                        class="px-4 py-2 text-sm font-medium bg-primary text-white"
+                        class="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium bg-primary text-white whitespace-nowrap"
                     >
                         My Podcasts
                     </button>
                     <button
                         id="browseAllBtn"
                         onclick="switchView('all')"
-                        class="px-4 py-2 text-sm font-medium bg-white text-gray-700 hover:bg-gray-50"
+                        class="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium bg-white text-gray-700 hover:bg-gray-50 whitespace-nowrap"
                     >
                         Browse All
                     </button>
@@ -182,10 +186,13 @@
     </main>
 
     <!-- Add Podcast Modal -->
-    <div id="addPodcastModal" class="fixed inset-0 z-50 hidden">
-        <div class="modal-overlay absolute inset-0" onclick="closeAddPodcastModal()"></div>
-        <div class="absolute inset-0 flex items-center justify-center p-4">
-            <div class="modal-content bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden relative">
+    <div id="addPodcastModal" class="fixed inset-0 z-50 hidden" style="height: 100vh; height: 100lvh;">
+        <!-- Overlay - covers entire viewport -->
+        <div class="modal-overlay absolute inset-0" style="height: 100%; min-height: 100%;" onclick="closeAddPodcastModal()"></div>
+        <!-- Scrollable container -->
+        <div class="absolute inset-0 overflow-y-auto">
+            <div class="min-h-full flex items-center justify-center p-4">
+                <div class="modal-content bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden relative z-10">
                 <!-- Modal Header -->
                 <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
                     <h2 class="text-xl font-semibold text-gray-900">Add Podcast</h2>
@@ -674,13 +681,13 @@
         let opmlFileContent = null;
         let currentTab = 'search';
         let searchResultsData = []; // Store search results for safe feed URL lookup
-
         /**
          * Open the Add Podcast modal
          */
         function openAddPodcastModal() {
             document.getElementById('addPodcastModal').classList.remove('hidden');
             document.body.style.overflow = 'hidden';
+
             // Focus search input
             setTimeout(() => document.getElementById('searchInput').focus(), 100);
         }

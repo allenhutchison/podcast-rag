@@ -36,6 +36,7 @@ class ChatDrawer {
 
         // State
         this.isProcessing = false;
+        this._lockedScrollY = 0;
 
         // Event listener references for cleanup
         this._backdropClickHandler = null;
@@ -249,6 +250,10 @@ class ChatDrawer {
     open() {
         this.backdrop.classList.add('open');
         this.drawer.classList.add('open');
+        this._lockedScrollY = window.scrollY || 0;
+        document.body.style.position = 'fixed';
+        document.body.style.top = `-${this._lockedScrollY}px`;
+        document.body.style.width = '100%';
         document.body.style.overflow = 'hidden';
         this.input.focus();
     }
@@ -257,9 +262,16 @@ class ChatDrawer {
      * Close the chat drawer
      */
     close() {
+        if (document.activeElement) {
+            document.activeElement.blur();
+        }
         this.backdrop.classList.remove('open');
         this.drawer.classList.remove('open');
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.width = '';
         document.body.style.overflow = '';
+        window.scrollTo(0, this._lockedScrollY);
     }
 
     /**
