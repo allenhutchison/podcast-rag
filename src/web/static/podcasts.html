@@ -79,28 +79,30 @@
 <body class="bg-gray-50 min-h-screen flex flex-col">
 
     <!-- Header -->
-    <header class="bg-white border-b border-gray-200 px-6 py-4 shadow-sm">
-        <div class="max-w-6xl mx-auto flex justify-between items-center">
-            <div>
+    <header class="bg-white border-b border-gray-200 px-4 sm:px-6 py-4 shadow-sm">
+        <div class="max-w-6xl mx-auto flex justify-between items-center gap-2">
+            <div class="min-w-0">
                 <h1 class="text-2xl font-bold text-gray-900">Podcasts</h1>
-                <p class="text-sm text-gray-600 mt-1">Browse your podcast library</p>
+                <p class="text-sm text-gray-600 mt-1 hidden sm:block">Browse your podcast library</p>
             </div>
-            <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2 sm:gap-4 flex-shrink-0">
                 <button
                     id="addPodcastBtn"
                     onclick="openAddPodcastModal()"
-                    class="px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors font-medium text-sm h-10 flex items-center justify-center"
+                    class="px-3 sm:px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors font-medium text-sm h-10 flex items-center justify-center whitespace-nowrap"
                 >
-                    + Add Podcast
+                    <span class="hidden sm:inline">+ Add Podcast</span>
+                    <span class="sm:hidden">+ Add</span>
                 </button>
                 <button
                     id="openChatBtn"
-                    class="px-4 py-2.5 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm h-10 flex items-center justify-center"
+                    class="px-3 sm:px-4 py-2.5 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm h-10 flex items-center justify-center whitespace-nowrap"
                     title="Ask questions about your podcast episodes using AI"
                 >
-                    AI Podcast Chat
+                    <span class="hidden sm:inline">AI Podcast Chat</span>
+                    <span class="sm:hidden">AI Chat</span>
                 </button>
-                <div id="userInfo" class="border-l pl-4 border-gray-200"></div>
+                <div id="userInfo" class="border-l pl-2 sm:pl-4 border-gray-200"></div>
             </div>
         </div>
     </header>
@@ -109,42 +111,40 @@
     <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-8">
         <!-- View Toggle and Controls -->
         <div class="flex flex-col gap-3 mb-6">
-            <!-- Line 1: Sorting and View Toggle (on mobile and desktop) -->
-            <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 justify-between">
-                <div class="flex items-center gap-4 flex-wrap">
-                    <!-- Sorting Controls -->
-                    <div class="flex items-center gap-2">
-                        <label class="text-sm text-gray-600 whitespace-nowrap">Sort by:</label>
-                        <select
-                            id="sortSelect"
-                            onchange="changeSorting()"
-                            class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                        >
-                            <option value="recency-desc">Newest Episodes First</option>
-                            <option value="recency-asc">Oldest Episodes First</option>
-                            <option value="subscribers-desc">Most Subscribers</option>
-                            <option value="subscribers-asc">Least Subscribers</option>
-                            <option value="alphabetical-asc">A → Z</option>
-                            <option value="alphabetical-desc">Z → A</option>
-                        </select>
-                    </div>
-                    <!-- View Toggle -->
-                    <div class="flex rounded-lg overflow-hidden border border-gray-300">
-                        <button
-                            id="myPodcastsBtn"
-                            onclick="switchView('subscribed')"
-                            class="px-4 py-2 text-sm font-medium bg-primary text-white"
-                        >
-                            My Podcasts
-                        </button>
-                        <button
-                            id="browseAllBtn"
-                            onclick="switchView('all')"
-                            class="px-4 py-2 text-sm font-medium bg-white text-gray-700 hover:bg-gray-50"
-                        >
-                            Browse All
-                        </button>
-                    </div>
+            <!-- Line 1: Sorting and View Toggle -->
+            <div class="flex items-center gap-2 overflow-x-auto pb-1">
+                <!-- Sorting Controls -->
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    <label class="text-sm text-gray-600 whitespace-nowrap hidden sm:inline">Sort by:</label>
+                    <select
+                        id="sortSelect"
+                        onchange="changeSorting()"
+                        class="px-2 sm:px-3 py-1.5 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    >
+                        <option value="recency-desc">Newest First</option>
+                        <option value="recency-asc">Oldest First</option>
+                        <option value="subscribers-desc">Most Subscribers</option>
+                        <option value="subscribers-asc">Least Subscribers</option>
+                        <option value="alphabetical-asc">A → Z</option>
+                        <option value="alphabetical-desc">Z → A</option>
+                    </select>
+                </div>
+                <!-- View Toggle -->
+                <div class="flex rounded-lg overflow-hidden border border-gray-300 flex-shrink-0">
+                    <button
+                        id="myPodcastsBtn"
+                        onclick="switchView('subscribed')"
+                        class="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium bg-primary text-white whitespace-nowrap"
+                    >
+                        My Podcasts
+                    </button>
+                    <button
+                        id="browseAllBtn"
+                        onclick="switchView('all')"
+                        class="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium bg-white text-gray-700 hover:bg-gray-50 whitespace-nowrap"
+                    >
+                        Browse All
+                    </button>
                 </div>
             </div>
             <!-- Line 2: Stats Bar -->
