@@ -12,8 +12,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, field_validator
 
+from src.config import Config
 from src.db.repository import PodcastRepositoryInterface
-from src.services.email_renderer import render_digest_html
+from src.services.email_renderer import render_digest_html, render_digest_text
+from src.services.email_service import EmailService
 from src.web.auth import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -228,3 +230,79 @@ async def get_email_preview(
     )
 
     return HTMLResponse(content=html_content, status_code=200)
+
+
+@router.post("/settings/send-digest")
+async def send_digest_now(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+):
+    """Send an email digest immediately to the current user.
+
+    Sends a digest with episodes from the last 24 hours, bypassing the
+    scheduled digest timing. Updates the user's last_email_digest_sent
+    timestamp after successful send.
+
+    Returns:
+        Success message with episode count or appropriate error.
+    """
+    repository: PodcastRepositoryInterface = request.app.state.repository
+    config: Config = request.app.state.config
+    user_id = current_user["sub"]
+
+    # Get user from repository
+    user = repository.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Initialize and validate email service
+    email_service = EmailService(config)
+    if not email_service.is_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Email service is not configured"
+        )
+
+    # Fetch episodes from last 24 hours
+    since = datetime.now(UTC) - timedelta(hours=24)
+    episodes = repository.get_new_episodes_for_user_since(
+        user_id=user_id,
+        since=since,
+        limit=20,
+    )
+
+    # Handle no episodes case
+    if not episodes:
+        return {
+            "message": "No new episodes found in the last 24 hours"
+        }
+
+    # Render email content
+    user_name = user.name if user else current_user.get("name")
+    subject = f"Your Podcast Digest - {len(episodes)} new episode{'s' if len(episodes) > 1 else ''}"
+    html_content = render_digest_html(user_name=user_name, episodes=episodes)
+    text_content = render_digest_text(user_name=user_name, episodes=episodes)
+
+    # Send email
+    success = email_service.send_email(
+        to_email=user.email,
+        subject=subject,
+        html_content=html_content,
+        text_content=text_content,
+    )
+
+    if not success:
+        logger.error("Failed to send digest email to user %s", user_id)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to send email. Please try again."
+        )
+
+    # Update timestamp on success
+    repository.mark_email_digest_sent(user_id)
+    logger.info("Sent digest with %d episodes to user %s", len(episodes), user_id)
+
+    return {
+        "message": f"Email digest sent successfully! Sent {len(episodes)} episode{'s' if len(episodes) > 1 else ''}.",
+        "episode_count": len(episodes)
+    }

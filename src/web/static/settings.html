@@ -168,15 +168,31 @@
                     </select>
                 </div>
 
-                <!-- Preview Button -->
+                <!-- Preview and Send Now Buttons -->
                 <div class="pt-2">
-                    <button
-                        onclick="showEmailPreview()"
-                        class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 transition-colors text-sm font-medium"
-                    >
-                        Preview Email
-                    </button>
-                    <p class="text-xs text-gray-400 mt-1">See what your daily digest will look like.</p>
+                    <div class="flex gap-3">
+                        <button
+                            onclick="showEmailPreview()"
+                            class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 transition-colors text-sm font-medium"
+                        >
+                            Preview Email
+                        </button>
+                        <button
+                            id="sendNowBtn"
+                            onclick="sendDigestNow()"
+                            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <span id="sendNowText">Send Now</span>
+                            <span id="sendNowSpinner" class="hidden">
+                                <svg class="inline-block animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Sending...
+                            </span>
+                        </button>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-1">Preview your digest or send it immediately.</p>
                 </div>
             </div>
 
@@ -597,6 +613,55 @@
 
             modal.classList.add('hidden');
             frame.srcdoc = '';
+        }
+
+        /**
+         * Send email digest immediately
+         */
+        async function sendDigestNow() {
+            const btn = document.getElementById('sendNowBtn');
+            const textSpan = document.getElementById('sendNowText');
+            const spinnerSpan = document.getElementById('sendNowSpinner');
+
+            // Set loading state
+            btn.disabled = true;
+            textSpan.classList.add('hidden');
+            spinnerSpan.classList.remove('hidden');
+
+            try {
+                const response = await fetch('/api/user/settings/send-digest', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showSuccess(data.message || 'Email digest sent successfully!');
+                    // Reload settings to update "last sent" timestamp
+                    await loadSettings();
+                } else {
+                    // Handle specific error cases
+                    if (response.status === 503) {
+                        showError('Email service is not configured. Please contact support.');
+                    } else if (response.status === 404) {
+                        showError('User not found. Please try logging in again.');
+                    } else {
+                        showError(data.detail || 'Failed to send email. Please try again.');
+                    }
+                }
+            } catch (error) {
+                console.error('Error sending digest:', error);
+                showError('Network error. Please check your connection and try again.');
+            } finally {
+                // Reset button state
+                btn.disabled = false;
+                textSpan.classList.remove('hidden');
+                spinnerSpan.classList.add('hidden');
+            }
         }
 
         /**
