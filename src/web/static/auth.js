@@ -73,6 +73,16 @@ function validatePictureUrl(url) {
     return '';
 }
 
+function createInitialsBadge(user) {
+    const labelSource = user.name || user.email || '?';
+    const initials = document.createElement('div');
+    initials.className = 'w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-medium';
+    initials.textContent = labelSource.charAt(0).toUpperCase();
+    initials.setAttribute('role', 'img');
+    initials.setAttribute('aria-label', `${labelSource} profile`);
+    return initials;
+}
+
 /**
  * Update the user info display in the page header.
  * Uses DOM methods to prevent XSS attacks.
@@ -120,18 +130,12 @@ function updateUserUI(user, options = {}) {
         img.referrerPolicy = 'no-referrer';
         img.addEventListener('error', function() {
             // Fallback to initials if image fails
-            const initials = document.createElement('div');
-            initials.className = 'w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-medium';
-            initials.textContent = (user.name || user.email || '?').charAt(0).toUpperCase();
-            this.replaceWith(initials);
+            this.replaceWith(createInitialsBadge(user));
         });
         userButton.appendChild(img);
     } else {
         // No picture - show initials
-        const initials = document.createElement('div');
-        initials.className = 'w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-medium';
-        initials.textContent = (user.name || user.email || '?').charAt(0).toUpperCase();
-        userButton.appendChild(initials);
+        userButton.appendChild(createInitialsBadge(user));
     }
 
     // Add dropdown arrow
