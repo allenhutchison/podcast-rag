@@ -74,9 +74,12 @@ function validatePictureUrl(url) {
 }
 
 function createInitialsBadge(user) {
+    const labelSource = user.name || user.email || '?';
     const initials = document.createElement('div');
     initials.className = 'w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-medium';
-    initials.textContent = (user.name || user.email || '?').charAt(0).toUpperCase();
+    initials.textContent = labelSource.charAt(0).toUpperCase();
+    initials.setAttribute('role', 'img');
+    initials.setAttribute('aria-label', `${labelSource} profile`);
     return initials;
 }
 
