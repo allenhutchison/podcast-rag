@@ -48,6 +48,30 @@
     border-radius: 3px;
 }
 
+@media (max-width: 640px) {
+    .drawer {
+        left: 0;
+        right: 0;
+        width: 100%;
+        max-width: none;
+        height: 100lvh;
+        border-radius: 0;
+        transform: translateY(100%);
+    }
+
+    .drawer.open {
+        transform: translateY(0);
+    }
+
+    #drawerChatForm {
+        padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+    }
+
+    #drawerInput {
+        font-size: 16px;
+    }
+}
+
 /* Typing indicator animation */
 @keyframes pulse {
     0%, 100% { opacity: 0.4; }
