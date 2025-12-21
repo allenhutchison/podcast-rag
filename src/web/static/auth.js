@@ -76,6 +76,7 @@ function validatePictureUrl(url) {
 /**
  * Update the user info display in the page header.
  * Uses DOM methods to prevent XSS attacks.
+ * Creates a dropdown menu triggered by clicking the user picture.
  *
  * @param {Object} user - User object from auth check
  * @param {string} user.name - User's display name
@@ -93,9 +94,14 @@ function updateUserUI(user, options = {}) {
     // Clear existing content
     userInfoContainer.innerHTML = '';
 
-    // Create container div
+    // Create relative container for dropdown positioning
     const container = document.createElement('div');
-    container.className = 'flex items-center gap-3';
+    container.className = 'relative';
+
+    // Create button with user picture
+    const userButton = document.createElement('button');
+    userButton.className = 'flex items-center gap-2 focus:outline-none hover:opacity-80 transition-opacity';
+    userButton.id = 'userMenuButton';
 
     // Create and configure image element
     const validPictureUrl = validatePictureUrl(user.picture);
@@ -103,44 +109,98 @@ function updateUserUI(user, options = {}) {
         const img = document.createElement('img');
         img.src = validPictureUrl;
         img.alt = user.name || user.email || 'User';
-        img.className = 'w-8 h-8 rounded-full';
+        img.className = 'w-8 h-8 rounded-full border-2 border-gray-200';
         img.referrerPolicy = 'no-referrer';
         img.addEventListener('error', function() {
-            this.style.display = 'none';
+            // Fallback to initials if image fails
+            const initials = document.createElement('div');
+            initials.className = 'w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-medium';
+            initials.textContent = (user.name || user.email || '?').charAt(0).toUpperCase();
+            this.replaceWith(initials);
         });
-        container.appendChild(img);
+        userButton.appendChild(img);
+    } else {
+        // No picture - show initials
+        const initials = document.createElement('div');
+        initials.className = 'w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-medium';
+        initials.textContent = (user.name || user.email || '?').charAt(0).toUpperCase();
+        userButton.appendChild(initials);
     }
 
-    // Create name/email span
-    const nameSpan = document.createElement('span');
-    nameSpan.className = 'text-gray-700 text-sm hidden sm:inline';
-    nameSpan.textContent = user.name || user.email || '';
-    container.appendChild(nameSpan);
+    // Add dropdown arrow
+    const arrow = document.createElement('svg');
+    arrow.className = 'w-4 h-4 text-gray-500';
+    arrow.setAttribute('fill', 'none');
+    arrow.setAttribute('stroke', 'currentColor');
+    arrow.setAttribute('viewBox', '0 0 24 24');
+    arrow.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>';
+    userButton.appendChild(arrow);
 
-    // Add Settings link (always shown for logged-in users)
+    container.appendChild(userButton);
+
+    // Create dropdown menu
+    const dropdown = document.createElement('div');
+    dropdown.id = 'userMenuDropdown';
+    dropdown.className = 'hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50';
+
+    // Add user name/email header
+    const header = document.createElement('div');
+    header.className = 'px-4 py-2 border-b border-gray-200';
+    const nameDiv = document.createElement('div');
+    nameDiv.className = 'text-sm font-medium text-gray-900 truncate';
+    nameDiv.textContent = user.name || '';
+    const emailDiv = document.createElement('div');
+    emailDiv.className = 'text-xs text-gray-500 truncate';
+    emailDiv.textContent = user.email || '';
+    header.appendChild(nameDiv);
+    if (user.email && user.name) {
+        header.appendChild(emailDiv);
+    }
+    dropdown.appendChild(header);
+
+    // Add Settings link
     const settingsLink = document.createElement('a');
     settingsLink.href = '/settings.html';
-    settingsLink.className = 'text-gray-500 hover:text-gray-700 text-sm';
+    settingsLink.className = 'block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors';
     settingsLink.textContent = 'Settings';
-    container.appendChild(settingsLink);
+    dropdown.appendChild(settingsLink);
 
     // Add admin link for admin users (if enabled)
     if (showAdminLink && isAdmin(user)) {
         const adminLink = document.createElement('a');
         adminLink.href = '/admin.html';
-        adminLink.className = 'text-primary hover:text-blue-700 text-sm font-medium';
+        adminLink.className = 'block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors';
         adminLink.textContent = 'Admin';
-        container.appendChild(adminLink);
+        dropdown.appendChild(adminLink);
     }
 
-    // Create logout button
-    const logoutBtn = document.createElement('button');
-    logoutBtn.className = 'text-gray-500 hover:text-gray-700 text-sm underline';
-    logoutBtn.textContent = 'Sign out';
-    logoutBtn.addEventListener('click', logout);
-    container.appendChild(logoutBtn);
+    // Add separator
+    const separator = document.createElement('div');
+    separator.className = 'border-t border-gray-200 my-1';
+    dropdown.appendChild(separator);
 
+    // Add Sign Out button
+    const signOutBtn = document.createElement('button');
+    signOutBtn.className = 'block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors';
+    signOutBtn.textContent = 'Sign Out';
+    signOutBtn.addEventListener('click', logout);
+    dropdown.appendChild(signOutBtn);
+
+    container.appendChild(dropdown);
     userInfoContainer.appendChild(container);
+
+    // Toggle dropdown on button click
+    userButton.addEventListener('click', function(e) {
+        e.stopPropagation();
+        dropdown.classList.toggle('hidden');
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!container.contains(e.target)) {
+            dropdown.classList.add('hidden');
+        }
+    });
 }
 
 /**
