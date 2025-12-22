@@ -75,8 +75,11 @@ class Config:
 
         # Email configuration (Resend)
         self.RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
-        self.RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "noreply@podcasts.hutchison.org")
+        self.RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "podcast@podcasts.hutchison.org")
         self.RESEND_FROM_NAME = os.getenv("RESEND_FROM_NAME", "Podcast RAG")
+
+        # Web app base URL for email links (ensures links match sending domain)
+        self.WEB_BASE_URL = os.getenv("WEB_BASE_URL", "")
 
         # Email digest settings
         self.EMAIL_DIGEST_SEND_HOUR = int(os.getenv("EMAIL_DIGEST_SEND_HOUR", "8"))  # 8 AM
