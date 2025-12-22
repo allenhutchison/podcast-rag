@@ -12,6 +12,17 @@ from src.config import Config
 # Allowed URL schemes for clickable links
 SAFE_URL_SCHEMES = {"http", "https"}
 
+# Module-level config instance to avoid repeated instantiation
+_config: Optional[Config] = None
+
+
+def _get_config() -> Config:
+    """Get or create the module-level Config instance."""
+    global _config
+    if _config is None:
+        _config = Config()
+    return _config
+
 
 def build_episode_url(episode_id: str, fallback: Optional[str] = None) -> str:
     """Build the episode page URL for use in emails.
@@ -26,7 +37,7 @@ def build_episode_url(episode_id: str, fallback: Optional[str] = None) -> str:
     Returns:
         The episode page URL, or the fallback if WEB_BASE_URL is not set.
     """
-    config = Config()
+    config = _get_config()
     base_url = config.WEB_BASE_URL.rstrip("/") if config.WEB_BASE_URL else ""
 
     if base_url:
