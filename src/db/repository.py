@@ -999,23 +999,23 @@ class PodcastRepositoryInterface(ABC):
 
     @abstractmethod
     def get_users_for_email_digest(self, limit: int = 100) -> List[User]:
-        """Atomically claim and return users eligible for email digest.
-
-        This method uses SELECT FOR UPDATE SKIP LOCKED to prevent race conditions
-        where multiple processes could claim the same users. The claimed users
-        have their last_email_digest_sent updated atomically within the same
-        transaction.
+        """Return users eligible for email digest.
 
         Returns users where:
         - email_digest_enabled is True
         - is_active is True
         - last_email_digest_sent is None or more than 20 hours ago
 
+        Note: The caller must call mark_email_digest_sent() after successfully
+        sending an email to update the user's last_email_digest_sent timestamp.
+        This ensures users are only marked as "sent" when they actually receive
+        an email (important for timezone-based delivery filtering).
+
         Args:
-            limit: Maximum number of users to claim (default 100).
+            limit: Maximum number of users to return (default 100).
 
         Returns:
-            List[User]: Users claimed for email digest processing.
+            List[User]: Users eligible for email digest processing.
         """
         pass
 
@@ -2674,27 +2674,22 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
     # --- Email Digest Operations ---
 
     def get_users_for_email_digest(self, limit: int = 100) -> List[User]:
-        """Atomically claim and return users eligible for email digest.
+        """Return users eligible for email digest.
 
-        Uses SELECT FOR UPDATE SKIP LOCKED (PostgreSQL) to prevent race conditions
-        where multiple processes could claim the same users. The claimed users have
-        their last_email_digest_sent updated atomically within the same transaction.
+        Returns users where:
+        - email_digest_enabled is True
+        - is_active is True
+        - last_email_digest_sent is NULL or older than 20 hours
 
-        For SQLite (development), falls back to regular SELECT with limit since
-        SQLite doesn't support row-level locking.
-
-        Note: Because users are claimed atomically, mark_email_digest_sent() becomes
-        a no-op for PostgreSQL but should still be called for SQLite compatibility.
+        Note: The caller must call mark_email_digest_sent() after successfully
+        sending an email to update the user's last_email_digest_sent timestamp.
+        This ensures users are only marked as "sent" when they actually receive
+        an email (important for timezone-based delivery filtering).
         """
         twenty_hours_ago = datetime.now(UTC) - timedelta(hours=20)
-        now = datetime.now(UTC)
 
         with self._get_session() as session:
-            # Check if we're using PostgreSQL (supports FOR UPDATE SKIP LOCKED)
-            dialect_name = session.bind.dialect.name if session.bind else "sqlite"
-            use_row_locking = dialect_name == "postgresql"
-
-            # Build base query for eligible users
+            # Build query for eligible users
             base_conditions = [
                 User.email_digest_enabled.is_(True),
                 User.is_active.is_(True),
@@ -2704,52 +2699,19 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 )
             ]
 
-            if use_row_locking:
-                # PostgreSQL: Atomic claim using FOR UPDATE SKIP LOCKED
-                # Step 1: Select and lock user IDs
-                id_stmt = (
-                    select(User.id)
-                    .where(*base_conditions)
-                    .order_by(User.last_email_digest_sent.asc().nullsfirst())
-                    .limit(limit)
-                    .with_for_update(skip_locked=True)
-                )
-                user_ids = list(session.scalars(id_stmt).all())
+            stmt = (
+                select(User)
+                .where(*base_conditions)
+                .order_by(User.last_email_digest_sent.asc().nullsfirst())
+                .limit(limit)
+            )
+            users = list(session.scalars(stmt).all())
 
-                if not user_ids:
-                    return []
+            # Expunge users so they can be used after session closes
+            for user in users:
+                session.expunge(user)
 
-                # Step 2: Atomically claim by updating last_email_digest_sent
-                from sqlalchemy import update
-                update_stmt = (
-                    update(User)
-                    .where(User.id.in_(user_ids))
-                    .values(last_email_digest_sent=now)
-                )
-                session.execute(update_stmt)
-
-                # Step 3: Fetch full User objects for the claimed users
-                fetch_stmt = select(User).where(User.id.in_(user_ids))
-                users = list(session.scalars(fetch_stmt).all())
-
-                # Commit the claim transaction
-                session.commit()
-
-                # Expunge users so they can be used after session closes
-                for user in users:
-                    session.expunge(user)
-
-                return users
-            else:
-                # SQLite: No row locking, use simple SELECT with limit
-                # Assumes single-process operation for SQLite
-                stmt = (
-                    select(User)
-                    .where(*base_conditions)
-                    .order_by(User.last_email_digest_sent.asc().nullsfirst())
-                    .limit(limit)
-                )
-                return list(session.scalars(stmt).all())
+            return users
 
     def get_new_episodes_for_user_since(
         self, user_id: str, since: datetime, limit: int = 50
