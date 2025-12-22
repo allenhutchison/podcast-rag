@@ -7,8 +7,33 @@ Used by both the EmailDigestWorker and the preview API endpoint.
 from typing import List, Optional
 from urllib.parse import urlparse
 
+from src.config import Config
+
 # Allowed URL schemes for clickable links
 SAFE_URL_SCHEMES = {"http", "https"}
+
+
+def build_episode_url(episode_id: str, fallback: Optional[str] = None) -> str:
+    """Build the episode page URL for use in emails.
+
+    Uses WEB_BASE_URL to ensure email links match the sending domain,
+    which helps avoid spam filters.
+
+    Args:
+        episode_id: The episode's unique identifier.
+        fallback: Optional fallback URL if WEB_BASE_URL is not configured.
+
+    Returns:
+        The episode page URL, or the fallback if WEB_BASE_URL is not set.
+    """
+    config = Config()
+    base_url = config.WEB_BASE_URL.rstrip("/") if config.WEB_BASE_URL else ""
+
+    if base_url:
+        return f"{base_url}/episode.html?id={episode_id}"
+
+    # Fall back to enclosure URL if no base URL configured
+    return fallback or "#"
 
 
 def sanitize_url(url: Optional[str], fallback: str = "#") -> str:
@@ -103,7 +128,8 @@ def render_digest_html(
             if ep.published_date:
                 published_str = ep.published_date.strftime("%B %d, %Y")
 
-            listen_url = sanitize_url(ep.enclosure_url)
+            # Use episode page URL on our domain to match sending domain (spam filter best practice)
+            episode_url = build_episode_url(str(ep.id), sanitize_url(ep.enclosure_url))
 
             episodes_html += f'''
             <div style="background: #f9fafb; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
@@ -113,7 +139,7 @@ def render_digest_html(
                 </p>
                 <p style="color: #374151; margin: 0;">{escape_html(summary)}</p>
                 {keywords_html}
-                <a href="{escape_html(listen_url)}" style="display: inline-block; margin-top: 12px; color: #2563eb; text-decoration: none;">Listen to episode &rarr;</a>
+                <a href="{escape_html(episode_url)}" style="display: inline-block; margin-top: 12px; color: #2563eb; text-decoration: none;">View episode &rarr;</a>
             </div>
             '''
 
@@ -206,9 +232,10 @@ def render_digest_text(
             if ep.ai_summary:
                 summary = ep.ai_summary[:200] + "..." if len(ep.ai_summary) > 200 else ep.ai_summary
                 lines.append(f"  Summary: {summary}")
-            safe_url = sanitize_url(ep.enclosure_url, fallback="")
-            if safe_url:
-                lines.append(f"  Listen: {safe_url}")
+            # Use episode page URL on our domain to match sending domain
+            episode_url = build_episode_url(str(ep.id), sanitize_url(ep.enclosure_url, fallback=""))
+            if episode_url and episode_url != "#":
+                lines.append(f"  View: {episode_url}")
             lines.append("")
 
     lines.append("---")
