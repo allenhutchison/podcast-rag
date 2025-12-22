@@ -79,7 +79,12 @@ class Config:
         self.RESEND_FROM_NAME = os.getenv("RESEND_FROM_NAME", "Podcast RAG")
 
         # Web app base URL for email links (ensures links match sending domain)
-        self.WEB_BASE_URL = os.getenv("WEB_BASE_URL", "")
+        web_base_url = os.getenv("WEB_BASE_URL", "")
+        if web_base_url and not web_base_url.lower().startswith(("http://", "https://")):
+            raise ValueError(
+                f"WEB_BASE_URL must start with http:// or https://, got: {web_base_url}"
+            )
+        self.WEB_BASE_URL = web_base_url
 
         # Email digest settings
         self.EMAIL_DIGEST_SEND_HOUR = int(os.getenv("EMAIL_DIGEST_SEND_HOUR", "8"))  # 8 AM
