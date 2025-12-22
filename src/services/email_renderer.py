@@ -124,11 +124,62 @@ def render_digest_html(
         episodes_html += f'<h2 style="color: #2563eb; margin-top: 24px; margin-bottom: 12px;">{escape_html(podcast_title)}</h2>'
 
         for ep in podcast_episodes:
-            summary = ep.ai_summary or "No summary available."
-            # Truncate long summaries
-            if len(summary) > 300:
+            email_content = ep.ai_email_content or {}
+
+            # Use teaser_summary if available, fall back to truncated ai_summary
+            summary = email_content.get("teaser_summary") or ep.ai_summary or "No summary available."
+            if not email_content.get("teaser_summary") and len(summary) > 300:
                 summary = summary[:300] + "..."
 
+            # Build key takeaways HTML
+            takeaways_html = ""
+            takeaways = email_content.get("key_takeaways", [])
+            if takeaways:
+                takeaways_items = "".join(
+                    f'<li style="margin-bottom: 4px; color: #374151;">{escape_html(t)}</li>'
+                    for t in takeaways[:5]
+                )
+                takeaways_html = f'''
+                <div style="margin-top: 12px;">
+                    <p style="font-weight: 600; margin: 0 0 6px 0; color: #111827; font-size: 13px;">Key Takeaways:</p>
+                    <ul style="margin: 0; padding-left: 20px; list-style-type: disc; font-size: 14px;">
+                        {takeaways_items}
+                    </ul>
+                </div>
+                '''
+
+            # Build highlight moment HTML
+            highlight_html = ""
+            highlight = email_content.get("highlight_moment")
+            if highlight:
+                highlight_html = f'''
+                <blockquote style="margin: 12px 0; padding: 8px 16px; border-left: 3px solid #2563eb; background: #eff6ff; font-style: italic; color: #1e40af; font-size: 14px;">
+                    {escape_html(highlight)}
+                </blockquote>
+                '''
+
+            # Build news stories HTML (only for news podcasts)
+            stories_html = ""
+            podcast_type = email_content.get("podcast_type")
+            stories = email_content.get("story_summaries", [])
+            if podcast_type == "news" and stories:
+                story_items = "".join(
+                    f'''<li style="margin-bottom: 8px;">
+                        <strong>{escape_html(s.get("headline", ""))}</strong>:
+                        {escape_html(s.get("summary", ""))}
+                    </li>'''
+                    for s in stories[:7]
+                )
+                stories_html = f'''
+                <div style="margin-top: 12px;">
+                    <p style="font-weight: 600; margin: 0 0 6px 0; color: #111827; font-size: 13px;">Stories Covered:</p>
+                    <ul style="margin: 0; padding-left: 20px; list-style-type: disc; color: #374151; font-size: 14px;">
+                        {story_items}
+                    </ul>
+                </div>
+                '''
+
+            # Keywords (keep existing fallback)
             keywords = ep.ai_keywords[:5] if ep.ai_keywords else []
             keywords_html = ""
             if keywords:
@@ -149,6 +200,9 @@ def render_digest_html(
                     {published_str}
                 </p>
                 <p style="color: #374151; margin: 0;">{escape_html(summary)}</p>
+                {takeaways_html}
+                {highlight_html}
+                {stories_html}
                 {keywords_html}
                 <a href="{escape_html(episode_url)}" style="display: inline-block; margin-top: 12px; color: #2563eb; text-decoration: none;">View episode &rarr;</a>
             </div>
@@ -237,12 +291,41 @@ def render_digest_text(
         lines.append("")
 
         for ep in podcast_episodes:
+            email_content = ep.ai_email_content or {}
+
             lines.append(f"* {ep.title}")
             if ep.published_date:
                 lines.append(f"  Published: {ep.published_date.strftime('%B %d, %Y')}")
-            if ep.ai_summary:
-                summary = ep.ai_summary[:200] + "..." if len(ep.ai_summary) > 200 else ep.ai_summary
-                lines.append(f"  Summary: {summary}")
+
+            # Use teaser_summary if available, fall back to truncated ai_summary
+            summary = email_content.get("teaser_summary") or ep.ai_summary
+            if summary:
+                if not email_content.get("teaser_summary") and len(summary) > 200:
+                    summary = summary[:200] + "..."
+                lines.append(f"  {summary}")
+
+            # Add key takeaways
+            takeaways = email_content.get("key_takeaways", [])
+            if takeaways:
+                lines.append("  Key Takeaways:")
+                for t in takeaways[:5]:
+                    lines.append(f"    - {t}")
+
+            # Add highlight moment
+            highlight = email_content.get("highlight_moment")
+            if highlight:
+                lines.append(f"  Highlight: \"{highlight}\"")
+
+            # Add news stories (only for news podcasts)
+            podcast_type = email_content.get("podcast_type")
+            stories = email_content.get("story_summaries", [])
+            if podcast_type == "news" and stories:
+                lines.append("  Stories Covered:")
+                for s in stories[:7]:
+                    headline = s.get("headline", "")
+                    story_summary = s.get("summary", "")
+                    lines.append(f"    - {headline}: {story_summary}")
+
             # Use episode page URL on our domain to match sending domain
             episode_url = build_episode_url(str(ep.id), sanitize_url(ep.enclosure_url, fallback=""))
             if episode_url and episode_url != "#":

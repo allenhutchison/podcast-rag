@@ -11,18 +11,52 @@ You MUST return a JSON object with EXACTLY this structure:
     "co_hosts": ["string"],  // Optional: Empty list if none
     "guests": ["string"],  // Optional: Empty list if none
     "summary": "string",  // Required: 2-3 paragraphs, 100-2000 characters
-    "keywords": ["string"]  // Required: 5-10 relevant topics
+    "keywords": ["string"],  // Required: 5-10 relevant topics
+    "email_content": {  // Required: Email-optimized content for digest emails
+        "podcast_type": "news" | "interview" | "narrative" | "educational" | "general",
+        "teaser_summary": "string",  // 1-2 engaging sentences (50-200 chars) - hook without spoilers
+        "key_takeaways": ["string"],  // 2-5 main insights as bullet points
+        "highlight_moment": "string" or null,  // Interesting quote or surprising fact (max 300 chars)
+        "story_summaries": [  // ONLY for news podcasts, null otherwise
+            {"headline": "string", "summary": "string"}
+        ] or null
+    }
 }
 
 Guidelines:
 1. Extract information explicitly mentioned in the transcript
 2. Use null for optional fields where information is not available
 3. Use empty lists [] for optional array fields where none are mentioned
-4. Keep the summary concise but informative (2-3 paragraphs)
+4. Keep the main summary detailed and informative (2-3 paragraphs)
 5. Include only the most relevant keywords (5-10)
 6. Distinguish between hosts and guests based on context
 7. Format dates consistently (YYYY-MM-DD if full date is available, or YYYY-MM if only month/year)
 8. Use the filename to help determine episode title if not clearly stated in transcript
+
+EMAIL CONTENT GUIDELINES:
+9. Detect podcast_type based on content structure:
+   - "news": Multiple distinct news stories, current events, headline-style segments
+   - "interview": Q&A format, prominent guest dialogue, host-guest conversation
+   - "narrative": Story-driven, chronological, dramatic elements
+   - "educational": Teaching structure, explanations, how-to content
+   - "general": Default if unclear
+10. teaser_summary: Write an engaging hook that makes readers want to listen
+    - DO NOT reveal endings, conclusions, or key plot points
+    - Focus on the intriguing question or premise
+    - Make it punchy and compelling (50-200 characters)
+11. key_takeaways: Extract actionable insights or memorable points
+    - Keep each bullet concise (under 100 characters)
+    - Focus on value the listener will gain
+    - Include 2-5 takeaways
+12. highlight_moment: Find a surprising fact, witty quote, or unexpected revelation
+    - Choose something that would make someone say "I need to hear this"
+    - Avoid spoilers - don't give away the ending or resolution
+    - Format quotes with quotation marks and attribution
+13. story_summaries: ONLY populate for news podcasts (podcast_type="news")
+    - Include 3-7 major stories covered
+    - Headlines should be brief (5-10 words)
+    - Summaries should be one sentence each
+    - For non-news podcasts, set to null
 
 Example Response:
 {
@@ -33,8 +67,47 @@ Example Response:
     "hosts": ["Sarah Chen"],
     "co_hosts": ["Mike Johnson"],
     "guests": ["Dr. Emily Roberts", "Prof. James Smith"],
-    "summary": "In this episode, we explore the latest developments in artificial intelligence...",
-    "keywords": ["artificial intelligence", "machine learning", "ethics", "technology", "future"]
+    "summary": "In this episode, we explore the latest developments in artificial intelligence with two leading researchers. Dr. Emily Roberts from MIT shares groundbreaking insights about language models, while Prof. James Smith discusses the ethical implications of autonomous systems. The conversation covers everything from current capabilities to future possibilities, including a fascinating debate about consciousness in AI.",
+    "keywords": ["artificial intelligence", "machine learning", "ethics", "technology", "future"],
+    "email_content": {
+        "podcast_type": "interview",
+        "teaser_summary": "Two leading AI researchers reveal why the next 5 years will transform how we work - and the one thing that keeps them up at night.",
+        "key_takeaways": [
+            "AI coding assistants will change software development by 2026",
+            "The biggest risk isn't job loss - it's skills atrophy",
+            "Small companies may actually benefit more than tech giants"
+        ],
+        "highlight_moment": "\"We're not building tools anymore. We're building collaborators.\" - Dr. Emily Roberts",
+        "story_summaries": null
+    }
+}
+
+Example for News Podcast:
+{
+    "podcast_title": "Morning Tech Briefing",
+    "episode_title": "December 20 Headlines",
+    "episode_number": null,
+    "date": "2024-12-20",
+    "hosts": ["Alex Rivera"],
+    "co_hosts": [],
+    "guests": [],
+    "summary": "Today's episode covers the major tech stories of the day, including Apple's surprise product announcement, new EU AI regulations, and the ongoing debate about social media's impact on teens...",
+    "keywords": ["Apple", "EU regulation", "AI", "social media", "tech news"],
+    "email_content": {
+        "podcast_type": "news",
+        "teaser_summary": "Apple's surprise announcement catches the industry off guard, and new EU rules could reshape how AI companies operate globally.",
+        "key_takeaways": [
+            "Apple's new chip doubles performance at half the power",
+            "EU AI Act takes effect in March with major compliance requirements",
+            "Study links algorithm changes to teen mental health improvements"
+        ],
+        "highlight_moment": null,
+        "story_summaries": [
+            {"headline": "Apple announces M4 Ultra chip", "summary": "New processor promises 2x performance gains for professional workflows."},
+            {"headline": "EU AI regulation update", "summary": "Landmark rules require transparency and risk assessments for AI systems."},
+            {"headline": "Social media algorithm study", "summary": "Research shows reduced engagement features improved teen wellbeing."}
+        ]
+    }
 }
 
 Filename: ${filename}
@@ -44,4 +117,4 @@ Transcript:
 ${transcript}
 """
 
-Return ONLY a valid JSON object matching the exact structure above. Do not include any other text or explanation. 
+Return ONLY a valid JSON object matching the exact structure above. Do not include any other text or explanation.

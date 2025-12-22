@@ -1,7 +1,47 @@
 from datetime import date
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
+
+
+class StoryItem(BaseModel):
+    """Individual story for news podcasts."""
+
+    headline: str = Field(
+        description="Brief headline (5-10 words)",
+        max_length=100
+    )
+    summary: str = Field(
+        description="One sentence summary of the story",
+        max_length=200
+    )
+
+
+class EmailContent(BaseModel):
+    """Email-optimized content for digest emails."""
+
+    podcast_type: Literal["news", "interview", "narrative", "educational", "general"] = Field(
+        description="Type of podcast based on content analysis"
+    )
+    teaser_summary: str = Field(
+        description="Engaging 1-2 sentence hook without spoilers",
+        min_length=50,
+        max_length=200
+    )
+    key_takeaways: List[str] = Field(
+        description="3-5 bullet points of main insights",
+        min_length=2,
+        max_length=5
+    )
+    highlight_moment: Optional[str] = Field(
+        default=None,
+        description="An interesting quote, surprising fact, or memorable moment",
+        max_length=300
+    )
+    story_summaries: Optional[List[StoryItem]] = Field(
+        default=None,
+        description="For news podcasts only: list of stories covered (3-7 items)"
+    )
 
 
 class PodcastMetadata(BaseModel):
@@ -36,6 +76,10 @@ class PodcastMetadata(BaseModel):
         description="List of 5-10 relevant keywords or topics discussed",
         min_length=5,
         max_length=10
+    )
+    email_content: Optional[EmailContent] = Field(
+        default=None,
+        description="Email-optimized content for digest emails"
     )
 
 
