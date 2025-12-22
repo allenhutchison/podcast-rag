@@ -80,7 +80,7 @@ class Config:
 
         # Web app base URL for email links (ensures links match sending domain)
         web_base_url = os.getenv("WEB_BASE_URL", "")
-        if web_base_url and not web_base_url.startswith(("http://", "https://")):
+        if web_base_url and not web_base_url.lower().startswith(("http://", "https://")):
             raise ValueError(
                 f"WEB_BASE_URL must start with http:// or https://, got: {web_base_url}"
             )
