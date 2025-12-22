@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import (
     Boolean,
@@ -172,6 +172,7 @@ class Episode(Base):
     ai_keywords: Mapped[Optional[List[str]]] = mapped_column(JSON)
     ai_hosts: Mapped[Optional[List[str]]] = mapped_column(JSON)
     ai_guests: Mapped[Optional[List[str]]] = mapped_column(JSON)
+    ai_email_content: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON)
 
     # File Search integration
     file_search_status: Mapped[str] = mapped_column(

@@ -75,6 +75,7 @@ class MergedMetadata:
     keywords: Optional[List[str]] = None
     hosts: Optional[List[str]] = None
     guests: Optional[List[str]] = None
+    email_content: Optional[Dict[str, Any]] = None
 
 
 class MetadataWorker(WorkerInterface):
@@ -234,6 +235,10 @@ class MetadataWorker(WorkerInterface):
             merged.hosts = ai_metadata.hosts
             merged.guests = ai_metadata.guests
 
+            # Extract email content if available
+            if ai_metadata.email_content:
+                merged.email_content = ai_metadata.email_content.model_dump()
+
             # Use MP3 artist as host fallback if no hosts identified
             if not merged.hosts and merged.mp3_artist:
                 merged.hosts = [merged.mp3_artist]
@@ -318,6 +323,7 @@ class MetadataWorker(WorkerInterface):
                         guests=merged.guests,
                         mp3_artist=merged.mp3_artist,
                         mp3_album=merged.mp3_album,
+                        email_content=merged.email_content,
                     )
                     result.processed += 1
 

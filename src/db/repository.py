@@ -552,6 +552,7 @@ class PodcastRepositoryInterface(ABC):
         guests: Optional[List[str]] = None,
         mp3_artist: Optional[str] = None,
         mp3_album: Optional[str] = None,
+        email_content: Optional[Dict[str, Any]] = None,
         metadata_path: Optional[str] = None,
     ) -> None:
         """
@@ -565,6 +566,7 @@ class PodcastRepositoryInterface(ABC):
             guests (Optional[List[str]]): List of guest names identified in the episode.
             mp3_artist (Optional[str]): MP3 ID3 artist tag from the audio file.
             mp3_album (Optional[str]): MP3 ID3 album tag from the audio file.
+            email_content (Optional[Dict[str, Any]]): Email-optimized content for digest emails.
             metadata_path (Optional[str]): Legacy file path, kept for backward compatibility.
         """
         pass
@@ -1890,6 +1892,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         guests: Optional[List[str]] = None,
         mp3_artist: Optional[str] = None,
         mp3_album: Optional[str] = None,
+        email_content: Optional[Dict[str, Any]] = None,
         metadata_path: Optional[str] = None,
     ) -> None:
         """
@@ -1903,6 +1906,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             guests (Optional[List[str]]): Identified guests associated with the episode.
             mp3_artist (Optional[str]): MP3 ID3 artist tag from the audio file.
             mp3_album (Optional[str]): MP3 ID3 album tag from the audio file.
+            email_content (Optional[Dict[str, Any]]): Email-optimized content for digest emails.
             metadata_path (Optional[str]): Legacy file path, kept for backward compatibility.
         """
         self.update_episode(
@@ -1915,6 +1919,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             ai_guests=guests,
             mp3_artist=mp3_artist,
             mp3_album=mp3_album,
+            ai_email_content=email_content,
             metadata_error=None,
         )
 
