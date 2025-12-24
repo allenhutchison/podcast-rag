@@ -30,9 +30,9 @@ GEMINI_FILE_SEARCH_STORE_NAME=podcast-transcripts
 MEDIA_EMBED_BASE_DIRECTORY=/data/podcasts
 ```
 
-### 3. Set Environment Variables
+### 3. Set Docker Host Variables
 
-Create a `.env.docker` file or set these in your shell:
+Set these environment variables in your shell (or add to `.env`):
 
 ```bash
 # Path to your podcast directory on the host
@@ -41,6 +41,8 @@ export PODCAST_DIR=/opt/podcasts
 # Path to store the cache file (default: current directory)
 export CACHE_DIR=/path/to/persistent/storage
 ```
+
+See the "Docker Configuration" section in `.env.example` for details.
 
 ### 4. Build and Run
 
