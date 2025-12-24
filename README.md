@@ -63,7 +63,7 @@ Configuration is managed via environment variables. Set them using:
 **Required variables:**
 ```bash
 GEMINI_API_KEY=your_gemini_api_key_here
-MEDIA_EMBED_BASE_DIRECTORY=/path/to/your/podcasts
+PODCAST_DOWNLOAD_DIRECTORY=/path/to/your/podcasts
 ```
 
 Test the installation:
@@ -86,7 +86,7 @@ Run both the encoding backend and web service together using docker-compose:
 1. **Create `.env` file** with required environment variables (see [docs/configuration.md](docs/configuration.md)):
    ```bash
    GEMINI_API_KEY=your_key_here
-   MEDIA_EMBED_BASE_DIRECTORY=/data/podcasts
+   PODCAST_DOWNLOAD_DIRECTORY=/data/podcasts
    ```
 
 2. **Configure environment** (in your shell or `.env` file):

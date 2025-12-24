@@ -17,8 +17,10 @@ class Config:
         else:
             load_dotenv()
 
-        # Environment-based configuration
-        self.BASE_DIRECTORY = os.getenv("MEDIA_EMBED_BASE_DIRECTORY", "/opt/podcasts")
+        # Podcast directory (where audio files are stored)
+        self.PODCAST_DOWNLOAD_DIRECTORY = os.getenv(
+            "PODCAST_DOWNLOAD_DIRECTORY", "/opt/podcasts"
+        )
         
         # Transcription-related constants
         self.TRANSCRIPTION_OUTPUT_SUFFIX = "_transcription.txt"
@@ -112,9 +114,6 @@ class Config:
         self.SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 
         # Podcast download configuration
-        self.PODCAST_DOWNLOAD_DIRECTORY = os.getenv(
-            "PODCAST_DOWNLOAD_DIRECTORY", self.BASE_DIRECTORY
-        )
         self.PODCAST_MAX_CONCURRENT_DOWNLOADS = int(
             os.getenv("PODCAST_MAX_CONCURRENT_DOWNLOADS", "10")
         )
@@ -131,10 +130,8 @@ class Config:
     def load_config(self):
         """
         Prints selected configuration values useful for debugging.
-        
-        Specifically displays the configured BASE_DIRECTORY and TRANSCRIPTION_OUTPUT_SUFFIX to standard output.
         """
-        print(f"Base Directory: {self.BASE_DIRECTORY}")
+        print(f"Podcast Directory: {self.PODCAST_DOWNLOAD_DIRECTORY}")
         print(f"Transcription Suffix: {self.TRANSCRIPTION_OUTPUT_SUFFIX}")
 
     # Utility functions related to file paths and suffixes

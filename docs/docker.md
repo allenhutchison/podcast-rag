@@ -17,7 +17,7 @@ Create a `.env` file in the project root with your settings (see [configuration.
 ```bash
 # Required
 GEMINI_API_KEY=your_gemini_api_key_here
-MEDIA_EMBED_BASE_DIRECTORY=/data/podcasts
+PODCAST_DOWNLOAD_DIRECTORY=/data/podcasts
 
 # Optional
 GEMINI_MODEL=gemini-2.5-flash
@@ -288,7 +288,7 @@ services:
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_MODEL=gemini-2.5-flash
-      - MEDIA_EMBED_BASE_DIRECTORY=/data/podcasts
+      - PODCAST_DOWNLOAD_DIRECTORY=/data/podcasts
 
     volumes:
       - /mnt/media/podcasts:/data/podcasts:ro

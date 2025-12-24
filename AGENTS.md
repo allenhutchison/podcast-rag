@@ -117,7 +117,7 @@ source .venv/bin/activate
 # 4. Configure environment (see docs/configuration.md for all options)
 # Set required variables in .env or your secrets manager:
 #   GEMINI_API_KEY=your_key_here
-#   MEDIA_EMBED_BASE_DIRECTORY=/path/to/podcasts
+#   PODCAST_DOWNLOAD_DIRECTORY=/path/to/podcasts
 
 # 5. Initialize the database
 alembic upgrade head
@@ -220,7 +220,7 @@ pytest tests/test_workflow.py -v
 ### Environment Variables
 
 **Required:**
-- `MEDIA_EMBED_BASE_DIRECTORY` - Base path for podcast audio files
+- `PODCAST_DOWNLOAD_DIRECTORY` - Base path for podcast audio files
 - `GEMINI_API_KEY` - For metadata extraction and RAG queries
 - `GEMINI_MODEL` - Gemini model to use (e.g., gemini-2.5-flash)
 

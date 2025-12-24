@@ -13,7 +13,7 @@ These must be set for the application to function:
 | Variable | Description |
 |----------|-------------|
 | `GEMINI_API_KEY` | Google Gemini API key for AI features. Get one at [Google AI Studio](https://aistudio.google.com/app/apikey) |
-| `MEDIA_EMBED_BASE_DIRECTORY` | Base directory for podcast audio files (e.g., `/opt/podcasts`) |
+| `PODCAST_DOWNLOAD_DIRECTORY` | Directory for podcast audio files (e.g., `/opt/podcasts`) |
 
 ## Gemini Configuration
 
@@ -115,7 +115,7 @@ For future Supabase-specific features:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PODCAST_DOWNLOAD_DIRECTORY` | `$MEDIA_EMBED_BASE_DIRECTORY` | Directory for downloaded podcasts |
+| `PODCAST_DOWNLOAD_DIRECTORY` | `/opt/podcasts` | Directory for podcast audio files |
 | `PODCAST_MAX_CONCURRENT_DOWNLOADS` | `10` | Max parallel downloads |
 | `PODCAST_DOWNLOAD_RETRY_ATTEMPTS` | `3` | Retry attempts for failed downloads |
 | `PODCAST_DOWNLOAD_TIMEOUT` | `300` | Download timeout in seconds |
@@ -130,7 +130,7 @@ When running in Docker, these variables are used for volume mounts in `docker-co
 | `PODCAST_DIR` | `/opt/podcasts` | Host path to podcast files |
 | `CACHE_DIR` | `.` | Host path for cache file storage |
 
-Inside the container, set `MEDIA_EMBED_BASE_DIRECTORY=/data/podcasts` to match the mount point.
+Inside the container, set `PODCAST_DOWNLOAD_DIRECTORY=/data/podcasts` to match the mount point.
 
 ## Cloud Run
 
@@ -146,14 +146,14 @@ Inside the container, set `MEDIA_EMBED_BASE_DIRECTORY=/data/podcasts` to match t
 
 ```bash
 GEMINI_API_KEY=your_key_here
-MEDIA_EMBED_BASE_DIRECTORY=/path/to/podcasts
+PODCAST_DOWNLOAD_DIRECTORY=/path/to/podcasts
 ```
 
 ### Production (Supabase + Resend)
 
 ```bash
 GEMINI_API_KEY=your_key_here
-MEDIA_EMBED_BASE_DIRECTORY=/data/podcasts
+PODCAST_DOWNLOAD_DIRECTORY=/data/podcasts
 DATABASE_URL=postgresql://postgres.[ref]:[pass]@aws-0-us-west-1.pooler.supabase.com:6543/postgres
 RESEND_API_KEY=re_xxxxx
 WEB_BASE_URL=https://podcasts.example.com

@@ -10,7 +10,7 @@ services:
     env_file:
       - .env
     environment:
-      - MEDIA_EMBED_BASE_DIRECTORY=/data/podcasts
+      - PODCAST_DOWNLOAD_DIRECTORY=/data/podcasts
       - PYTHONUNBUFFERED=1
 
     # Volume mounts
@@ -62,7 +62,7 @@ services:
     env_file:
       - .env
     environment:
-      - MEDIA_EMBED_BASE_DIRECTORY=/data/podcasts
+      - PODCAST_DOWNLOAD_DIRECTORY=/data/podcasts
       - PYTHONUNBUFFERED=1
       - PORT=8080
 
@@ -111,7 +111,7 @@ services:
     env_file:
       - .env
     environment:
-      - MEDIA_EMBED_BASE_DIRECTORY=/data/podcasts
+      - PODCAST_DOWNLOAD_DIRECTORY=/data/podcasts
 
     volumes:
       - ${PODCAST_DIR:-/opt/podcasts}:/data/podcasts:ro
