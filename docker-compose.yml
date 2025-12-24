@@ -10,16 +10,16 @@ services:
     env_file:
       - .env
     environment:
-      - MEDIA_EMBED_BASE_DIRECTORY=/data/podcasts
+      - PODCAST_DOWNLOAD_DIRECTORY=/data/podcasts
       - PYTHONUNBUFFERED=1
 
     # Volume mounts
     volumes:
       # Podcast files (read-only recommended)
-      - ${PODCAST_DIR:-/opt/podcasts}:/data/podcasts:ro
+      - /opt/podcasts:/data/podcasts:ro  # Edit this path to your podcast directory
 
       # Cache file for metadata (persistent)
-      - ${CACHE_DIR:-.}/.file_search_cache.json:/app/.file_search_cache.json
+      - ./.file_search_cache.json:/app/.file_search_cache.json
 
       # Optional: Mount custom .env if not using env_file
       # - ./.env:/app/.env:ro
@@ -62,17 +62,17 @@ services:
     env_file:
       - .env
     environment:
-      - MEDIA_EMBED_BASE_DIRECTORY=/data/podcasts
+      - PODCAST_DOWNLOAD_DIRECTORY=/data/podcasts
       - PYTHONUNBUFFERED=1
       - PORT=8080
 
     # Volume mounts (shared with encoding backend)
     volumes:
       # Podcast files (read-only)
-      - ${PODCAST_DIR:-/opt/podcasts}:/data/podcasts:ro
+      - /opt/podcasts:/data/podcasts:ro  # Edit this path to your podcast directory
 
       # Cache file for metadata (shared, read-write)
-      - ${CACHE_DIR:-.}/.file_search_cache.json:/app/.file_search_cache.json
+      - ./.file_search_cache.json:/app/.file_search_cache.json
 
     # Resource limits (web service needs less than encoding)
     deploy:
@@ -111,11 +111,11 @@ services:
     env_file:
       - .env
     environment:
-      - MEDIA_EMBED_BASE_DIRECTORY=/data/podcasts
+      - PODCAST_DOWNLOAD_DIRECTORY=/data/podcasts
 
     volumes:
-      - ${PODCAST_DIR:-/opt/podcasts}:/data/podcasts:ro
-      - ${CACHE_DIR:-.}/.file_search_cache.json:/app/.file_search_cache.json
+      - /opt/podcasts:/data/podcasts:ro  # Edit this path to your podcast directory
+      - ./.file_search_cache.json:/app/.file_search_cache.json
 
     # Override entrypoint for interactive queries
     entrypoint: []

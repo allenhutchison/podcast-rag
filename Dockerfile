@@ -50,7 +50,7 @@ USER podcast
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    MEDIA_EMBED_BASE_DIRECTORY=/data/podcasts
+    PODCAST_DOWNLOAD_DIRECTORY=/data/podcasts
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

@@ -185,13 +185,68 @@ class TestConfiguration:
         assert config.WEB_RATE_LIMIT == "10/minute"
         assert config.WEB_PORT == 8080
 
-    def test_adk_timeout_config(self):
-        """Test that ADK timeout configuration is available."""
-        from src.web.app import config
-        assert hasattr(config, "ADK_PARALLEL_TIMEOUT")
-        assert config.ADK_PARALLEL_TIMEOUT == 30
 
+class TestDopplerEnvLoading:
+    """Tests for Doppler ENV JSON blob loading."""
 
+    def test_load_doppler_env_parses_json(self):
+        """Test that _load_doppler_env parses JSON and sets env vars."""
+        import json
+        import os
+        from src.config import _load_doppler_env
+
+        # Set up test data
+        test_vars = {"TEST_DOPPLER_VAR": "test_value", "TEST_DOPPLER_NUM": "42"}
+        os.environ["ENV"] = json.dumps(test_vars)
+
+        try:
+            _load_doppler_env()
+            assert os.environ.get("TEST_DOPPLER_VAR") == "test_value"
+            assert os.environ.get("TEST_DOPPLER_NUM") == "42"
+        finally:
+            # Clean up
+            os.environ.pop("ENV", None)
+            os.environ.pop("TEST_DOPPLER_VAR", None)
+            os.environ.pop("TEST_DOPPLER_NUM", None)
+
+    def test_load_doppler_env_does_not_override_existing(self):
+        """Test that existing env vars are not overwritten."""
+        import json
+        import os
+        from src.config import _load_doppler_env
+
+        # Set existing var
+        os.environ["TEST_EXISTING_VAR"] = "original"
+        os.environ["ENV"] = json.dumps({"TEST_EXISTING_VAR": "from_doppler"})
+
+        try:
+            _load_doppler_env()
+            assert os.environ.get("TEST_EXISTING_VAR") == "original"
+        finally:
+            os.environ.pop("ENV", None)
+            os.environ.pop("TEST_EXISTING_VAR", None)
+
+    def test_load_doppler_env_ignores_invalid_json(self):
+        """Test that invalid JSON is silently ignored."""
+        import os
+        from src.config import _load_doppler_env
+
+        os.environ["ENV"] = "not valid json {"
+
+        try:
+            # Should not raise
+            _load_doppler_env()
+        finally:
+            os.environ.pop("ENV", None)
+
+    def test_load_doppler_env_handles_missing_env(self):
+        """Test that missing ENV variable is handled gracefully."""
+        import os
+        from src.config import _load_doppler_env
+
+        os.environ.pop("ENV", None)
+        # Should not raise
+        _load_doppler_env()
 
 
 class TestChatRequestModel:

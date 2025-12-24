@@ -55,35 +55,23 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 ## Configuration
 
-The configuration is managed via environment variables loaded from a `.env` file.
+Configuration is managed via environment variables. Set them using:
+- A `.env` file in the project root
+- A secrets manager (Doppler, 1Password, Vault)
+- Shell environment variables
 
-1. Create your `.env` file from the example:
-
+**Required variables:**
 ```bash
-cp .env.example .env
-# Edit .env with your configuration
-```
-
-2. Configure required environment variables (see `.env.example` for all options):
-
-```bash
-# Media directory
-MEDIA_EMBED_BASE_DIRECTORY=/path/to/your/podcasts
-
-# Gemini API (for metadata extraction and RAG)
 GEMINI_API_KEY=your_gemini_api_key_here
-GEMINI_MODEL=gemini-2.5-flash
-
-# Gemini File Search
-GEMINI_FILE_SEARCH_STORE_NAME=podcast-transcripts
+PODCAST_DOWNLOAD_DIRECTORY=/path/to/your/podcasts
 ```
 
-3. Test the installation by checking status:
+Test the installation:
 ```bash
 uv run python -m src.cli podcast status
 ```
 
-See `src/config.py` for implementation details.
+See [docs/configuration.md](docs/configuration.md) for the full configuration reference.
 
 ## Docker Deployment
 
@@ -95,17 +83,13 @@ Pre-built Docker images are available on Docker Hub for easy deployment:
 
 Run both the encoding backend and web service together using docker-compose:
 
-1. **Create `.env` file** with required environment variables:
+1. **Create `.env` file** with required environment variables (see [docs/configuration.md](docs/configuration.md)):
    ```bash
-   cp .env.example .env
-   # Edit .env with your API keys and paths
+   GEMINI_API_KEY=your_key_here
+   PODCAST_DOWNLOAD_DIRECTORY=/data/podcasts
    ```
 
-2. **Configure environment** (in your shell or `.env` file):
-   ```bash
-   export PODCAST_DIR=/path/to/your/podcasts  # Local podcast directory
-   export CACHE_DIR=.                         # Directory for cache file
-   ```
+2. **Edit `docker-compose.yml`** to set your podcast directory path in the volume mounts.
 
 3. **Start services**:
    ```bash

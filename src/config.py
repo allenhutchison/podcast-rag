@@ -1,6 +1,28 @@
+import json
 import os
 
 from dotenv import load_dotenv
+
+
+def _load_doppler_env():
+    """
+    Load environment variables from Doppler's ENV JSON blob if present.
+
+    Doppler can sync secrets to Cloud Run as a single JSON environment variable.
+    This function parses that JSON and injects the values into os.environ,
+    allowing the rest of the config loading to work normally.
+
+    Existing environment variables are not overwritten, allowing local overrides.
+    """
+    env_json = os.getenv("ENV")
+    if env_json:
+        try:
+            env_vars = json.loads(env_json)
+            for key, value in env_vars.items():
+                if key not in os.environ:  # Don't override existing vars
+                    os.environ[key] = str(value)
+        except json.JSONDecodeError:
+            pass  # Not valid JSON, ignore
 
 
 class Config:
@@ -12,13 +34,18 @@ class Config:
         Parameters:
             env_file (str | None): Optional path to a .env file to load environment variables from. If omitted, the default environment or default .env discovery is used.
         """
+        # Load Doppler ENV JSON blob first (if present)
+        _load_doppler_env()
+
         if env_file:
             load_dotenv(env_file)
         else:
             load_dotenv()
 
-        # Environment-based configuration
-        self.BASE_DIRECTORY = os.getenv("MEDIA_EMBED_BASE_DIRECTORY", "/opt/podcasts")
+        # Podcast directory (where audio files are stored)
+        self.PODCAST_DOWNLOAD_DIRECTORY = os.getenv(
+            "PODCAST_DOWNLOAD_DIRECTORY", "/opt/podcasts"
+        )
         
         # Transcription-related constants
         self.TRANSCRIPTION_OUTPUT_SUFFIX = "_transcription.txt"
@@ -59,10 +86,22 @@ class Config:
         self.WEB_RATE_LIMIT = os.getenv("RATE_LIMIT", "10/minute")
         self.WEB_PORT = int(os.getenv("PORT", "8080"))
 
+        # Web app base URL (used for email links and OAuth redirect)
+        web_base_url = os.getenv("WEB_BASE_URL", "")
+        if web_base_url and not web_base_url.lower().startswith(("http://", "https://")):
+            raise ValueError(
+                f"WEB_BASE_URL must start with http:// or https://, got: {web_base_url}"
+            )
+        self.WEB_BASE_URL = web_base_url.rstrip("/") if web_base_url else ""
+
         # Google OAuth configuration
         self.GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
         self.GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
-        self.GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "")
+        # Derive redirect URI from WEB_BASE_URL if not explicitly set
+        self.GOOGLE_REDIRECT_URI = os.getenv(
+            "GOOGLE_REDIRECT_URI",
+            f"{self.WEB_BASE_URL}/auth/callback" if self.WEB_BASE_URL else ""
+        )
 
         # JWT configuration
         self.JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "")
@@ -78,14 +117,6 @@ class Config:
         self.RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "podcast@podcasts.hutchison.org")
         self.RESEND_FROM_NAME = os.getenv("RESEND_FROM_NAME", "Podcast RAG")
 
-        # Web app base URL for email links (ensures links match sending domain)
-        web_base_url = os.getenv("WEB_BASE_URL", "")
-        if web_base_url and not web_base_url.lower().startswith(("http://", "https://")):
-            raise ValueError(
-                f"WEB_BASE_URL must start with http:// or https://, got: {web_base_url}"
-            )
-        self.WEB_BASE_URL = web_base_url
-
         # Email digest settings
         self.EMAIL_DIGEST_SEND_HOUR = int(os.getenv("EMAIL_DIGEST_SEND_HOUR", "8"))  # 8 AM
         if not 0 <= self.EMAIL_DIGEST_SEND_HOUR <= 23:
@@ -93,9 +124,6 @@ class Config:
                 f"EMAIL_DIGEST_SEND_HOUR must be between 0 and 23, got {self.EMAIL_DIGEST_SEND_HOUR}"
             )
         self.EMAIL_DIGEST_TIMEZONE = os.getenv("EMAIL_DIGEST_TIMEZONE", "America/Los_Angeles")
-
-        # ADK (Agent Development Kit) configuration
-        self.ADK_PARALLEL_TIMEOUT = int(os.getenv("ADK_PARALLEL_TIMEOUT", "30"))
 
         # Database configuration
         self.DATABASE_URL = os.getenv(
@@ -112,9 +140,6 @@ class Config:
         self.SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 
         # Podcast download configuration
-        self.PODCAST_DOWNLOAD_DIRECTORY = os.getenv(
-            "PODCAST_DOWNLOAD_DIRECTORY", self.BASE_DIRECTORY
-        )
         self.PODCAST_MAX_CONCURRENT_DOWNLOADS = int(
             os.getenv("PODCAST_MAX_CONCURRENT_DOWNLOADS", "10")
         )
@@ -131,10 +156,8 @@ class Config:
     def load_config(self):
         """
         Prints selected configuration values useful for debugging.
-        
-        Specifically displays the configured BASE_DIRECTORY and TRANSCRIPTION_OUTPUT_SUFFIX to standard output.
         """
-        print(f"Base Directory: {self.BASE_DIRECTORY}")
+        print(f"Podcast Directory: {self.PODCAST_DOWNLOAD_DIRECTORY}")
         print(f"Transcription Suffix: {self.TRANSCRIPTION_OUTPUT_SUFFIX}")
 
     # Utility functions related to file paths and suffixes

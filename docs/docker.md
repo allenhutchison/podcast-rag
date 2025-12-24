@@ -12,34 +12,25 @@ This guide covers deploying podcast-rag in Docker to run the scheduler for autom
 
 ### 2. Configuration
 
-Create a `.env` file in the project root:
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` with your settings:
+Create a `.env` file in the project root with your settings (see [configuration.md](configuration.md) for all options):
 
 ```bash
 # Required
 GEMINI_API_KEY=your_gemini_api_key_here
+PODCAST_DOWNLOAD_DIRECTORY=/data/podcasts
+
+# Optional
 GEMINI_MODEL=gemini-2.5-flash
 GEMINI_FILE_SEARCH_STORE_NAME=podcast-transcripts
-
-# Optional - override in docker-compose.yml
-MEDIA_EMBED_BASE_DIRECTORY=/data/podcasts
 ```
 
-### 3. Set Environment Variables
+### 3. Configure Volume Mounts
 
-Create a `.env.docker` file or set these in your shell:
+Edit `docker-compose.yml` to set your podcast directory path:
 
-```bash
-# Path to your podcast directory on the host
-export PODCAST_DIR=/opt/podcasts
-
-# Path to store the cache file (default: current directory)
-export CACHE_DIR=/path/to/persistent/storage
+```yaml
+volumes:
+  - /path/to/your/podcasts:/data/podcasts:ro
 ```
 
 ### 4. Build and Run
@@ -72,12 +63,12 @@ docker compose down
 ### Volume Mounts
 
 1. **Podcast Directory**: `/data/podcasts` (read-only)
-   - Maps to `$PODCAST_DIR` on host (default: `/opt/podcasts`)
+   - Edit the path in `docker-compose.yml` to point to your podcasts
    - Contains your MP3 files organized by podcast name
 
 2. **Cache File**: `.file_search_cache.json`
    - Stores metadata for fast lookups
-   - Persisted to `$CACHE_DIR` on host
+   - Persisted to the host via volume mount
 
 ## Usage Examples
 
@@ -146,15 +137,14 @@ networks:
     external: true
 ```
 
-### Environment Variables in Homelab
+### Homelab Configuration
 
-If you're using something like Portainer or a dotfiles system:
+Edit the volume mounts in `docker-compose.yml` to match your homelab paths:
 
-```bash
-# Set these in your homelab environment
-PODCAST_DIR=/mnt/media/podcasts
-CACHE_DIR=/mnt/data/podcast-rag
-GEMINI_API_KEY=<from-secrets-manager>
+```yaml
+volumes:
+  - /mnt/media/podcasts:/data/podcasts:ro
+  - /mnt/data/podcast-rag/.file_search_cache.json:/app/.file_search_cache.json
 ```
 
 ## Monitoring
@@ -292,7 +282,7 @@ services:
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_MODEL=gemini-2.5-flash
-      - MEDIA_EMBED_BASE_DIRECTORY=/data/podcasts
+      - PODCAST_DOWNLOAD_DIRECTORY=/data/podcasts
 
     volumes:
       - /mnt/media/podcasts:/data/podcasts:ro
