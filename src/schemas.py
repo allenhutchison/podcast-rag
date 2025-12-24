@@ -69,13 +69,13 @@ class PodcastMetadata(BaseModel):
     )
     summary: str = Field(
         description="A concise but informative 2-3 paragraph summary of the episode",
-        min_length=100,
-        max_length=2000
+        min_length=50,   # Lenient: Gemini doesn't always respect constraints
+        max_length=4000  # Lenient: allow longer summaries
     )
     keywords: List[str] = Field(
         description="List of 5-10 relevant keywords or topics discussed",
-        min_length=5,
-        max_length=10
+        min_length=3,   # Lenient: at least 3 keywords
+        max_length=15   # Lenient: allow more keywords
     )
     email_content: Optional[EmailContent] = Field(
         default=None,
