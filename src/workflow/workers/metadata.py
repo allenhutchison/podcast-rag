@@ -187,7 +187,20 @@ class MetadataWorker(WorkerInterface):
 
             if response.text:
                 data = json.loads(response.text)
-                return PodcastMetadata(**data)
+                metadata = PodcastMetadata(**data)
+
+                # Log email_content extraction status for debugging
+                if metadata.email_content:
+                    logger.info(
+                        f"Extracted email_content for '{filename}': "
+                        f"type={metadata.email_content.podcast_type}, "
+                        f"teaser_len={len(metadata.email_content.teaser_summary)}, "
+                        f"takeaways={len(metadata.email_content.key_takeaways)}"
+                    )
+                else:
+                    logger.warning(f"No email_content returned by AI for '{filename}'")
+
+                return metadata
 
         except Exception as e:
             logger.error(f"AI metadata extraction failed: {e}")
@@ -313,6 +326,17 @@ class MetadataWorker(WorkerInterface):
 
                     # Process and get merged metadata
                     merged = self._process_episode(episode)
+
+                    # Log email_content storage for debugging
+                    if merged.email_content:
+                        logger.info(
+                            f"Storing email_content for episode {episode.id}: "
+                            f"keys={list(merged.email_content.keys())}"
+                        )
+                    else:
+                        logger.warning(
+                            f"No email_content to store for episode {episode.id}"
+                        )
 
                     # Mark as complete with all extracted data
                     self.repository.mark_metadata_complete(

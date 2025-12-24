@@ -24,19 +24,19 @@ class EmailContent(BaseModel):
         description="Type of podcast based on content analysis"
     )
     teaser_summary: str = Field(
-        description="Engaging 1-2 sentence hook without spoilers",
-        min_length=50,
-        max_length=200
+        description="Engaging 1-2 sentence hook without spoilers (50-250 characters)",
+        min_length=20,  # Lenient: Gemini doesn't always respect constraints
+        max_length=300  # Lenient: allow slightly longer, we can truncate in display
     )
     key_takeaways: List[str] = Field(
         description="3-5 bullet points of main insights",
-        min_length=2,
-        max_length=5
+        min_length=1,  # Lenient: at least 1 takeaway
+        max_length=7   # Lenient: allow slightly more
     )
     highlight_moment: Optional[str] = Field(
         default=None,
-        description="An interesting quote, surprising fact, or memorable moment",
-        max_length=300
+        description="An interesting quote, surprising fact, or memorable moment (max 300 chars)",
+        max_length=500  # Lenient: Gemini doesn't always respect constraints
     )
     story_summaries: Optional[List[StoryItem]] = Field(
         default=None,

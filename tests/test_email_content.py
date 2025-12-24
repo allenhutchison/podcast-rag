@@ -76,30 +76,30 @@ class TestEmailContentSchema:
         assert content.story_summaries[0].headline == "Breaking news story"
 
     def test_teaser_too_short(self):
-        """Test that teaser summary must be at least 50 characters."""
+        """Test that teaser summary must be at least 20 characters (lenient limit)."""
         with pytest.raises(ValueError):
             EmailContent(
                 podcast_type="general",
-                teaser_summary="Too short",  # < 50 chars
+                teaser_summary="Too short",  # < 20 chars (lenient limit)
                 key_takeaways=["a", "b"],
             )
 
     def test_teaser_too_long(self):
-        """Test that teaser summary must not exceed 200 characters."""
+        """Test that teaser summary must not exceed 300 characters (lenient limit)."""
         with pytest.raises(ValueError):
             EmailContent(
                 podcast_type="general",
-                teaser_summary="x" * 201,  # > 200 chars
+                teaser_summary="x" * 301,  # > 300 chars (lenient limit)
                 key_takeaways=["a", "b"],
             )
 
     def test_minimum_takeaways_required(self):
-        """Test that at least 2 key takeaways are required."""
+        """Test that at least 1 key takeaway is required (lenient limit)."""
         with pytest.raises(ValueError):
             EmailContent(
                 podcast_type="general",
                 teaser_summary="A valid teaser summary that is long enough to pass validation.",
-                key_takeaways=["only one"],  # < 2 items
+                key_takeaways=[],  # < 1 item (lenient limit)
             )
 
     def test_podcast_type_literal(self):
