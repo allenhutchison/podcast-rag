@@ -1089,6 +1089,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         max_overflow: int = 2,  # Supabase-optimized
         echo: bool = False,
         pool_pre_ping: bool = True,  # Detect stale connections
+        pool_recycle: int = 1800,  # Recycle connections after 30 minutes
     ):
         """
         Initialize the repository and configure its SQLAlchemy engine and session factory.
@@ -1101,6 +1102,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             max_overflow (int): Maximum overflow connections for non-SQLite databases (default 2 for Supabase).
             echo (bool): If true, enable SQLAlchemy SQL statement logging.
             pool_pre_ping (bool): If true, test connections for liveness before using them (recommended for Supabase).
+            pool_recycle (int): Seconds after which to recycle connections (default 1800 = 30 minutes).
         """
         self.database_url = database_url
 
@@ -1118,6 +1120,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 pool_size=pool_size,
                 max_overflow=max_overflow,
                 pool_pre_ping=pool_pre_ping,  # Test connections before use
+                pool_recycle=pool_recycle,  # Proactively recycle stale connections
                 echo=echo,
             )
 
