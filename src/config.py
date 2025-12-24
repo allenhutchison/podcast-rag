@@ -96,9 +96,6 @@ class Config:
             )
         self.EMAIL_DIGEST_TIMEZONE = os.getenv("EMAIL_DIGEST_TIMEZONE", "America/Los_Angeles")
 
-        # ADK (Agent Development Kit) configuration
-        self.ADK_PARALLEL_TIMEOUT = int(os.getenv("ADK_PARALLEL_TIMEOUT", "30"))
-
         # Database configuration
         self.DATABASE_URL = os.getenv(
             "DATABASE_URL", "sqlite:///./podcast_rag.db"

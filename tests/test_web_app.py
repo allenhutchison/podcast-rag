@@ -185,12 +185,6 @@ class TestConfiguration:
         assert config.WEB_RATE_LIMIT == "10/minute"
         assert config.WEB_PORT == 8080
 
-    def test_adk_timeout_config(self):
-        """Test that ADK timeout configuration is available."""
-        from src.web.app import config
-        assert hasattr(config, "ADK_PARALLEL_TIMEOUT")
-        assert config.ADK_PARALLEL_TIMEOUT == 30
-
 
 
 

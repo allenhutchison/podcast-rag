@@ -109,7 +109,6 @@ For future Supabase-specific features:
 | `RATE_LIMIT` | `10/minute` | API rate limit |
 | `MAX_CONVERSATION_TOKENS` | `200000` | Max tokens for conversation history |
 | `STREAMING_DELAY` | `0.05` | Delay between SSE chunks (seconds) |
-| `ADK_PARALLEL_TIMEOUT` | `30` | Timeout for parallel agent operations |
 
 ## Podcast Downloads
 
