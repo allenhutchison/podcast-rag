@@ -72,7 +72,7 @@ For future Supabase-specific features:
 | `RESEND_API_KEY` | — | Resend API key. Leave blank to disable email. Get one at [resend.com](https://resend.com/api-keys) |
 | `RESEND_FROM_EMAIL` | `podcast@podcasts.hutchison.org` | Sender email address (must be verified in Resend) |
 | `RESEND_FROM_NAME` | `Podcast RAG` | Sender display name |
-| `WEB_BASE_URL` | — | Base URL for email links (e.g., `https://podcasts.example.com`) |
+| `WEB_BASE_URL` | — | Base URL for the app (e.g., `https://podcasts.example.com`). Used for email links and OAuth redirect. |
 | `EMAIL_DIGEST_SEND_HOUR` | `8` | Hour (0-23) to send daily digest emails |
 | `EMAIL_DIGEST_TIMEZONE` | `America/Los_Angeles` | Timezone for digest scheduling (IANA format) |
 
@@ -84,7 +84,7 @@ For future Supabase-specific features:
 |----------|---------|-------------|
 | `GOOGLE_CLIENT_ID` | — | Google OAuth client ID |
 | `GOOGLE_CLIENT_SECRET` | — | Google OAuth client secret |
-| `GOOGLE_REDIRECT_URI` | — | OAuth callback URL (e.g., `https://your-domain.com/auth/callback`) |
+| `GOOGLE_REDIRECT_URI` | `{WEB_BASE_URL}/auth/callback` | OAuth callback URL (auto-derived from `WEB_BASE_URL` if not set) |
 
 ### JWT
 
@@ -131,14 +131,6 @@ volumes:
 ```
 
 Inside the container, `PODCAST_DOWNLOAD_DIRECTORY` is set to `/data/podcasts` to match the mount point.
-
-## Cloud Run
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `CLOUD_RUN_SERVICE` | — | Cloud Run service name |
-| `CLOUD_RUN_REGION` | — | Cloud Run region (e.g., `us-west2`) |
-| `CLOUD_RUN_URL` | — | Cloud Run service URL or custom domain |
 
 ## Quick Start Examples
 

@@ -61,10 +61,22 @@ class Config:
         self.WEB_RATE_LIMIT = os.getenv("RATE_LIMIT", "10/minute")
         self.WEB_PORT = int(os.getenv("PORT", "8080"))
 
+        # Web app base URL (used for email links and OAuth redirect)
+        web_base_url = os.getenv("WEB_BASE_URL", "")
+        if web_base_url and not web_base_url.lower().startswith(("http://", "https://")):
+            raise ValueError(
+                f"WEB_BASE_URL must start with http:// or https://, got: {web_base_url}"
+            )
+        self.WEB_BASE_URL = web_base_url.rstrip("/") if web_base_url else ""
+
         # Google OAuth configuration
         self.GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
         self.GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
-        self.GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "")
+        # Derive redirect URI from WEB_BASE_URL if not explicitly set
+        self.GOOGLE_REDIRECT_URI = os.getenv(
+            "GOOGLE_REDIRECT_URI",
+            f"{self.WEB_BASE_URL}/auth/callback" if self.WEB_BASE_URL else ""
+        )
 
         # JWT configuration
         self.JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "")
@@ -79,14 +91,6 @@ class Config:
         self.RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
         self.RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "podcast@podcasts.hutchison.org")
         self.RESEND_FROM_NAME = os.getenv("RESEND_FROM_NAME", "Podcast RAG")
-
-        # Web app base URL for email links (ensures links match sending domain)
-        web_base_url = os.getenv("WEB_BASE_URL", "")
-        if web_base_url and not web_base_url.lower().startswith(("http://", "https://")):
-            raise ValueError(
-                f"WEB_BASE_URL must start with http:// or https://, got: {web_base_url}"
-            )
-        self.WEB_BASE_URL = web_base_url
 
         # Email digest settings
         self.EMAIL_DIGEST_SEND_HOUR = int(os.getenv("EMAIL_DIGEST_SEND_HOUR", "8"))  # 8 AM
