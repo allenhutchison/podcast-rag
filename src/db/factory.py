@@ -24,6 +24,7 @@ def create_repository(
     echo: bool = False,
     create_tables: bool = False,
     pool_pre_ping: bool = True,  # Detect stale connections
+    pool_recycle: int = 1800,  # Recycle connections after 30 minutes
 ) -> PodcastRepositoryInterface:
     """
     Create a PodcastRepositoryInterface configured from the provided or discovered database URL.
@@ -38,6 +39,7 @@ def create_repository(
         create_tables (bool): If true, create database tables directly (for testing only;
             production should use Alembic migrations).
         pool_pre_ping (bool): Test connections for liveness before using (recommended for Supabase).
+        pool_recycle (int): Seconds after which to recycle connections (default 1800 = 30 minutes).
 
     Returns:
         PodcastRepositoryInterface: A repository instance backed by the resolved database URL.
@@ -71,6 +73,7 @@ def create_repository(
         max_overflow=max_overflow,
         echo=echo,
         pool_pre_ping=pool_pre_ping,
+        pool_recycle=pool_recycle,
     )
 
     # Create tables directly for testing (production should use Alembic migrations)
