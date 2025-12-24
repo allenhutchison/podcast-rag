@@ -24,19 +24,14 @@ GEMINI_MODEL=gemini-2.5-flash
 GEMINI_FILE_SEARCH_STORE_NAME=podcast-transcripts
 ```
 
-### 3. Set Docker Host Variables
+### 3. Configure Volume Mounts
 
-Set these environment variables in your shell (or add to `.env`):
+Edit `docker-compose.yml` to set your podcast directory path:
 
-```bash
-# Path to your podcast directory on the host
-export PODCAST_DIR=/opt/podcasts
-
-# Path to store the cache file (default: current directory)
-export CACHE_DIR=/path/to/persistent/storage
+```yaml
+volumes:
+  - /path/to/your/podcasts:/data/podcasts:ro
 ```
-
-See the "Docker" section in [configuration.md](configuration.md) for details.
 
 ### 4. Build and Run
 
@@ -68,12 +63,12 @@ docker compose down
 ### Volume Mounts
 
 1. **Podcast Directory**: `/data/podcasts` (read-only)
-   - Maps to `$PODCAST_DIR` on host (default: `/opt/podcasts`)
+   - Edit the path in `docker-compose.yml` to point to your podcasts
    - Contains your MP3 files organized by podcast name
 
 2. **Cache File**: `.file_search_cache.json`
    - Stores metadata for fast lookups
-   - Persisted to `$CACHE_DIR` on host
+   - Persisted to the host via volume mount
 
 ## Usage Examples
 
@@ -142,15 +137,14 @@ networks:
     external: true
 ```
 
-### Environment Variables in Homelab
+### Homelab Configuration
 
-If you're using something like Portainer or a dotfiles system:
+Edit the volume mounts in `docker-compose.yml` to match your homelab paths:
 
-```bash
-# Set these in your homelab environment
-PODCAST_DIR=/mnt/media/podcasts
-CACHE_DIR=/mnt/data/podcast-rag
-GEMINI_API_KEY=<from-secrets-manager>
+```yaml
+volumes:
+  - /mnt/media/podcasts:/data/podcasts:ro
+  - /mnt/data/podcast-rag/.file_search_cache.json:/app/.file_search_cache.json
 ```
 
 ## Monitoring

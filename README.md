@@ -89,11 +89,7 @@ Run both the encoding backend and web service together using docker-compose:
    PODCAST_DOWNLOAD_DIRECTORY=/data/podcasts
    ```
 
-2. **Configure environment** (in your shell or `.env` file):
-   ```bash
-   export PODCAST_DIR=/path/to/your/podcasts  # Local podcast directory
-   export CACHE_DIR=.                         # Directory for cache file
-   ```
+2. **Edit `docker-compose.yml`** to set your podcast directory path in the volume mounts.
 
 3. **Start services**:
    ```bash

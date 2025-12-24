@@ -123,14 +123,15 @@ For future Supabase-specific features:
 
 ## Docker
 
-When running in Docker, these variables are used for volume mounts in `docker-compose.yml`:
+When running in Docker, edit the volume mounts in `docker-compose.yml` to set your paths:
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PODCAST_DIR` | `/opt/podcasts` | Host path to podcast files |
-| `CACHE_DIR` | `.` | Host path for cache file storage |
+```yaml
+volumes:
+  - /your/podcast/path:/data/podcasts:ro
+  - /your/cache/path/.file_search_cache.json:/app/.file_search_cache.json
+```
 
-Inside the container, set `PODCAST_DOWNLOAD_DIRECTORY=/data/podcasts` to match the mount point.
+Inside the container, `PODCAST_DOWNLOAD_DIRECTORY` is set to `/data/podcasts` to match the mount point.
 
 ## Cloud Run
 
