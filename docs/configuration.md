@@ -6,6 +6,17 @@ This document lists all environment variables used by Podcast RAG. You can set t
 - Shell environment variables
 - Container orchestration (Docker Compose, Kubernetes, Cloud Run)
 
+## Doppler Integration
+
+When using Doppler with Cloud Run, you can sync all secrets as a single JSON environment variable named `ENV`. The application automatically parses this JSON blob and loads the values:
+
+```bash
+# Doppler syncs secrets as:
+ENV='{"GEMINI_API_KEY":"xxx","DATABASE_URL":"postgresql://..."}'
+```
+
+Existing environment variables take precedence over values in the `ENV` blob, allowing local overrides.
+
 ## Required Variables
 
 These must be set for the application to function:
@@ -152,7 +163,7 @@ WEB_BASE_URL=https://podcasts.example.com
 JWT_SECRET_KEY=your_secure_random_key
 GOOGLE_CLIENT_ID=xxxxx.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=xxxxx
-GOOGLE_REDIRECT_URI=https://podcasts.example.com/auth/callback
+# GOOGLE_REDIRECT_URI is auto-derived from WEB_BASE_URL
 ```
 
 ### Using Doppler

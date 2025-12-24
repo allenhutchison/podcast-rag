@@ -1,6 +1,28 @@
+import json
 import os
 
 from dotenv import load_dotenv
+
+
+def _load_doppler_env():
+    """
+    Load environment variables from Doppler's ENV JSON blob if present.
+
+    Doppler can sync secrets to Cloud Run as a single JSON environment variable.
+    This function parses that JSON and injects the values into os.environ,
+    allowing the rest of the config loading to work normally.
+
+    Existing environment variables are not overwritten, allowing local overrides.
+    """
+    env_json = os.getenv("ENV")
+    if env_json:
+        try:
+            env_vars = json.loads(env_json)
+            for key, value in env_vars.items():
+                if key not in os.environ:  # Don't override existing vars
+                    os.environ[key] = str(value)
+        except json.JSONDecodeError:
+            pass  # Not valid JSON, ignore
 
 
 class Config:
@@ -12,6 +34,9 @@ class Config:
         Parameters:
             env_file (str | None): Optional path to a .env file to load environment variables from. If omitted, the default environment or default .env discovery is used.
         """
+        # Load Doppler ENV JSON blob first (if present)
+        _load_doppler_env()
+
         if env_file:
             load_dotenv(env_file)
         else:
