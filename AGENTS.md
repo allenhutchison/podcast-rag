@@ -114,9 +114,10 @@ uv sync
 # 3. Activate virtual environment (optional if using 'uv run')
 source .venv/bin/activate
 
-# 4. Configure environment
-cp .env.example .env
-# Edit .env with database credentials, API keys
+# 4. Configure environment (see docs/configuration.md for all options)
+# Set required variables in .env or your secrets manager:
+#   GEMINI_API_KEY=your_key_here
+#   MEDIA_EMBED_BASE_DIRECTORY=/path/to/podcasts
 
 # 5. Initialize the database
 alembic upgrade head

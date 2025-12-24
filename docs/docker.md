@@ -12,22 +12,16 @@ This guide covers deploying podcast-rag in Docker to run the scheduler for autom
 
 ### 2. Configuration
 
-Create a `.env` file in the project root:
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` with your settings:
+Create a `.env` file in the project root with your settings (see [configuration.md](configuration.md) for all options):
 
 ```bash
 # Required
 GEMINI_API_KEY=your_gemini_api_key_here
+MEDIA_EMBED_BASE_DIRECTORY=/data/podcasts
+
+# Optional
 GEMINI_MODEL=gemini-2.5-flash
 GEMINI_FILE_SEARCH_STORE_NAME=podcast-transcripts
-
-# Optional - override in docker-compose.yml
-MEDIA_EMBED_BASE_DIRECTORY=/data/podcasts
 ```
 
 ### 3. Set Docker Host Variables
@@ -42,7 +36,7 @@ export PODCAST_DIR=/opt/podcasts
 export CACHE_DIR=/path/to/persistent/storage
 ```
 
-See the "Docker Configuration" section in `.env.example` for details.
+See the "Docker" section in [configuration.md](configuration.md) for details.
 
 ### 4. Build and Run
 
