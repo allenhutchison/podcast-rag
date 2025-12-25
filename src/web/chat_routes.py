@@ -63,7 +63,7 @@ async def list_conversations(
                 podcast_title=conv.podcast.title if conv.podcast else None,
                 episode_id=conv.episode_id,
                 episode_title=conv.episode.title if conv.episode else None,
-                message_count=len(conv.messages) if conv.messages else 0,
+                message_count=conv.message_count,
                 created_at=conv.created_at.isoformat(),
                 updated_at=conv.updated_at.isoformat(),
             )
@@ -312,49 +312,64 @@ async def send_message(
     session_id = str(uuid.uuid4())
 
     async def stream_with_save():
-        """Stream response and save assistant message on completion."""
+        """Stream response and save assistant message on completion or disconnect."""
         from src.web.app import generate_streaming_response
 
         full_response = ""
         citations_data = []
+        saved = False
 
-        async for chunk in generate_streaming_response(
-            query=body.content,
-            session_id=session_id,
-            user_id=user_id,
-            _history=history[:-1],  # Exclude current message (already in query)
-            podcast_id=podcast_id,
-            episode_id=episode_id,
-            subscribed_only=subscribed_only,
-        ):
-            yield chunk
+        try:
+            async for chunk in generate_streaming_response(
+                query=body.content,
+                session_id=session_id,
+                user_id=user_id,
+                _history=history[:-1],  # Exclude current message (already in query)
+                podcast_id=podcast_id,
+                episode_id=episode_id,
+                subscribed_only=subscribed_only,
+            ):
+                yield chunk
 
-            # Parse SSE events to capture response
-            if chunk.startswith("event: token"):
-                try:
-                    data_line = chunk.split("\n")[1]
-                    if data_line.startswith("data: "):
-                        token_data = json.loads(data_line[6:])
-                        full_response += token_data.get("token", "")
-                except (IndexError, json.JSONDecodeError):
-                    pass
-            elif chunk.startswith("event: citations"):
-                try:
-                    data_line = chunk.split("\n")[1]
-                    if data_line.startswith("data: "):
-                        cit_data = json.loads(data_line[6:])
-                        citations_data = cit_data.get("citations", [])
-                except (IndexError, json.JSONDecodeError):
-                    pass
-            elif chunk.startswith("event: done"):
-                # Save assistant message with response and citations
-                if full_response:
-                    repository.add_message(
-                        conversation_id=conversation_id,
-                        role="assistant",
-                        content=full_response,
-                        citations=citations_data if citations_data else None,
-                    )
+                # Parse SSE events to capture response
+                if chunk.startswith("event: token"):
+                    try:
+                        data_line = chunk.split("\n")[1]
+                        if data_line.startswith("data: "):
+                            token_data = json.loads(data_line[6:])
+                            full_response += token_data.get("token", "")
+                    except (IndexError, json.JSONDecodeError):
+                        pass
+                elif chunk.startswith("event: citations"):
+                    try:
+                        data_line = chunk.split("\n")[1]
+                        if data_line.startswith("data: "):
+                            cit_data = json.loads(data_line[6:])
+                            citations_data = cit_data.get("citations", [])
+                    except (IndexError, json.JSONDecodeError):
+                        pass
+                elif chunk.startswith("event: done"):
+                    # Save assistant message with response and citations
+                    if full_response:
+                        repository.add_message(
+                            conversation_id=conversation_id,
+                            role="assistant",
+                            content=full_response,
+                            citations=citations_data if citations_data else None,
+                        )
+                        saved = True
+        finally:
+            # Save partial response if stream was interrupted before done event
+            if not saved and full_response:
+                logger.warning(
+                    f"Stream interrupted, saving partial response for conversation {conversation_id}"
+                )
+                repository.add_message(
+                    conversation_id=conversation_id,
+                    role="assistant",
+                    content=full_response,
+                    citations=citations_data if citations_data else None,
+                )
 
     return StreamingResponse(
         stream_with_save(),

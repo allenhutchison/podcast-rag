@@ -371,6 +371,9 @@ class Conversation(Base):
         String(36), ForeignKey("episodes.id", ondelete="SET NULL")
     )
 
+    # Denormalized count for efficient listing (avoids N+1 queries)
+    message_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(

@@ -3000,10 +3000,11 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             )
             session.add(message)
 
-            # Update conversation's updated_at timestamp
+            # Update conversation's updated_at timestamp and message count
             conversation = session.get(Conversation, conversation_id)
             if conversation:
                 conversation.updated_at = datetime.now(UTC)
+                conversation.message_count = (conversation.message_count or 0) + 1
 
             session.commit()
             session.refresh(message)
