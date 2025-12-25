@@ -219,15 +219,16 @@ async def update_conversation(
     # Update
     updated = repository.update_conversation(conversation_id, title=body.title)
 
+    # Use updated object for all fields for consistency
     return ConversationSummary(
         id=updated.id,
         title=updated.title,
         scope=updated.scope,
         podcast_id=updated.podcast_id,
-        podcast_title=conversation.podcast.title if conversation.podcast else None,
+        podcast_title=updated.podcast.title if updated.podcast else None,
         episode_id=updated.episode_id,
-        episode_title=conversation.episode.title if conversation.episode else None,
-        message_count=len(conversation.messages) if conversation.messages else 0,
+        episode_title=updated.episode.title if updated.episode else None,
+        message_count=updated.message_count,
         created_at=updated.created_at.isoformat(),
         updated_at=updated.updated_at.isoformat(),
     )
@@ -295,12 +296,14 @@ async def send_message(
         title = body.content[:50] + ("..." if len(body.content) > 50 else "")
         repository.update_conversation(conversation_id, title=title)
 
-    # Build history from existing messages
+    # Build history from existing messages.
+    # Note: conversation.messages was loaded before add_message() above, so it
+    # doesn't include the new user message. We explicitly append it below to
+    # avoid an extra database query while ensuring the history is complete.
     history = [
         {"role": msg.role, "content": msg.content}
         for msg in sorted(conversation.messages, key=lambda m: m.created_at)
     ]
-    # Add the new user message
     history.append({"role": "user", "content": body.content})
 
     # Get scope parameters
@@ -313,6 +316,8 @@ async def send_message(
 
     async def stream_with_save():
         """Stream response and save assistant message on completion or disconnect."""
+        # Import here to avoid circular dependency: app.py imports chat_routes,
+        # and chat_routes needs generate_streaming_response from app.py
         from src.web.app import generate_streaming_response
 
         full_response = ""
@@ -331,7 +336,10 @@ async def send_message(
             ):
                 yield chunk
 
-                # Parse SSE events to capture response
+                # Parse SSE events to capture response.
+                # Format: "event: <type>\ndata: <json>\n\n"
+                # This parsing is tightly coupled to generate_streaming_response's
+                # output format in app.py - update both if the format changes.
                 if chunk.startswith("event: token"):
                     try:
                         data_line = chunk.split("\n")[1]
