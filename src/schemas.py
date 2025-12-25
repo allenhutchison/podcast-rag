@@ -9,11 +9,11 @@ class StoryItem(BaseModel):
 
     headline: str = Field(
         description="Brief headline (5-10 words)",
-        max_length=100
+        max_length=150  # Lenient: Gemini doesn't always respect constraints
     )
     summary: str = Field(
         description="One sentence summary of the story",
-        max_length=200
+        max_length=400  # Lenient: Gemini doesn't always respect constraints
     )
 
 
