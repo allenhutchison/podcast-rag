@@ -22,7 +22,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.add_column(
         'users',
-        sa.Column('is_admin', sa.Boolean, server_default=sa.text('0'), nullable=False)
+        sa.Column('is_admin', sa.Boolean, server_default=sa.text('FALSE'), nullable=False)
     )
     op.create_index('ix_users_is_admin', 'users', ['is_admin'])
 

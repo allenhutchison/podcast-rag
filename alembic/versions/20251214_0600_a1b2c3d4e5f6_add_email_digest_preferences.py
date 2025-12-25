@@ -23,7 +23,7 @@ def upgrade() -> None:
     # Add email_digest_enabled column (default False for opt-in)
     op.add_column(
         'users',
-        sa.Column('email_digest_enabled', sa.Boolean, server_default=sa.text('0'), nullable=False)
+        sa.Column('email_digest_enabled', sa.Boolean, server_default=sa.text('FALSE'), nullable=False)
     )
     # Add last_email_digest_sent column to track when digest was last sent
     op.add_column(

@@ -29,7 +29,7 @@ def upgrade() -> None:
         sa.Column('email', sa.String(256), unique=True, nullable=False),
         sa.Column('name', sa.String(256), nullable=True),
         sa.Column('picture_url', sa.String(2048), nullable=True),
-        sa.Column('is_active', sa.Boolean, server_default=sa.text('1'), nullable=False),
+        sa.Column('is_active', sa.Boolean, server_default=sa.text('TRUE'), nullable=False),
         sa.Column('created_at', sa.DateTime, nullable=False),
         sa.Column('updated_at', sa.DateTime, nullable=False),
         sa.Column('last_login', sa.DateTime, nullable=True),
