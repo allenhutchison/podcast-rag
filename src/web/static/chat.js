@@ -396,29 +396,25 @@ async function handleSubmit(event) {
             const lines = chunk.split('\n');
 
             for (const line of lines) {
-                if (line.startsWith('event: ')) {
-                    const eventType = line.slice(7);
-                    continue;
-                }
-                if (line.startsWith('data: ')) {
-                    const data = line.slice(6);
-                    try {
-                        const parsed = JSON.parse(data);
+                if (!line.startsWith('data: ')) continue;
 
-                        if (parsed.token) {
-                            // Remove typing indicator on first token
-                            if (!assistantMessageEl) {
-                                typingIndicator.remove();
-                                assistantMessageEl = addMessageToUI('', 'assistant');
-                            }
-                            assistantContent += parsed.token;
-                            updateAssistantMessage(assistantMessageEl, assistantContent);
-                        } else if (parsed.citations) {
-                            citations = parsed.citations;
+                const data = line.slice(6);
+                try {
+                    const parsed = JSON.parse(data);
+
+                    if (parsed.token) {
+                        // Remove typing indicator on first token
+                        if (!assistantMessageEl) {
+                            typingIndicator.remove();
+                            assistantMessageEl = addMessageToUI('', 'assistant');
                         }
-                    } catch (e) {
-                        // Ignore parse errors
+                        assistantContent += parsed.token;
+                        updateAssistantMessage(assistantMessageEl, assistantContent);
+                    } else if (parsed.citations) {
+                        citations = parsed.citations;
                     }
+                } catch (e) {
+                    // Ignore parse errors
                 }
             }
         }
