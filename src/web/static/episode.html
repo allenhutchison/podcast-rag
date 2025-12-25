@@ -190,29 +190,6 @@
         }
 
         /**
-         * Safely render markdown to sanitized HTML.
-         * Uses DOMPurify to prevent XSS attacks from AI/upstream content.
-         * Falls back to plain text if DOMPurify is unavailable.
-         */
-        function safeMarkdownToHtml(text) {
-            const rawText = text || 'No response received.';
-            const parsedHtml = marked.parse(rawText);
-
-            // Use DOMPurify if available, otherwise fall back to textContent (safe but loses formatting)
-            if (typeof DOMPurify !== 'undefined' && DOMPurify.sanitize) {
-                return DOMPurify.sanitize(parsedHtml, {
-                    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'b', 'i', 'u', 'code', 'pre', 'ul', 'ol', 'li', 'a', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
-                    ALLOWED_ATTR: ['href', 'target', 'rel'],
-                    ALLOW_DATA_ATTR: false,
-                });
-            }
-
-            // Fallback: return escaped text (loses markdown formatting but safe)
-            console.warn('DOMPurify not available, falling back to plain text rendering');
-            return escapeHtml(rawText);
-        }
-
-        /**
          * Get URL parameter
          */
         function getUrlParam(name) {
@@ -387,6 +364,10 @@
                     linkSection.classList.remove('hidden');
                 }
 
+                // Update chat link with episode_id
+                const chatLink = document.getElementById('openChatBtn');
+                chatLink.href = `/chat.html?scope=episode&episode_id=${encodeURIComponent(episodeId)}`;
+
             } catch (error) {
                 console.error('Error loading episode:', error);
                 showError(error.message || 'Failed to load episode');
@@ -421,21 +402,6 @@
             updateUserUIWithAdmin(user);
             loadEpisode();
         });
-    </script>
-
-    <script>
-        // Update chat link with episode ID
-        const originalLoadEpisode = loadEpisode;
-        loadEpisode = async function() {
-            await originalLoadEpisode();
-
-            // Update chat link with episode_id
-            const episodeId = getUrlParam('id');
-            if (episodeId) {
-                const chatLink = document.getElementById('openChatBtn');
-                chatLink.href = `/chat.html?scope=episode&episode_id=${encodeURIComponent(episodeId)}`;
-            }
-        };
     </script>
 </body>
 </html>

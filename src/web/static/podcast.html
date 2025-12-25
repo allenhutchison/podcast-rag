@@ -281,6 +281,10 @@
                     episodeList.appendChild(createEpisodeCard(episode));
                 });
 
+                // Update chat link with podcast_id
+                const chatLink = document.getElementById('openChatBtn');
+                chatLink.href = `/chat.html?scope=podcast&podcast_id=${encodeURIComponent(podcastId)}`;
+
             } catch (error) {
                 console.error('Error loading podcast:', error);
                 showError(error.message || 'Failed to load podcast');
@@ -307,21 +311,6 @@
             updateUserUIWithAdmin(user);
             loadPodcast();
         });
-    </script>
-
-    <script>
-        // Update chat link with podcast ID
-        const originalLoadPodcast = loadPodcast;
-        loadPodcast = async function() {
-            await originalLoadPodcast();
-
-            // Update chat link with podcast_id
-            const podcastId = getUrlParam('id');
-            if (podcastId) {
-                const chatLink = document.getElementById('openChatBtn');
-                chatLink.href = `/chat.html?scope=podcast&podcast_id=${encodeURIComponent(podcastId)}`;
-            }
-        };
     </script>
 </body>
 </html>

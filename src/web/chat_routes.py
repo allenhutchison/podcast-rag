@@ -11,10 +11,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
-from src.config import Config
 from src.web.auth import get_current_user
 from src.web.models import (
     ChatMessageResponse,
@@ -32,18 +29,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
 
-# Rate limiter - will be configured by app.py
-limiter = Limiter(key_func=get_remote_address)
-
 
 def _get_repository(request: Request):
     """Get repository from app state."""
     return request.app.state.repository
-
-
-def _get_config(request: Request) -> Config:
-    """Get config from app state."""
-    return request.app.state.config
 
 
 @router.get("", response_model=ConversationListResponse)
@@ -285,7 +274,6 @@ async def send_message(
     """
     user_id = current_user["sub"]
     repository = _get_repository(request)
-    config = _get_config(request)
 
     # Verify conversation exists and belongs to user
     conversation = repository.get_conversation(conversation_id)
@@ -295,7 +283,7 @@ async def send_message(
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     # Save user message
-    user_message = repository.add_message(
+    repository.add_message(
         conversation_id=conversation_id,
         role="user",
         content=body.content,

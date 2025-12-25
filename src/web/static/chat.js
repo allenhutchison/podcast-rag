@@ -27,6 +27,14 @@ const messageInput = document.getElementById('messageInput');
 const sendBtn = document.getElementById('sendBtn');
 const mobileTitle = document.getElementById('mobileTitle');
 
+// Configure marked for safe rendering (once at module load)
+marked.setOptions({
+    breaks: true,
+    gfm: true,
+    headerIds: false,
+    mangle: false
+});
+
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
     // Use auth.js for authentication and user menu
@@ -538,14 +546,6 @@ function escapeHtml(text) {
 // Safe markdown to HTML (with DOMPurify sanitization)
 function safeMarkdownToHtml(text) {
     if (!text) return '';
-
-    // Configure marked for safe rendering
-    marked.setOptions({
-        breaks: true,
-        gfm: true,
-        headerIds: false,
-        mangle: false
-    });
 
     const html = marked.parse(text);
 
