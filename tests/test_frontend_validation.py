@@ -272,19 +272,19 @@ class TestChatJSRemoval:
     """Tests verifying that old chat.js was properly removed or replaced."""
 
     def test_old_chat_js_removed(self):
-        """Test that old chat.js file was removed or replaced."""
+        """Test that old chat.js file was removed or replaced with new conversation-based chat.js."""
         path = Path("src/web/static/chat.js")
 
         if not path.exists():
-            # File was removed - this is expected
-            assert True, "Old chat.js was removed as expected"
+            # File was removed - this is acceptable
+            assert True, "Old chat.js was removed"
         else:
-            # If it still exists, it should be significantly different
+            # If it exists, it should be the new conversation-based version
             content = path.read_text()
 
-            # Check that it's not the old version (old version wouldn't have subscribed_only)
-            assert "subscribed" in content.lower() or len(content) < 100, \
-                "If chat.js exists, it should be updated or deprecated"
+            # Check that it's the new conversation-based version
+            assert "conversation" in content.lower() or "subscriptions" in content.lower(), \
+                "chat.js should be the new conversation-based version"
 
 
 class TestStaticFileIntegrity:

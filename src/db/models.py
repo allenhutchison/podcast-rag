@@ -337,3 +337,100 @@ class UserSubscription(Base):
     def __repr__(self) -> str:
         """Return a concise representation of the UserSubscription instance."""
         return f"<UserSubscription(user_id={self.user_id}, podcast_id={self.podcast_id})>"
+
+
+class Conversation(Base):
+    """Chat conversation model.
+
+    Stores conversation metadata and scope configuration for persistent chat history.
+    """
+
+    __tablename__ = "conversations"
+
+    # Primary key
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+
+    # Conversation metadata
+    title: Mapped[Optional[str]] = mapped_column(
+        String(256)
+    )  # Auto-generated from first message
+
+    # Scope configuration
+    scope: Mapped[str] = mapped_column(
+        String(32), nullable=False
+    )  # 'subscriptions', 'all', 'podcast', 'episode'
+    podcast_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("podcasts.id", ondelete="SET NULL")
+    )
+    episode_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("episodes.id", ondelete="SET NULL")
+    )
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    # Relationships
+    user: Mapped["User"] = relationship("User")
+    podcast: Mapped[Optional["Podcast"]] = relationship("Podcast")
+    episode: Mapped[Optional["Episode"]] = relationship("Episode")
+    messages: Mapped[List["ChatMessage"]] = relationship(
+        "ChatMessage", back_populates="conversation", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index("ix_conversations_user_id", "user_id"),
+        Index("ix_conversations_updated_at", "updated_at"),
+    )
+
+    def __repr__(self) -> str:
+        """Return a concise representation of the Conversation instance."""
+        return f"<Conversation(id={self.id}, scope={self.scope!r})>"
+
+
+class ChatMessage(Base):
+    """Individual message in a conversation.
+
+    Stores message content, role (user/assistant), and optional citations.
+    """
+
+    __tablename__ = "chat_messages"
+
+    # Primary key
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    conversation_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False
+    )
+
+    # Message content
+    role: Mapped[str] = mapped_column(String(16), nullable=False)  # 'user' or 'assistant'
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # Citations for assistant messages (JSON array)
+    citations: Mapped[Optional[List[Dict[str, Any]]]] = mapped_column(JSON)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    conversation: Mapped["Conversation"] = relationship(
+        "Conversation", back_populates="messages"
+    )
+
+    __table_args__ = (
+        Index("ix_chat_messages_conversation_id", "conversation_id"),
+        Index("ix_chat_messages_created_at", "created_at"),
+    )
+
+    def __repr__(self) -> str:
+        """Return a concise representation of the ChatMessage instance."""
+        return f"<ChatMessage(id={self.id}, role={self.role!r})>"

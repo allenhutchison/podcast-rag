@@ -15,7 +15,7 @@ from sqlalchemy import String, cast, create_engine, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, sessionmaker
 
-from .models import Base, Episode, Podcast, User, UserSubscription
+from .models import Base, ChatMessage, Conversation, Episode, Podcast, User, UserSubscription
 
 logger = logging.getLogger(__name__)
 
@@ -1061,6 +1061,135 @@ class PodcastRepositoryInterface(ABC):
 
         Returns:
             List[Episode]: Recent processed episodes from any podcast.
+        """
+        pass
+
+    # --- Conversation Operations ---
+
+    @abstractmethod
+    def create_conversation(
+        self,
+        user_id: str,
+        scope: str,
+        podcast_id: Optional[str] = None,
+        episode_id: Optional[str] = None,
+        title: Optional[str] = None,
+    ) -> Conversation:
+        """Create a new conversation for a user.
+
+        Args:
+            user_id: The user's UUID.
+            scope: Chat scope ('subscriptions', 'all', 'podcast', 'episode').
+            podcast_id: Optional podcast ID for 'podcast' or 'episode' scope.
+            episode_id: Optional episode ID for 'episode' scope.
+            title: Optional conversation title.
+
+        Returns:
+            Conversation: The newly created conversation.
+        """
+        pass
+
+    @abstractmethod
+    def get_conversation(self, conversation_id: str) -> Optional[Conversation]:
+        """Get a conversation by ID with its messages.
+
+        Args:
+            conversation_id: The conversation UUID.
+
+        Returns:
+            Optional[Conversation]: The conversation if found, None otherwise.
+        """
+        pass
+
+    @abstractmethod
+    def list_conversations(
+        self, user_id: str, limit: int = 50, offset: int = 0
+    ) -> List[Conversation]:
+        """List conversations for a user, ordered by most recent first.
+
+        Args:
+            user_id: The user's UUID.
+            limit: Maximum number of conversations to return.
+            offset: Number of conversations to skip.
+
+        Returns:
+            List[Conversation]: User's conversations ordered by updated_at desc.
+        """
+        pass
+
+    @abstractmethod
+    def update_conversation(
+        self, conversation_id: str, **kwargs
+    ) -> Optional[Conversation]:
+        """Update a conversation's attributes.
+
+        Args:
+            conversation_id: The conversation UUID.
+            **kwargs: Fields to update (title, scope, podcast_id, episode_id).
+
+        Returns:
+            Optional[Conversation]: Updated conversation if found, None otherwise.
+        """
+        pass
+
+    @abstractmethod
+    def delete_conversation(self, conversation_id: str) -> bool:
+        """Delete a conversation and all its messages.
+
+        Args:
+            conversation_id: The conversation UUID.
+
+        Returns:
+            bool: True if deleted, False if not found.
+        """
+        pass
+
+    @abstractmethod
+    def add_message(
+        self,
+        conversation_id: str,
+        role: str,
+        content: str,
+        citations: Optional[List[Dict[str, Any]]] = None,
+    ) -> ChatMessage:
+        """Add a message to a conversation.
+
+        Args:
+            conversation_id: The conversation UUID.
+            role: Message role ('user' or 'assistant').
+            content: Message content.
+            citations: Optional list of citation objects for assistant messages.
+
+        Returns:
+            ChatMessage: The newly created message.
+        """
+        pass
+
+    @abstractmethod
+    def get_messages(
+        self, conversation_id: str, limit: int = 100, offset: int = 0
+    ) -> List[ChatMessage]:
+        """Get messages for a conversation, ordered by creation time.
+
+        Args:
+            conversation_id: The conversation UUID.
+            limit: Maximum number of messages to return.
+            offset: Number of messages to skip.
+
+        Returns:
+            List[ChatMessage]: Messages ordered by created_at asc.
+        """
+        pass
+
+    @abstractmethod
+    def count_conversations(self, user_id: str) -> int:
+        """Count total conversations for a user.
+
+        Args:
+            user_id: The user's UUID.
+
+        Returns:
+            int: Number of conversations.
         """
         pass
 
@@ -2768,12 +2897,148 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             )
             return list(session.scalars(stmt).unique().all())
 
+    # --- Conversation Operations ---
+
+    def create_conversation(
+        self,
+        user_id: str,
+        scope: str,
+        podcast_id: Optional[str] = None,
+        episode_id: Optional[str] = None,
+        title: Optional[str] = None,
+    ) -> Conversation:
+        """Create a new conversation for a user."""
+        with self._get_session() as session:
+            conversation = Conversation(
+                user_id=user_id,
+                scope=scope,
+                podcast_id=podcast_id,
+                episode_id=episode_id,
+                title=title,
+            )
+            session.add(conversation)
+            session.commit()
+            session.refresh(conversation)
+            return conversation
+
+    def get_conversation(self, conversation_id: str) -> Optional[Conversation]:
+        """Get a conversation by ID with its messages and related entities."""
+        with self._get_session() as session:
+            stmt = (
+                select(Conversation)
+                .options(
+                    joinedload(Conversation.messages),
+                    joinedload(Conversation.podcast),
+                    joinedload(Conversation.episode),
+                )
+                .where(Conversation.id == conversation_id)
+            )
+            return session.scalars(stmt).unique().first()
+
+    def list_conversations(
+        self, user_id: str, limit: int = 50, offset: int = 0
+    ) -> List[Conversation]:
+        """List conversations for a user, ordered by most recent first."""
+        with self._get_session() as session:
+            stmt = (
+                select(Conversation)
+                .options(
+                    joinedload(Conversation.podcast),
+                    joinedload(Conversation.episode),
+                )
+                .where(Conversation.user_id == user_id)
+                .order_by(Conversation.updated_at.desc())
+                .offset(offset)
+                .limit(limit)
+            )
+            return list(session.scalars(stmt).unique().all())
+
+    def update_conversation(
+        self, conversation_id: str, **kwargs
+    ) -> Optional[Conversation]:
+        """Update a conversation's attributes."""
+        with self._get_session() as session:
+            conversation = session.get(Conversation, conversation_id)
+            if not conversation:
+                return None
+
+            allowed_fields = {"title", "scope", "podcast_id", "episode_id"}
+            for key, value in kwargs.items():
+                if key in allowed_fields:
+                    setattr(conversation, key, value)
+
+            conversation.updated_at = datetime.now(UTC)
+            session.commit()
+            session.refresh(conversation)
+            return conversation
+
+    def delete_conversation(self, conversation_id: str) -> bool:
+        """Delete a conversation and all its messages (via cascade)."""
+        with self._get_session() as session:
+            conversation = session.get(Conversation, conversation_id)
+            if not conversation:
+                return False
+
+            session.delete(conversation)
+            session.commit()
+            return True
+
+    def add_message(
+        self,
+        conversation_id: str,
+        role: str,
+        content: str,
+        citations: Optional[List[Dict[str, Any]]] = None,
+    ) -> ChatMessage:
+        """Add a message to a conversation and update conversation's updated_at."""
+        with self._get_session() as session:
+            message = ChatMessage(
+                conversation_id=conversation_id,
+                role=role,
+                content=content,
+                citations=citations,
+            )
+            session.add(message)
+
+            # Update conversation's updated_at timestamp
+            conversation = session.get(Conversation, conversation_id)
+            if conversation:
+                conversation.updated_at = datetime.now(UTC)
+
+            session.commit()
+            session.refresh(message)
+            return message
+
+    def get_messages(
+        self, conversation_id: str, limit: int = 100, offset: int = 0
+    ) -> List[ChatMessage]:
+        """Get messages for a conversation, ordered by creation time."""
+        with self._get_session() as session:
+            stmt = (
+                select(ChatMessage)
+                .where(ChatMessage.conversation_id == conversation_id)
+                .order_by(ChatMessage.created_at.asc())
+                .offset(offset)
+                .limit(limit)
+            )
+            return list(session.scalars(stmt).all())
+
+    def count_conversations(self, user_id: str) -> int:
+        """Count total conversations for a user."""
+        with self._get_session() as session:
+            stmt = (
+                select(func.count())
+                .select_from(Conversation)
+                .where(Conversation.user_id == user_id)
+            )
+            return session.scalar(stmt) or 0
+
     # --- Connection Management ---
 
     def close(self) -> None:
         """
         Dispose the SQLAlchemy engine and release database connections and resources.
-        
+
         This closes all pooled connections and frees underlying resources held by the engine.
         """
         self.engine.dispose()

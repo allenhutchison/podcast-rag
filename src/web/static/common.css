@@ -1,0 +1,30 @@
+/**
+ * Shared CSS styles for all pages
+ */
+
+/* Loading skeleton animation */
+@keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+.skeleton {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+}
+
+/* Placeholder for missing images */
+.placeholder-image {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+/* Hover effect for cards */
+.card-hover {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+}
