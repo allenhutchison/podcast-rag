@@ -7,28 +7,7 @@
 
     <!-- Tailwind CSS via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-
-    <!-- Custom configuration for Tailwind -->
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: '#2563eb',
-                        secondary: '#64748b',
-                    }
-                }
-            }
-        }
-    </script>
-
-    <!-- Chat Drawer Styles -->
-    <link rel="stylesheet" href="/chat-drawer.css">
-
-    <!-- Marked.js for Markdown rendering -->
-    <script src="https://cdn.jsdelivr.net/npm/marked@17.0.1/marked.min.js"></script>
-    <!-- DOMPurify for HTML sanitization (XSS prevention) -->
-    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.3.1/dist/purify.min.js"></script>
+    <script src="/tailwind-config.js"></script>
 
     <style>
         /* Hover effect for episode cards */
@@ -67,13 +46,14 @@
                 <h1 id="pageTitle" class="text-2xl font-bold text-gray-900 mt-1">Loading...</h1>
             </div>
             <div class="flex items-center gap-4">
-                <button
+                <a
                     id="openChatBtn"
+                    href="/chat.html?scope=podcast"
                     class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm"
                     title="Ask questions about this podcast's episodes using AI"
                 >
                     AI Podcast Chat
-                </button>
+                </a>
                 <div id="userInfo" class="border-l pl-4 border-gray-200"></div>
             </div>
         </div>
@@ -301,6 +281,10 @@
                     episodeList.appendChild(createEpisodeCard(episode));
                 });
 
+                // Update chat link with podcast_id
+                const chatLink = document.getElementById('openChatBtn');
+                chatLink.href = `/chat.html?scope=podcast&podcast_id=${encodeURIComponent(podcastId)}`;
+
             } catch (error) {
                 console.error('Error loading podcast:', error);
                 showError(error.message || 'Failed to load podcast');
@@ -327,42 +311,6 @@
             updateUserUIWithAdmin(user);
             loadPodcast();
         });
-    </script>
-
-    <!-- Chat Drawer Component -->
-    <script src="/chat-drawer.js"></script>
-    <script>
-        // Initialize chat drawer with podcast scope
-        let chatDrawer;
-        const openChatBtn = document.getElementById('openChatBtn');
-
-        function initializeChatDrawer(podcastId, podcastTitle) {
-            chatDrawer = new ChatDrawer({
-                scope: 'podcast',
-                podcastId: podcastId,
-                contextTitle: podcastTitle
-            });
-            chatDrawer.init();
-
-            // Add click handler to open button
-            openChatBtn.addEventListener('click', () => {
-                chatDrawer.open();
-            });
-        }
-
-        // Update the loadPodcast function to initialize the drawer after loading
-        const originalLoadPodcast = loadPodcast;
-        loadPodcast = async function() {
-            await originalLoadPodcast();
-
-            // Initialize chat drawer with podcast data
-            const podcastId = getUrlParam('id');
-            const podcastTitleElement = document.getElementById('podcastTitle');
-            if (podcastId && podcastTitleElement && podcastTitleElement.textContent !== 'Loading...') {
-                // Pass podcast_id as string (UUIDs are strings, not integers)
-                initializeChatDrawer(podcastId, podcastTitleElement.textContent);
-            }
-        };
     </script>
 </body>
 </html>

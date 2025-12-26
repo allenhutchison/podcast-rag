@@ -29,6 +29,7 @@ from src.db.factory import create_repository
 from src.web.admin_routes import router as admin_router
 from src.web.auth import get_current_user
 from src.web.auth_routes import router as auth_router
+from src.web.chat_routes import router as chat_router
 from src.web.podcast_routes import router as podcast_router
 from src.web.user_routes import router as user_router
 from src.web.models import ChatRequest
@@ -141,6 +142,9 @@ app.include_router(user_router)
 
 # Include podcast routes (add, search, import)
 app.include_router(podcast_router)
+
+# Include chat/conversation routes
+app.include_router(chat_router)
 
 def _validate_session_id(session_id: str) -> str:
     """

@@ -7,20 +7,7 @@
 
     <!-- Tailwind CSS via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-
-    <!-- Custom configuration for Tailwind -->
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: '#2563eb',
-                        secondary: '#64748b',
-                    }
-                }
-            }
-        }
-    </script>
+    <script src="/tailwind-config.js"></script>
 
     <style>
         /* Loading skeleton animation */
@@ -60,13 +47,6 @@
         }
     </style>
 
-    <!-- Chat Drawer Styles -->
-    <link rel="stylesheet" href="/chat-drawer.css">
-
-    <!-- Marked.js for Markdown rendering -->
-    <script src="https://cdn.jsdelivr.net/npm/marked@17.0.1/marked.min.js"></script>
-    <!-- DOMPurify for HTML sanitization (XSS prevention) -->
-    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.3.1/dist/purify.min.js"></script>
 </head>
 <body class="bg-gray-50 min-h-screen flex flex-col">
 
@@ -78,13 +58,14 @@
                 <h1 id="pageTitle" class="text-2xl font-bold text-gray-900 mt-1 line-clamp-1">Loading...</h1>
             </div>
             <div class="flex items-center gap-4">
-                <button
+                <a
                     id="openChatBtn"
+                    href="/chat.html?scope=episode"
                     class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm"
                     title="Ask questions about this episode using AI"
                 >
                     AI Podcast Chat
-                </button>
+                </a>
                 <div id="userInfo" class="border-l pl-4 border-gray-200"></div>
             </div>
         </div>
@@ -206,29 +187,6 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
-        }
-
-        /**
-         * Safely render markdown to sanitized HTML.
-         * Uses DOMPurify to prevent XSS attacks from AI/upstream content.
-         * Falls back to plain text if DOMPurify is unavailable.
-         */
-        function safeMarkdownToHtml(text) {
-            const rawText = text || 'No response received.';
-            const parsedHtml = marked.parse(rawText);
-
-            // Use DOMPurify if available, otherwise fall back to textContent (safe but loses formatting)
-            if (typeof DOMPurify !== 'undefined' && DOMPurify.sanitize) {
-                return DOMPurify.sanitize(parsedHtml, {
-                    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'b', 'i', 'u', 'code', 'pre', 'ul', 'ol', 'li', 'a', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'],
-                    ALLOWED_ATTR: ['href', 'target', 'rel'],
-                    ALLOW_DATA_ATTR: false,
-                });
-            }
-
-            // Fallback: return escaped text (loses markdown formatting but safe)
-            console.warn('DOMPurify not available, falling back to plain text rendering');
-            return escapeHtml(rawText);
         }
 
         /**
@@ -406,6 +364,10 @@
                     linkSection.classList.remove('hidden');
                 }
 
+                // Update chat link with episode_id
+                const chatLink = document.getElementById('openChatBtn');
+                chatLink.href = `/chat.html?scope=episode&episode_id=${encodeURIComponent(episodeId)}`;
+
             } catch (error) {
                 console.error('Error loading episode:', error);
                 showError(error.message || 'Failed to load episode');
@@ -440,41 +402,6 @@
             updateUserUIWithAdmin(user);
             loadEpisode();
         });
-    </script>
-
-    <!-- Chat Drawer Component -->
-    <script src="/chat-drawer.js"></script>
-    <script>
-        // Initialize chat drawer with episode scope
-        let chatDrawer;
-        const openChatBtn = document.getElementById('openChatBtn');
-
-        function initializeChatDrawer(episodeId, episodeTitle) {
-            chatDrawer = new ChatDrawer({
-                scope: 'episode',
-                episodeId: episodeId,
-                contextTitle: episodeTitle
-            });
-            chatDrawer.init();
-
-            // Add click handler to open button
-            openChatBtn.addEventListener('click', () => {
-                chatDrawer.open();
-            });
-        }
-
-        // Update the loadEpisode function to initialize the drawer after loading
-        const originalLoadEpisode = loadEpisode;
-        loadEpisode = async function() {
-            await originalLoadEpisode();
-
-            // Initialize chat drawer with episode data
-            const episodeId = getUrlParam('id');
-            const episodeTitleElement = document.getElementById('episodeTitle');
-            if (episodeId && episodeTitleElement && episodeTitleElement.textContent) {
-                initializeChatDrawer(episodeId, episodeTitleElement.textContent);
-            }
-        };
     </script>
 </body>
 </html>

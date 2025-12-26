@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat - Podcast RAG</title>
+
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/tailwind-config.js"></script>
+
+    <!-- Marked.js for Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@17.0.1/marked.min.js"></script>
+    <!-- DOMPurify for HTML sanitization (XSS prevention) -->
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.3.1/dist/purify.min.js"></script>
+
+    <link rel="stylesheet" href="/chat.css">
+</head>
+<body class="bg-gray-50 min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-gray-200 px-4 sm:px-6 py-4 shadow-sm flex-shrink-0">
+        <div class="max-w-7xl mx-auto flex justify-between items-center gap-2">
+            <div class="min-w-0">
+                <h1 class="text-2xl font-bold text-gray-900">AI Chat</h1>
+                <p class="text-sm text-gray-600 mt-1 hidden sm:block">Ask questions about your podcasts</p>
+            </div>
+            <div class="flex items-center gap-2 sm:gap-4 flex-shrink-0">
+                <a
+                    href="/podcasts.html"
+                    class="px-3 sm:px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm h-10 flex items-center justify-center whitespace-nowrap"
+                >
+                    <span class="hidden sm:inline">← Podcasts</span>
+                    <span class="sm:hidden">←</span>
+                </a>
+                <button
+                    id="newChatBtn"
+                    onclick="createNewConversation()"
+                    class="px-3 sm:px-4 py-2.5 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm h-10 flex items-center justify-center whitespace-nowrap"
+                >
+                    <span class="hidden sm:inline">+ New Chat</span>
+                    <span class="sm:hidden">+ New</span>
+                </button>
+                <div id="userInfo" class="border-l pl-2 sm:pl-4 border-gray-200"></div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Layout -->
+    <div class="flex flex-1 overflow-hidden">
+        <!-- Sidebar (collapsible on mobile) -->
+        <aside id="sidebar" class="chat-sidebar bg-white border-r border-gray-200 flex flex-col">
+            <!-- Sidebar Toggle (mobile) -->
+            <button
+                id="closeSidebarBtn"
+                onclick="toggleSidebar()"
+                class="sm:hidden absolute top-2 right-2 p-2 text-gray-500 hover:text-gray-700"
+            >
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+
+            <!-- Scope Selector -->
+            <div class="p-4 border-b border-gray-200">
+                <label class="block text-xs font-medium text-gray-600 mb-2">Chat Scope</label>
+                <select
+                    id="scopeSelect"
+                    onchange="handleScopeChange()"
+                    class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                >
+                    <option value="subscriptions">My Subscriptions</option>
+                    <option value="all">All Podcasts</option>
+                    <option value="podcast">Specific Podcast...</option>
+                    <option value="episode">Specific Episode...</option>
+                </select>
+
+                <!-- Secondary Pickers (hidden by default) -->
+                <div id="podcastPicker" class="mt-2 hidden">
+                    <select
+                        id="podcastSelect"
+                        onchange="handlePodcastChange()"
+                        class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    >
+                        <option value="">Select podcast...</option>
+                    </select>
+                </div>
+
+                <div id="episodePicker" class="mt-2 hidden">
+                    <select
+                        id="episodeSelect"
+                        onchange="handleEpisodeChange()"
+                        class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    >
+                        <option value="">Select episode...</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Conversation History -->
+            <div class="flex-1 overflow-y-auto">
+                <div class="p-3">
+                    <h3 class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">History</h3>
+                    <div id="conversationList" class="space-y-1">
+                        <!-- Conversations loaded dynamically -->
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Sidebar Overlay (mobile) -->
+        <div id="sidebarOverlay" class="sidebar-overlay hidden" onclick="toggleSidebar()"></div>
+
+        <!-- Main Chat Area -->
+        <main class="flex-1 flex flex-col bg-white min-w-0">
+            <!-- Mobile Header with Sidebar Toggle -->
+            <div class="sm:hidden flex items-center gap-3 p-3 border-b border-gray-200">
+                <button
+                    id="openSidebarBtn"
+                    onclick="toggleSidebar()"
+                    class="p-2 text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100"
+                >
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                    </svg>
+                </button>
+                <span id="mobileTitle" class="text-sm font-medium text-gray-700 truncate">New Chat</span>
+            </div>
+
+            <!-- Messages Area -->
+            <div id="messagesArea" class="flex-1 overflow-y-auto p-4">
+                <!-- Welcome State -->
+                <div id="welcomeState" class="flex flex-col items-center justify-center h-full text-center px-4">
+                    <div class="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4">
+                        <svg class="w-8 h-8 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+                        </svg>
+                    </div>
+                    <h2 class="text-xl font-semibold text-gray-900 mb-2">Ask about your podcasts</h2>
+                    <p class="text-gray-600 max-w-md mb-6">
+                        Select a scope from the sidebar and start a conversation. Your chat history will be saved automatically.
+                    </p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg w-full">
+                        <button onclick="setScope('subscriptions')" class="p-3 text-left border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                            <div class="font-medium text-gray-900 text-sm">My Subscriptions</div>
+                            <div class="text-xs text-gray-500">Ask about podcasts you follow</div>
+                        </button>
+                        <button onclick="setScope('all')" class="p-3 text-left border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                            <div class="font-medium text-gray-900 text-sm">All Podcasts</div>
+                            <div class="text-xs text-gray-500">Search the entire library</div>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Messages Container (hidden initially) -->
+                <div id="messagesContainer" class="space-y-4 hidden max-w-3xl mx-auto">
+                    <!-- Messages loaded dynamically -->
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div class="border-t border-gray-200 p-4 bg-white flex-shrink-0">
+                <form id="chatForm" onsubmit="handleSubmit(event)" class="max-w-3xl mx-auto">
+                    <div class="flex gap-3">
+                        <input
+                            type="text"
+                            id="messageInput"
+                            placeholder="Ask a question about your podcasts..."
+                            class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm"
+                            autocomplete="off"
+                            required
+                        >
+                        <button
+                            type="submit"
+                            id="sendBtn"
+                            class="px-5 py-3 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            Send
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </main>
+    </div>
+
+    <script src="/auth.js?v=1"></script>
+    <script src="/chat.js"></script>
+</body>
+</html>
