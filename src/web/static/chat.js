@@ -398,6 +398,36 @@ async function handleSubmit(event) {
         let assistantMessageEl = null;
         let buffer = '';  // Buffer to handle SSE events split across chunks
 
+        // Helper to parse a single SSE event and update state
+        function processSSEEvent(event) {
+            if (!event.trim()) return;
+
+            // Parse SSE event - find the data line
+            const lines = event.split('\n');
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+
+                const data = line.slice(6);
+                try {
+                    const parsed = JSON.parse(data);
+
+                    if (parsed.token) {
+                        // Remove typing indicator on first token
+                        if (!assistantMessageEl) {
+                            typingIndicator.remove();
+                            assistantMessageEl = addMessageToUI('', 'assistant');
+                        }
+                        assistantContent += parsed.token;
+                        updateAssistantMessage(assistantMessageEl, assistantContent);
+                    } else if (parsed.citations) {
+                        citations = parsed.citations;
+                    }
+                } catch (e) {
+                    // Ignore parse errors for malformed events
+                }
+            }
+        }
+
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
@@ -411,33 +441,13 @@ async function handleSubmit(event) {
             buffer = events.pop() || '';
 
             for (const event of events) {
-                if (!event.trim()) continue;
-
-                // Parse SSE event - find the data line
-                const lines = event.split('\n');
-                for (const line of lines) {
-                    if (!line.startsWith('data: ')) continue;
-
-                    const data = line.slice(6);
-                    try {
-                        const parsed = JSON.parse(data);
-
-                        if (parsed.token) {
-                            // Remove typing indicator on first token
-                            if (!assistantMessageEl) {
-                                typingIndicator.remove();
-                                assistantMessageEl = addMessageToUI('', 'assistant');
-                            }
-                            assistantContent += parsed.token;
-                            updateAssistantMessage(assistantMessageEl, assistantContent);
-                        } else if (parsed.citations) {
-                            citations = parsed.citations;
-                        }
-                    } catch (e) {
-                        // Ignore parse errors for malformed events
-                    }
-                }
+                processSSEEvent(event);
             }
+        }
+
+        // Process any remaining buffer content (final event without trailing \n\n)
+        if (buffer.trim()) {
+            processSSEEvent(buffer);
         }
 
         // Add citations if any
