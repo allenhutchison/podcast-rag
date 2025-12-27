@@ -35,8 +35,9 @@ from src.web.user_routes import router as user_router
 from src.web.models import ChatRequest
 
 # Configure logging
+log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, log_level, logging.INFO),
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
@@ -609,13 +610,19 @@ Please provide a comprehensive, detailed answer based on these podcast descripti
 
         full_text = ""
         final_response = None
+        chunk_count = 0
         for chunk in response:
+            chunk_count += 1
+            # Each chunk contains its own text (not accumulated)
             if hasattr(chunk, 'text') and chunk.text:
-                # Stream each chunk as it arrives
-                yield f"event: token\ndata: {json.dumps({'token': chunk.text})}\n\n"
-                full_text += chunk.text
+                chunk_text = chunk.text
+                logger.debug(f"Streaming chunk {chunk_count}: {len(chunk_text)} chars")
+                yield f"event: token\ndata: {json.dumps({'token': chunk_text})}\n\n"
+                full_text += chunk_text
             # Keep reference to last chunk which may contain grounding metadata
             final_response = chunk
+
+        logger.info(f"Streamed {chunk_count} chunks, {len(full_text)} total chars")
 
         # Extract citations from the streamed response (only for File Search queries)
         citations = []

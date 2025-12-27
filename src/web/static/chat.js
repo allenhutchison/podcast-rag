@@ -109,7 +109,8 @@ async function loadPodcasts() {
     try {
         const response = await fetch('/api/podcasts?include_stats=true', { credentials: 'include' });
         if (!response.ok) throw new Error('Failed to load podcasts');
-        podcasts = await response.json();
+        const data = await response.json();
+        podcasts = data.podcasts || [];
 
         podcastSelect.innerHTML = '<option value="">Select podcast...</option>' +
             podcasts.map(p => `<option value="${p.id}">${escapeHtml(p.title)}</option>`).join('');
@@ -395,34 +396,46 @@ async function handleSubmit(event) {
         let assistantContent = '';
         let citations = [];
         let assistantMessageEl = null;
+        let buffer = '';  // Buffer to handle SSE events split across chunks
 
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
 
-            const chunk = decoder.decode(value);
-            const lines = chunk.split('\n');
+            // Accumulate chunks in buffer
+            buffer += decoder.decode(value, { stream: true });
 
-            for (const line of lines) {
-                if (!line.startsWith('data: ')) continue;
+            // Process complete SSE events (delimited by double newline)
+            const events = buffer.split('\n\n');
+            // Keep the last incomplete event in buffer
+            buffer = events.pop() || '';
 
-                const data = line.slice(6);
-                try {
-                    const parsed = JSON.parse(data);
+            for (const event of events) {
+                if (!event.trim()) continue;
 
-                    if (parsed.token) {
-                        // Remove typing indicator on first token
-                        if (!assistantMessageEl) {
-                            typingIndicator.remove();
-                            assistantMessageEl = addMessageToUI('', 'assistant');
+                // Parse SSE event - find the data line
+                const lines = event.split('\n');
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+
+                    const data = line.slice(6);
+                    try {
+                        const parsed = JSON.parse(data);
+
+                        if (parsed.token) {
+                            // Remove typing indicator on first token
+                            if (!assistantMessageEl) {
+                                typingIndicator.remove();
+                                assistantMessageEl = addMessageToUI('', 'assistant');
+                            }
+                            assistantContent += parsed.token;
+                            updateAssistantMessage(assistantMessageEl, assistantContent);
+                        } else if (parsed.citations) {
+                            citations = parsed.citations;
                         }
-                        assistantContent += parsed.token;
-                        updateAssistantMessage(assistantMessageEl, assistantContent);
-                    } else if (parsed.citations) {
-                        citations = parsed.citations;
+                    } catch (e) {
+                        // Ignore parse errors for malformed events
                     }
-                } catch (e) {
-                    // Ignore parse errors
                 }
             }
         }
