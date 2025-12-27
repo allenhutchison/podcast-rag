@@ -290,6 +290,7 @@ class PostProcessor:
                 guests=merged.guests,
                 mp3_artist=merged.mp3_artist,
                 mp3_album=merged.mp3_album,
+                email_content=merged.email_content,
             )
 
             self._stats.increment_metadata_processed()
