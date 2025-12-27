@@ -109,7 +109,8 @@ async function loadPodcasts() {
     try {
         const response = await fetch('/api/podcasts?include_stats=true', { credentials: 'include' });
         if (!response.ok) throw new Error('Failed to load podcasts');
-        podcasts = await response.json();
+        const data = await response.json();
+        podcasts = data.podcasts || [];
 
         podcastSelect.innerHTML = '<option value="">Select podcast...</option>' +
             podcasts.map(p => `<option value="${p.id}">${escapeHtml(p.title)}</option>`).join('');
@@ -395,14 +396,14 @@ async function handleSubmit(event) {
         let assistantContent = '';
         let citations = [];
         let assistantMessageEl = null;
+        let buffer = '';  // Buffer to handle SSE events split across chunks
 
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
+        // Helper to parse a single SSE event and update state
+        function processSSEEvent(event) {
+            if (!event.trim()) return;
 
-            const chunk = decoder.decode(value);
-            const lines = chunk.split('\n');
-
+            // Parse SSE event - find the data line
+            const lines = event.split('\n');
             for (const line of lines) {
                 if (!line.startsWith('data: ')) continue;
 
@@ -422,9 +423,31 @@ async function handleSubmit(event) {
                         citations = parsed.citations;
                     }
                 } catch (e) {
-                    // Ignore parse errors
+                    // Ignore parse errors for malformed events
                 }
             }
+        }
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            // Accumulate chunks in buffer
+            buffer += decoder.decode(value, { stream: true });
+
+            // Process complete SSE events (delimited by double newline)
+            const events = buffer.split('\n\n');
+            // Keep the last incomplete event in buffer
+            buffer = events.pop() || '';
+
+            for (const event of events) {
+                processSSEEvent(event);
+            }
+        }
+
+        // Process any remaining buffer content (final event without trailing \n\n)
+        if (buffer.trim()) {
+            processSSEEvent(buffer);
         }
 
         // Add citations if any
