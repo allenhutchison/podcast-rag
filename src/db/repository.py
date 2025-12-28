@@ -434,11 +434,21 @@ class PodcastRepositoryInterface(ABC):
     def get_episodes_pending_indexing(self, limit: int = 10) -> List[Episode]:
         """
         Return episodes whose metadata is complete and are awaiting File Search indexing.
-        
+
         Episodes returned have metadata_status set to "completed", file_search_status set to "pending", and a transcript path present. Results are ordered by published date (newest first) and limited to at most `limit` items.
-        
+
         Returns:
             List[Episode]: A list of episodes matching the indexing criteria, ordered by published date descending, up to `limit`.
+        """
+        pass
+
+    @abstractmethod
+    def count_episodes_pending_indexing(self) -> int:
+        """
+        Count episodes pending File Search indexing.
+
+        Returns:
+            int: Number of episodes waiting to be indexed.
         """
         pass
 
@@ -643,6 +653,16 @@ class PodcastRepositoryInterface(ABC):
 
         Returns:
             List[Podcast]: Podcasts ready for description indexing.
+        """
+        pass
+
+    @abstractmethod
+    def count_podcasts_pending_description_indexing(self) -> int:
+        """
+        Count podcasts pending description indexing.
+
+        Returns:
+            int: Number of podcasts waiting to have descriptions indexed.
         """
         pass
 
@@ -1940,13 +1960,35 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             )
             return list(session.scalars(stmt).unique().all())
 
+    def count_episodes_pending_indexing(self) -> int:
+        """
+        Count episodes pending File Search indexing.
+
+        Returns:
+            int: Number of episodes waiting to be indexed.
+        """
+        with self._get_session() as session:
+            return (
+                session.scalar(
+                    select(func.count(Episode.id)).where(
+                        Episode.metadata_status == "completed",
+                        Episode.file_search_status == "pending",
+                        or_(
+                            Episode.transcript_text.isnot(None),
+                            Episode.transcript_path.isnot(None),
+                        ),
+                    )
+                )
+                or 0
+            )
+
     def get_episodes_ready_for_cleanup(self, limit: int = 10) -> List[Episode]:
         """
         Return episodes that are fully processed and have local audio files eligible for deletion.
-        
+
         Parameters:
             limit (int): Maximum number of episodes to return.
-        
+
         Returns:
             List[Episode]: Episodes where transcript_status == "completed", metadata_status == "completed",
             file_search_status == "indexed", and local_file_path is set; limited to `limit` items.
@@ -2211,6 +2253,25 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             for podcast in podcasts:
                 session.expunge(podcast)
             return podcasts
+
+    def count_podcasts_pending_description_indexing(self) -> int:
+        """
+        Count podcasts pending description indexing.
+
+        Returns:
+            int: Number of podcasts waiting to have descriptions indexed.
+        """
+        with self._get_session() as session:
+            return (
+                session.scalar(
+                    select(func.count(Podcast.id)).where(
+                        Podcast.description.isnot(None),
+                        Podcast.description != "",
+                        Podcast.description_file_search_status == "pending",
+                    )
+                )
+                or 0
+            )
 
     def mark_description_indexing_started(self, podcast_id: str) -> None:
         """

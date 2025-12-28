@@ -65,8 +65,7 @@ class DescriptionIndexingWorker(WorkerInterface):
         Returns:
             Number of podcasts waiting to be indexed.
         """
-        podcasts = self.repository.get_podcasts_pending_description_indexing(limit=1000)
-        return len(podcasts)
+        return self.repository.count_podcasts_pending_description_indexing()
 
     def _index_description(self, podcast: Podcast) -> tuple[str, str]:
         """Upload a single podcast description to File Search.
