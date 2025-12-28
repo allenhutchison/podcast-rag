@@ -124,7 +124,7 @@ def reset_episode_indexing_status(config: Config, dry_run: bool = False) -> int:
     # Get all episodes that have been indexed
     from sqlalchemy import text
 
-    with repository._session_scope() as session:
+    with repository._get_session() as session:
         # Count episodes to reset
         count_result = session.execute(
             text("SELECT COUNT(*) FROM episodes WHERE file_search_status != 'pending'")
@@ -167,7 +167,7 @@ def reset_podcast_description_indexing_status(config: Config, dry_run: bool = Fa
 
     from sqlalchemy import text
 
-    with repository._session_scope() as session:
+    with repository._get_session() as session:
         # Count podcasts to reset
         count_result = session.execute(
             text("SELECT COUNT(*) FROM podcasts WHERE description_file_search_status != 'pending'")
