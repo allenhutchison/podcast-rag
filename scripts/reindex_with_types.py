@@ -75,7 +75,7 @@ def delete_file_search_store(config: Config, dry_run: bool = False) -> bool:
         return True
 
     except Exception as e:
-        logger.error(f"Failed to delete store: {e}")
+        logger.exception(f"Failed to delete store: {e}")
         return False
 
 
@@ -103,7 +103,7 @@ def clear_cache(config: Config, dry_run: bool = False) -> bool:
                     cache_path.unlink()
                     logger.info(f"Deleted cache file: {cache_path}")
                 except Exception as e:
-                    logger.error(f"Failed to delete cache {cache_path}: {e}")
+                    logger.exception(f"Failed to delete cache {cache_path}: {e}")
                     return False
 
     return True
@@ -197,9 +197,8 @@ def reset_podcast_description_indexing_status(config: Config, dry_run: bool = Fa
 
 
 def main():
-    parser = get_base_parser(
-        description="Reindex all documents with type metadata"
-    )
+    parser = get_base_parser()
+    parser.description = "Reindex all documents with type metadata"
     add_log_level_argument(parser)
     parser.add_argument(
         "--dry-run",

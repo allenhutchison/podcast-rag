@@ -26,9 +26,8 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-    parser = get_base_parser(
-        description="Index podcast descriptions to File Search"
-    )
+    parser = get_base_parser()
+    parser.description = "Index podcast descriptions to File Search"
     add_log_level_argument(parser)
     parser.add_argument(
         "--batch-size",

@@ -40,7 +40,7 @@ async def async_iterate(sync_iterator: Iterator[T]) -> AsyncGenerator[T, None]:
                 break
             yield item
     finally:
-        executor.shutdown(wait=False)
+        executor.shutdown(wait=True, cancel_futures=True)
 
 
 def truncate_text(text: str, max_length: int = 200) -> str:

@@ -2195,7 +2195,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         Returns:
             List[Podcast]: Podcasts ready for description indexing.
         """
-        with self._session_scope() as session:
+        with self._get_session() as session:
             podcasts = (
                 session.query(Podcast)
                 .filter(
@@ -2244,7 +2244,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             description_file_search_status="indexed",
             description_file_search_resource_name=resource_name,
             description_file_search_display_name=display_name,
-            description_file_search_uploaded_at=datetime.utcnow(),
+            description_file_search_uploaded_at=datetime.now(UTC),
             description_file_search_error=None,
         )
 
