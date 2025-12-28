@@ -241,7 +241,8 @@ class GeminiFileSearchManager:
         flattened = flatten_episode_metadata(metadata)
 
         # Convert flattened metadata to File Search format
-        for key in ['podcast', 'episode', 'release_date', 'hosts', 'guests', 'keywords', 'summary']:
+        # 'type' field distinguishes document types: 'transcript' or 'description'
+        for key in ['type', 'podcast', 'episode', 'release_date', 'hosts', 'guests', 'keywords', 'summary']:
             if key in flattened and flattened[key]:
                 value = flattened[key]
                 # Convert lists to comma-separated strings
@@ -559,6 +560,47 @@ class GeminiFileSearchManager:
         except Exception as e:
             logging.error(f"Failed to upload transcript text: {e}")
             raise
+
+    def upload_description_document(
+        self,
+        podcast_name: str,
+        description: str,
+        metadata: Optional[Dict] = None,
+        store_name: Optional[str] = None
+    ) -> tuple[str, str]:
+        """
+        Upload a podcast description document to File Search.
+
+        Creates a text document containing the podcast description with
+        type="description" metadata for filtering.
+
+        Args:
+            podcast_name: Name of the podcast
+            description: Full podcast description text
+            metadata: Additional metadata (will be merged with defaults)
+            store_name: Store to upload to (uses default if None)
+
+        Returns:
+            Tuple of (resource_name, display_name)
+        """
+        # Build display name: "PodcastName_description.txt"
+        safe_name = "".join(c if c.isalnum() or c in " -_" else "_" for c in podcast_name)
+        safe_name = safe_name.strip()[:100]
+        display_name = f"{safe_name}_description.txt"
+
+        # Ensure type="description" is in metadata
+        full_metadata = metadata.copy() if metadata else {}
+        full_metadata['type'] = 'description'
+        full_metadata['podcast'] = podcast_name
+
+        resource_name = self.upload_transcript_text(
+            text=description,
+            display_name=display_name,
+            metadata=full_metadata,
+            store_name=store_name
+        )
+
+        return resource_name, display_name
 
     def get_store_info(self, store_name: Optional[str] = None) -> Dict:
         """

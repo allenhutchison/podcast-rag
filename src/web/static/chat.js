@@ -35,6 +35,11 @@ marked.setOptions({
     mangle: false
 });
 
+// Streaming render state - tracks pending updates for debounced rendering
+let pendingRender = null;
+let lastRenderTime = 0;
+const RENDER_INTERVAL_MS = 50; // Render at most every 50ms during streaming
+
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
     // Use auth.js for authentication and user menu
@@ -200,48 +205,28 @@ function handleEpisodeChange() {
     selectedEpisodeId = episodeSelect.value || null;
 }
 
-// Create new conversation
-async function createNewConversation() {
-    // Validate scope selection
-    if (currentScope === 'podcast' && !selectedPodcastId) {
-        alert('Please select a podcast first');
-        return;
+// Start a new conversation (resets state, conversation created lazily on first message)
+function createNewConversation() {
+    // Reset conversation state
+    currentConversationId = null;
+
+    // Clear messages and show welcome state
+    messagesContainer.innerHTML = '';
+    showWelcomeState();
+    updateMobileTitle('New Chat');
+
+    // Deselect any active conversation in sidebar
+    document.querySelectorAll('.conversation-item').forEach(el => {
+        el.classList.remove('active');
+    });
+
+    // Close sidebar on mobile
+    if (window.innerWidth < 640) {
+        toggleSidebar();
     }
-    if (currentScope === 'episode' && !selectedEpisodeId) {
-        alert('Please select an episode first');
-        return;
-    }
 
-    try {
-        const body = {
-            scope: currentScope,
-            podcast_id: selectedPodcastId,
-            episode_id: selectedEpisodeId
-        };
-
-        const response = await fetch('/api/conversations', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify(body)
-        });
-
-        if (!response.ok) throw new Error('Failed to create conversation');
-        const conversation = await response.json();
-
-        currentConversationId = conversation.id;
-        await loadConversations();
-        showMessagesView();
-        updateMobileTitle(conversation.title || 'New Chat');
-
-        // Close sidebar on mobile
-        if (window.innerWidth < 640) {
-            toggleSidebar();
-        }
-    } catch (error) {
-        console.error('Error creating conversation:', error);
-        alert('Failed to create conversation');
-    }
+    // Focus the input
+    messageInput.focus();
 }
 
 // Load a conversation
@@ -363,24 +348,53 @@ async function handleSubmit(event) {
     const content = messageInput.value.trim();
     if (!content || isStreaming) return;
 
-    // Create conversation if needed
+    // Validate scope before showing UI feedback
     if (!currentConversationId) {
-        await createNewConversation();
-        if (!currentConversationId) return; // Creation failed
+        if (currentScope === 'podcast' && !selectedPodcastId) {
+            alert('Please select a podcast first');
+            return;
+        }
+        if (currentScope === 'episode' && !selectedEpisodeId) {
+            alert('Please select an episode first');
+            return;
+        }
     }
 
-    // Add user message to UI
+    // Show UI feedback immediately (before any async work)
     showMessagesView();
     addMessageToUI(content, 'user');
     messageInput.value = '';
-
-    // Show typing indicator
     const typingIndicator = addTypingIndicator();
 
     isStreaming = true;
     sendBtn.disabled = true;
 
     try {
+        // Create conversation if needed (after showing UI feedback)
+        if (!currentConversationId) {
+            const body = {
+                scope: currentScope,
+                podcast_id: selectedPodcastId,
+                episode_id: selectedEpisodeId
+            };
+
+            const createResponse = await fetch('/api/conversations', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify(body)
+            });
+
+            if (!createResponse.ok) throw new Error('Failed to create conversation');
+            const conversation = await createResponse.json();
+
+            currentConversationId = conversation.id;
+            updateMobileTitle(conversation.title || 'New Chat');
+
+            // Refresh sidebar in background (don't await)
+            loadConversations().catch(e => console.error('Failed to refresh conversations:', e));
+        }
+
         const response = await fetch(`/api/conversations/${currentConversationId}/messages`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -450,6 +464,11 @@ async function handleSubmit(event) {
             processSSEEvent(buffer);
         }
 
+        // Force final render to ensure all content is displayed with proper markdown
+        if (assistantMessageEl && assistantContent) {
+            finalizeAssistantMessage(assistantMessageEl, assistantContent);
+        }
+
         // Add citations if any
         if (citations.length > 0 && assistantMessageEl) {
             const citationsHtml = renderCitations(citations);
@@ -488,13 +507,45 @@ function addMessageToUI(content, role) {
     return messageEl;
 }
 
-// Update assistant message during streaming
-function updateAssistantMessage(el, content) {
+// Update assistant message during streaming (throttled to avoid excessive re-renders)
+function updateAssistantMessage(el, content, forceRender = false) {
     const markdownEl = el.querySelector('.chat-markdown');
-    if (markdownEl) {
-        markdownEl.innerHTML = safeMarkdownToHtml(content);
+    if (!markdownEl) return;
+
+    const now = Date.now();
+    const timeSinceLastRender = now - lastRenderTime;
+
+    // Clear any pending render since we have new content
+    if (pendingRender) {
+        clearTimeout(pendingRender);
+        pendingRender = null;
     }
-    scrollToBottom();
+
+    // Force render, or enough time has passed - render immediately
+    if (forceRender || timeSinceLastRender >= RENDER_INTERVAL_MS) {
+        markdownEl.innerHTML = safeMarkdownToHtml(content);
+        lastRenderTime = now;
+        scrollToBottom();
+    } else {
+        // Schedule a render for later to ensure content eventually displays
+        pendingRender = setTimeout(() => {
+            markdownEl.innerHTML = safeMarkdownToHtml(content);
+            lastRenderTime = Date.now();
+            scrollToBottom();
+            pendingRender = null;
+        }, RENDER_INTERVAL_MS - timeSinceLastRender);
+    }
+}
+
+// Force final render after streaming completes
+function finalizeAssistantMessage(el, content) {
+    // Clear any pending render
+    if (pendingRender) {
+        clearTimeout(pendingRender);
+        pendingRender = null;
+    }
+    // Force immediate render
+    updateAssistantMessage(el, content, true);
 }
 
 // Add typing indicator

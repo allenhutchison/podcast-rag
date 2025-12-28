@@ -74,6 +74,7 @@ class IndexingWorker(WorkerInterface):
             podcast_name = episode.podcast.title
 
         return {
+            "type": "transcript",  # Document type for filtering
             "podcast": podcast_name,
             "episode": episode.title,
             "release_date": (

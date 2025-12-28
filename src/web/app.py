@@ -6,13 +6,51 @@ Provides streaming chat responses with citations using Server-Sent Events (SSE).
 """
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import json
 import logging
 import os
 import re
 import uuid
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, List, Optional
+from typing import AsyncGenerator, Iterator, List, Optional, TypeVar
+
+T = TypeVar('T')
+
+
+async def async_iterate(sync_iterator: Iterator[T]) -> AsyncGenerator[T, None]:
+    """
+    Wrap a synchronous iterator to yield items asynchronously without blocking the event loop.
+
+    Uses a thread pool to run the blocking next() calls, allowing other async tasks to proceed.
+    """
+    loop = asyncio.get_event_loop()
+    executor = ThreadPoolExecutor(max_workers=1)
+
+    def get_next():
+        try:
+            return next(sync_iterator), False
+        except StopIteration:
+            return None, True
+
+    try:
+        while True:
+            item, done = await loop.run_in_executor(executor, get_next)
+            if done:
+                break
+            yield item
+    finally:
+        executor.shutdown(wait=False)
+
+
+def truncate_text(text: str, max_length: int = 200) -> str:
+    """Truncate text to max_length, adding ellipsis if truncated."""
+    if not text or len(text) <= max_length:
+        return text
+    # Try to break at a word boundary
+    truncated = text[:max_length].rsplit(' ', 1)[0]
+    return truncated + "..."
+
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -256,43 +294,38 @@ async def generate_streaming_response(
         store_name = file_search_manager.create_or_get_store()
 
         # Build File Search configuration with metadata filter
-        file_search_config = types.FileSearch(
-            file_search_store_names=[store_name]
-        )
+        # Always filter by type="transcript" to exclude description documents
+        filter_parts = ['type="transcript"']
 
-        # Build metadata filter if needed
-        if podcast_filter_name or episode_filter_name or podcast_filter_list:
-            filter_parts = []
+        # Single podcast filter
+        if podcast_filter_name:
+            escaped_podcast = escape_filter_value(podcast_filter_name)
+            if escaped_podcast:
+                filter_parts.append(f'podcast="{escaped_podcast}"')
 
-            # Single podcast filter
-            if podcast_filter_name:
-                escaped_podcast = escape_filter_value(podcast_filter_name)
+        # Podcast list filter (for subscriptions)
+        elif podcast_filter_list:
+            podcast_or_conditions = []
+            for podcast_name in podcast_filter_list:
+                escaped_podcast = escape_filter_value(podcast_name)
                 if escaped_podcast:
-                    filter_parts.append(f'podcast="{escaped_podcast}"')
+                    podcast_or_conditions.append(f'podcast="{escaped_podcast}"')
+            if podcast_or_conditions:
+                filter_parts.append(f"({' OR '.join(podcast_or_conditions)})")
 
-            # Podcast list filter (for subscriptions)
-            elif podcast_filter_list:
-                podcast_or_conditions = []
-                for podcast_name in podcast_filter_list:
-                    escaped_podcast = escape_filter_value(podcast_name)
-                    if escaped_podcast:
-                        podcast_or_conditions.append(f'podcast="{escaped_podcast}"')
-                if podcast_or_conditions:
-                    filter_parts.append(f"({' OR '.join(podcast_or_conditions)})")
+        # Episode filter
+        if episode_filter_name:
+            escaped_episode = escape_filter_value(episode_filter_name)
+            if escaped_episode:
+                filter_parts.append(f'episode="{escaped_episode}"')
 
-            # Episode filter
-            if episode_filter_name:
-                escaped_episode = escape_filter_value(episode_filter_name)
-                if escaped_episode:
-                    filter_parts.append(f'episode="{escaped_episode}"')
-
-            if filter_parts:
-                metadata_filter = " AND ".join(filter_parts)
-                file_search_config = types.FileSearch(
-                    file_search_store_names=[store_name],
-                    metadata_filter=metadata_filter
-                )
-                logger.info(f"Applying metadata filter: {metadata_filter}")
+        # Build the final metadata filter and File Search config
+        metadata_filter = " AND ".join(filter_parts)
+        file_search_config = types.FileSearch(
+            file_search_store_names=[store_name],
+            metadata_filter=metadata_filter
+        )
+        logger.info(f"Applying metadata filter: {metadata_filter}")
 
         # Classify query type for podcast/subscriptions/global scopes (using LLM)
         is_episode_discovery_query = False
@@ -368,7 +401,7 @@ Please provide a comprehensive answer based on the episode transcript, citing sp
 
             context = "\n".join(context_parts)
 
-            # Build episode list with titles and summaries
+            # Build episode list with titles and truncated summaries to avoid exceeding token limits
             episode_list = ""
             if episodes:
                 episode_lines = []
@@ -378,7 +411,7 @@ Please provide a comprehensive answer based on the episode transcript, citing sp
                     if ep.published_date:
                         ep_line += f" ({ep.published_date.strftime('%Y-%m-%d')})"
                     if ep.ai_summary:
-                        ep_line += f": {ep.ai_summary}"
+                        ep_line += f": {truncate_text(ep.ai_summary, 200)}"
                     episode_lines.append(ep_line)
 
                 episode_list = "\n\nEpisode List:\n" + "\n".join(episode_lines)
@@ -399,7 +432,7 @@ Please provide a comprehensive answer following these instructions."""
             # Subscriptions chat - build podcast list
             context_parts = [f"Subscribed Podcasts ({len(podcast_filter_list)} total)"]
 
-            # Build podcast list with descriptions
+            # Build podcast list with truncated descriptions to avoid exceeding token limits
             podcast_list = ""
             if podcasts_for_discovery:
                 podcast_lines = []
@@ -408,7 +441,7 @@ Please provide a comprehensive answer following these instructions."""
                     if podcast.author:
                         podcast_line += f" by {podcast.author}"
                     if podcast.description:
-                        podcast_line += f"\n  {podcast.description}"
+                        podcast_line += f"\n  {truncate_text(podcast.description, 200)}"
                     podcast_lines.append(podcast_line)
 
                 podcast_list = "\n\nPodcast List:\n" + "\n".join(podcast_lines)
@@ -430,7 +463,7 @@ Please provide a comprehensive answer following these instructions."""
             # Global chat - build podcast list
             context_parts = ["Search across all available podcasts"]
 
-            # Build podcast list with descriptions
+            # Build podcast list with truncated descriptions to avoid exceeding token limits
             podcast_list = ""
             if podcasts_for_discovery:
                 podcast_lines = []
@@ -439,7 +472,7 @@ Please provide a comprehensive answer following these instructions."""
                     if podcast.author:
                         podcast_line += f" by {podcast.author}"
                     if podcast.description:
-                        podcast_line += f"\n  {podcast.description}"
+                        podcast_line += f"\n  {truncate_text(podcast.description, 200)}"
                     podcast_lines.append(podcast_line)
 
                 podcast_list = "\n\nPodcast List:\n" + "\n".join(podcast_lines)
@@ -611,7 +644,7 @@ Please provide a comprehensive, detailed answer based on these podcast descripti
         full_text = ""
         final_response = None
         chunk_count = 0
-        for chunk in response:
+        async for chunk in async_iterate(iter(response)):
             chunk_count += 1
             # Each chunk contains its own text (not accumulated)
             if hasattr(chunk, 'text') and chunk.text:

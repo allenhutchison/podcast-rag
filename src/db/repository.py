@@ -631,6 +631,59 @@ class PodcastRepositoryInterface(ABC):
         """
         pass
 
+    # --- Podcast Description Indexing ---
+
+    @abstractmethod
+    def get_podcasts_pending_description_indexing(self, limit: int = 10) -> List[Podcast]:
+        """
+        Return podcasts with descriptions that need File Search indexing.
+
+        Podcasts returned have a non-empty description and description_file_search_status
+        set to "pending". Results are ordered by created_at and limited to `limit` items.
+
+        Returns:
+            List[Podcast]: Podcasts ready for description indexing.
+        """
+        pass
+
+    @abstractmethod
+    def mark_description_indexing_started(self, podcast_id: str) -> None:
+        """
+        Mark a podcast's description as in-progress for File Search indexing.
+
+        Updates the podcast's description_file_search_status to "uploading" and
+        clears any previous error.
+
+        Parameters:
+            podcast_id (str): Primary key of the podcast to update.
+        """
+        pass
+
+    @abstractmethod
+    def mark_description_indexing_complete(
+        self, podcast_id: str, resource_name: str, display_name: str
+    ) -> None:
+        """
+        Record that a podcast's description indexing finished successfully.
+
+        Parameters:
+            podcast_id (str): Identifier of the podcast whose indexing completed.
+            resource_name (str): File Search resource name for the indexed document.
+            display_name (str): Human-readable name for the indexed resource.
+        """
+        pass
+
+    @abstractmethod
+    def mark_description_indexing_failed(self, podcast_id: str, error: str) -> None:
+        """
+        Record that description indexing for the specified podcast failed.
+
+        Parameters:
+            podcast_id (str): The ID of the podcast whose indexing failed.
+            error (str): A human-readable error message describing the failure.
+        """
+        pass
+
     # --- Transcript Access ---
 
     @abstractmethod
@@ -2129,6 +2182,85 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 os.remove(episode.local_file_path)
                 logger.info(f"Deleted audio file: {episode.local_file_path}")
             self.update_episode(episode_id, local_file_path=None)
+
+    # --- Podcast Description Indexing ---
+
+    def get_podcasts_pending_description_indexing(self, limit: int = 10) -> List[Podcast]:
+        """
+        Return podcasts with descriptions that need File Search indexing.
+
+        Podcasts returned have a non-empty description and description_file_search_status
+        set to "pending". Results are ordered by created_at and limited to `limit` items.
+
+        Returns:
+            List[Podcast]: Podcasts ready for description indexing.
+        """
+        with self._session_scope() as session:
+            podcasts = (
+                session.query(Podcast)
+                .filter(
+                    Podcast.description.isnot(None),
+                    Podcast.description != "",
+                    Podcast.description_file_search_status == "pending",
+                )
+                .order_by(Podcast.created_at.asc())
+                .limit(limit)
+                .all()
+            )
+            # Detach from session
+            for podcast in podcasts:
+                session.expunge(podcast)
+            return podcasts
+
+    def mark_description_indexing_started(self, podcast_id: str) -> None:
+        """
+        Mark a podcast's description as in-progress for File Search indexing.
+
+        Updates the podcast's description_file_search_status to "uploading" and
+        clears any previous error.
+
+        Parameters:
+            podcast_id (str): Primary key of the podcast to update.
+        """
+        self.update_podcast(
+            podcast_id,
+            description_file_search_status="uploading",
+            description_file_search_error=None,
+        )
+
+    def mark_description_indexing_complete(
+        self, podcast_id: str, resource_name: str, display_name: str
+    ) -> None:
+        """
+        Record that a podcast's description indexing finished successfully.
+
+        Parameters:
+            podcast_id (str): Identifier of the podcast whose indexing completed.
+            resource_name (str): File Search resource name for the indexed document.
+            display_name (str): Human-readable name for the indexed resource.
+        """
+        self.update_podcast(
+            podcast_id,
+            description_file_search_status="indexed",
+            description_file_search_resource_name=resource_name,
+            description_file_search_display_name=display_name,
+            description_file_search_uploaded_at=datetime.utcnow(),
+            description_file_search_error=None,
+        )
+
+    def mark_description_indexing_failed(self, podcast_id: str, error: str) -> None:
+        """
+        Record that description indexing for the specified podcast failed.
+
+        Parameters:
+            podcast_id (str): The ID of the podcast whose indexing failed.
+            error (str): A human-readable error message describing the failure.
+        """
+        self.update_podcast(
+            podcast_id,
+            description_file_search_status="failed",
+            description_file_search_error=error,
+        )
 
     # --- Transcript Access ---
 

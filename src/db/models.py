@@ -68,6 +68,21 @@ class Podcast(Base):
     # File organization
     local_directory: Mapped[Optional[str]] = mapped_column(String(1024))
 
+    # Description document File Search integration
+    description_file_search_status: Mapped[str] = mapped_column(
+        String(32), default="pending"
+    )  # pending, uploading, indexed, failed, skipped
+    description_file_search_error: Mapped[Optional[str]] = mapped_column(Text)
+    description_file_search_resource_name: Mapped[Optional[str]] = mapped_column(
+        String(512)
+    )
+    description_file_search_display_name: Mapped[Optional[str]] = mapped_column(
+        String(512)
+    )
+    description_file_search_uploaded_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime
+    )
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -79,7 +94,10 @@ class Podcast(Base):
         "Episode", back_populates="podcast", cascade="all, delete-orphan"
     )
 
-    __table_args__ = (Index("ix_podcasts_feed_url", "feed_url"),)
+    __table_args__ = (
+        Index("ix_podcasts_feed_url", "feed_url"),
+        Index("ix_podcasts_description_file_search_status", "description_file_search_status"),
+    )
 
     def __repr__(self) -> str:
         """
