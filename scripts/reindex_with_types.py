@@ -26,6 +26,8 @@ from pathlib import Path
 # Add parent directory to path to import from src
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from google.genai import errors as genai_errors
+
 from src.argparse_shared import add_log_level_argument, get_base_parser
 from src.config import Config
 from src.db.factory import create_repository
@@ -97,7 +99,7 @@ def delete_file_search_store(
         logger.info("Store deleted successfully")
         return True
 
-    except Exception as e:
+    except genai_errors.APIError:
         logger.exception("Failed to delete store")
         return False
 
