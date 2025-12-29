@@ -2238,21 +2238,17 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             List[Podcast]: Podcasts ready for description indexing.
         """
         with self._get_session() as session:
-            podcasts = (
-                session.query(Podcast)
-                .filter(
+            stmt = (
+                select(Podcast)
+                .where(
                     Podcast.description.isnot(None),
                     Podcast.description != "",
                     Podcast.description_file_search_status == "pending",
                 )
                 .order_by(Podcast.created_at.asc())
                 .limit(limit)
-                .all()
             )
-            # Detach from session
-            for podcast in podcasts:
-                session.expunge(podcast)
-            return podcasts
+            return list(session.scalars(stmt).all())
 
     def count_podcasts_pending_description_indexing(self) -> int:
         """
