@@ -11,6 +11,11 @@ This script:
 After running this script, run the pipeline to re-index everything with
 proper type metadata (type="transcript" for transcripts, type="description"
 for podcast descriptions).
+
+Cross-project migration:
+If migrating to a new Google Cloud project, use --old-api-key and --old-store-name
+to delete the store from the old project. The new store will be created using the
+current environment's GEMINI_API_KEY and GEMINI_FILE_SEARCH_STORE_NAME.
 """
 
 import logging
@@ -33,30 +38,48 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def delete_file_search_store(config: Config, dry_run: bool = False) -> bool:
+def delete_file_search_store(
+    config: Config,
+    dry_run: bool = False,
+    api_key: str | None = None,
+    store_name: str | None = None,
+) -> bool:
     """Delete the entire File Search store.
 
     Args:
         config: Application configuration
         dry_run: If True, only log what would be done
+        api_key: Optional API key to use (for cross-project migration).
+                 If not provided, uses config.GEMINI_API_KEY.
+        store_name: Optional store name to delete. If not provided,
+                    uses config.GEMINI_FILE_SEARCH_STORE_NAME.
 
     Returns:
         True if successful, False otherwise
     """
-    file_search_manager = GeminiFileSearchManager(config=config)
-    store_name = config.GEMINI_FILE_SEARCH_STORE_NAME or "podcast-transcripts"
+    # Use provided api_key or fall back to config
+    if api_key:
+        # Create a temporary config-like object with the override
+        from google import genai
+
+        client = genai.Client(api_key=api_key)
+    else:
+        file_search_manager = GeminiFileSearchManager(config=config)
+        client = file_search_manager.client
+
+    target_store_name = store_name or config.GEMINI_FILE_SEARCH_STORE_NAME or "podcast-transcripts"
 
     try:
         # Find the store
-        stores = list(file_search_manager.client.file_search_stores.list())
+        stores = list(client.file_search_stores.list())
         target_store = None
         for store in stores:
-            if store.display_name == store_name:
+            if store.display_name == target_store_name:
                 target_store = store
                 break
 
         if not target_store:
-            logger.warning(f"Store '{store_name}' not found, nothing to delete")
+            logger.warning(f"Store '{target_store_name}' not found, nothing to delete")
             return True
 
         logger.info(f"Found store: {target_store.name} (display_name: {target_store.display_name})")
@@ -67,7 +90,7 @@ def delete_file_search_store(config: Config, dry_run: bool = False) -> bool:
 
         # Delete the store with force=True to delete all documents
         logger.info(f"Deleting store: {target_store.name} (this may take a while)...")
-        file_search_manager.client.file_search_stores.delete(
+        client.file_search_stores.delete(
             name=target_store.name,
             config={'force': True}
         )
@@ -210,6 +233,18 @@ def main():
         action="store_true",
         help="Skip deleting the File Search store (only reset database status)"
     )
+    parser.add_argument(
+        "--old-api-key",
+        type=str,
+        default=None,
+        help="API key for the old project (for cross-project migration)"
+    )
+    parser.add_argument(
+        "--old-store-name",
+        type=str,
+        default=None,
+        help="Name of the store to delete in the old project"
+    )
 
     args = parser.parse_args()
 
@@ -228,8 +263,21 @@ def main():
 
     # Step 1: Delete File Search store
     if not args.skip_delete:
-        logger.info("\nStep 1: Deleting File Search store...")
-        if not delete_file_search_store(config, dry_run=args.dry_run):
+        if args.old_api_key or args.old_store_name:
+            logger.info("\nStep 1: Deleting File Search store from old project...")
+            if args.old_api_key:
+                logger.info(f"  Using provided API key for old project")
+            if args.old_store_name:
+                logger.info(f"  Old store name: {args.old_store_name}")
+        else:
+            logger.info("\nStep 1: Deleting File Search store...")
+
+        if not delete_file_search_store(
+            config,
+            dry_run=args.dry_run,
+            api_key=args.old_api_key,
+            store_name=args.old_store_name,
+        ):
             logger.error("Failed to delete store, aborting")
             sys.exit(1)
     else:
@@ -257,6 +305,8 @@ def main():
 
     if not args.dry_run:
         logger.info("\nNext steps:")
+        new_store = config.GEMINI_FILE_SEARCH_STORE_NAME or "podcast-transcripts"
+        logger.info(f"  New store will be created as: {new_store}")
         logger.info("  1. Run the pipeline to re-index transcripts: uv run poe pipeline")
         logger.info("  2. Run description indexing: python scripts/index_descriptions.py")
 
