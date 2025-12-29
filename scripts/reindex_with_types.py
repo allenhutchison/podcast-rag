@@ -75,7 +75,7 @@ def delete_file_search_store(config: Config, dry_run: bool = False) -> bool:
         return True
 
     except Exception as e:
-        logger.exception(f"Failed to delete store: {e}")
+        logger.exception("Failed to delete store")
         return False
 
 
@@ -103,7 +103,7 @@ def clear_cache(config: Config, dry_run: bool = False) -> bool:
                     cache_path.unlink()
                     logger.info(f"Deleted cache file: {cache_path}")
                 except Exception as e:
-                    logger.exception(f"Failed to delete cache {cache_path}: {e}")
+                    logger.exception(f"Failed to delete cache {cache_path}")
                     return False
 
     return True
