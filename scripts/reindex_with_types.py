@@ -4,9 +4,8 @@ Migration script to reindex all documents with type metadata.
 
 This script:
 1. Deletes the entire File Search store using force=True
-2. Clears the local cache file
-3. Resets all episodes' file_search_status to "pending"
-4. Resets all podcasts' description_file_search_status to "pending"
+2. Resets all episodes' file_search_status to "pending"
+3. Resets all podcasts' description_file_search_status to "pending"
 
 After running this script, run the pipeline to re-index everything with
 proper type metadata (type="transcript" for transcripts, type="description"
@@ -102,36 +101,6 @@ def delete_file_search_store(
     except genai_errors.APIError:
         logger.exception("Failed to delete store")
         return False
-
-
-def clear_cache(config: Config, dry_run: bool = False) -> bool:
-    """Clear the local File Search cache file.
-
-    Args:
-        config: Application configuration
-        dry_run: If True, only log what would be done
-
-    Returns:
-        True if successful, False otherwise
-    """
-    cache_paths = [
-        Path(config.BASE_DIRECTORY) / ".file_search_cache.json",
-        Path("/app/cache/.file_search_cache.json"),  # Docker path
-    ]
-
-    for cache_path in cache_paths:
-        if cache_path.exists():
-            if dry_run:
-                logger.info(f"[DRY RUN] Would delete cache: {cache_path}")
-            else:
-                try:
-                    cache_path.unlink()
-                    logger.info(f"Deleted cache file: {cache_path}")
-                except Exception as e:
-                    logger.exception(f"Failed to delete cache {cache_path}")
-                    return False
-
-    return True
 
 
 def reset_episode_indexing_status(config: Config, dry_run: bool = False) -> int:
@@ -248,18 +217,12 @@ def main():
     else:
         logger.info("\nStep 1: Skipping store deletion (--skip-delete)")
 
-    # Step 2: Clear cache
-    logger.info("\nStep 2: Clearing local cache...")
-    if not clear_cache(config, dry_run=args.dry_run):
-        logger.error("Failed to clear cache, aborting")
-        sys.exit(1)
-
-    # Step 3: Reset episode indexing status
-    logger.info("\nStep 3: Resetting episode indexing status...")
+    # Step 2: Reset episode indexing status
+    logger.info("\nStep 2: Resetting episode indexing status...")
     episode_count = reset_episode_indexing_status(config, dry_run=args.dry_run)
 
-    # Step 4: Reset podcast description indexing status
-    logger.info("\nStep 4: Resetting podcast description indexing status...")
+    # Step 3: Reset podcast description indexing status
+    logger.info("\nStep 3: Resetting podcast description indexing status...")
     podcast_count = reset_podcast_description_indexing_status(config, dry_run=args.dry_run)
 
     logger.info("\n" + "=" * 60)
