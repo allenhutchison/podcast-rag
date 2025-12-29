@@ -144,36 +144,17 @@ def reset_episode_indexing_status(config: Config, dry_run: bool = False) -> int:
     """
     repository = create_repository(config.DATABASE_URL)
 
-    # Get all episodes that have been indexed
-    from sqlalchemy import text
+    # Count episodes to reset
+    count = repository.count_episodes_not_pending_indexing()
 
-    with repository._get_session() as session:
-        # Count episodes to reset
-        count_result = session.execute(
-            text("SELECT COUNT(*) FROM episodes WHERE file_search_status != 'pending'")
-        )
-        count = count_result.scalar()
-
-        if dry_run:
-            logger.info(f"[DRY RUN] Would reset {count} episodes' file_search_status to 'pending'")
-            return count
-
-        # Reset status
-        session.execute(
-            text("""
-                UPDATE episodes
-                SET file_search_status = 'pending',
-                    file_search_error = NULL,
-                    file_search_resource_name = NULL,
-                    file_search_display_name = NULL,
-                    file_search_uploaded_at = NULL
-                WHERE file_search_status != 'pending'
-            """)
-        )
-        session.commit()
-
-        logger.info(f"Reset {count} episodes' file_search_status to 'pending'")
+    if dry_run:
+        logger.info(f"[DRY RUN] Would reset {count} episodes' file_search_status to 'pending'")
         return count
+
+    # Reset status
+    reset_count = repository.reset_all_episode_indexing_status()
+    logger.info(f"Reset {reset_count} episodes' file_search_status to 'pending'")
+    return reset_count
 
 
 def reset_podcast_description_indexing_status(config: Config, dry_run: bool = False) -> int:
@@ -188,35 +169,17 @@ def reset_podcast_description_indexing_status(config: Config, dry_run: bool = Fa
     """
     repository = create_repository(config.DATABASE_URL)
 
-    from sqlalchemy import text
+    # Count podcasts to reset
+    count = repository.count_podcasts_not_pending_description_indexing()
 
-    with repository._get_session() as session:
-        # Count podcasts to reset
-        count_result = session.execute(
-            text("SELECT COUNT(*) FROM podcasts WHERE description_file_search_status != 'pending'")
-        )
-        count = count_result.scalar()
-
-        if dry_run:
-            logger.info(f"[DRY RUN] Would reset {count} podcasts' description_file_search_status to 'pending'")
-            return count
-
-        # Reset status
-        session.execute(
-            text("""
-                UPDATE podcasts
-                SET description_file_search_status = 'pending',
-                    description_file_search_error = NULL,
-                    description_file_search_resource_name = NULL,
-                    description_file_search_display_name = NULL,
-                    description_file_search_uploaded_at = NULL
-                WHERE description_file_search_status != 'pending'
-            """)
-        )
-        session.commit()
-
-        logger.info(f"Reset {count} podcasts' description_file_search_status to 'pending'")
+    if dry_run:
+        logger.info(f"[DRY RUN] Would reset {count} podcasts' description_file_search_status to 'pending'")
         return count
+
+    # Reset status
+    reset_count = repository.reset_all_podcast_description_indexing_status()
+    logger.info(f"Reset {reset_count} podcasts' description_file_search_status to 'pending'")
+    return reset_count
 
 
 def main():

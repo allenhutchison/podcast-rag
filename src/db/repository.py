@@ -704,6 +704,55 @@ class PodcastRepositoryInterface(ABC):
         """
         pass
 
+    # --- Bulk Reset Operations (for migrations) ---
+
+    @abstractmethod
+    def reset_all_episode_indexing_status(self) -> int:
+        """
+        Reset all episodes' file_search_status to pending.
+
+        Clears file_search_error, file_search_resource_name, file_search_display_name,
+        and file_search_uploaded_at for all episodes that are not already pending.
+
+        Returns:
+            int: Number of episodes reset.
+        """
+        pass
+
+    @abstractmethod
+    def count_episodes_not_pending_indexing(self) -> int:
+        """
+        Count episodes that are not in pending indexing status.
+
+        Returns:
+            int: Number of episodes with file_search_status != 'pending'.
+        """
+        pass
+
+    @abstractmethod
+    def reset_all_podcast_description_indexing_status(self) -> int:
+        """
+        Reset all podcasts' description_file_search_status to pending.
+
+        Clears description_file_search_error, description_file_search_resource_name,
+        description_file_search_display_name, and description_file_search_uploaded_at
+        for all podcasts that are not already pending.
+
+        Returns:
+            int: Number of podcasts reset.
+        """
+        pass
+
+    @abstractmethod
+    def count_podcasts_not_pending_description_indexing(self) -> int:
+        """
+        Count podcasts that are not in pending description indexing status.
+
+        Returns:
+            int: Number of podcasts with description_file_search_status != 'pending'.
+        """
+        pass
+
     # --- Transcript Access ---
 
     @abstractmethod
@@ -2318,6 +2367,86 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             description_file_search_status="failed",
             description_file_search_error=error,
         )
+
+    # --- Bulk Reset Operations (for migrations) ---
+
+    def reset_all_episode_indexing_status(self) -> int:
+        """
+        Reset all episodes' file_search_status to pending.
+
+        Returns:
+            int: Number of episodes reset.
+        """
+        from sqlalchemy import text
+
+        with self._get_session() as session:
+            result = session.execute(
+                text("""
+                    UPDATE episodes
+                    SET file_search_status = 'pending',
+                        file_search_error = NULL,
+                        file_search_resource_name = NULL,
+                        file_search_display_name = NULL,
+                        file_search_uploaded_at = NULL
+                    WHERE file_search_status != 'pending'
+                """)
+            )
+            session.commit()
+            return result.rowcount
+
+    def count_episodes_not_pending_indexing(self) -> int:
+        """
+        Count episodes that are not in pending indexing status.
+
+        Returns:
+            int: Number of episodes with file_search_status != 'pending'.
+        """
+        from sqlalchemy import text
+
+        with self._get_session() as session:
+            result = session.execute(
+                text("SELECT COUNT(*) FROM episodes WHERE file_search_status != 'pending'")
+            )
+            return result.scalar() or 0
+
+    def reset_all_podcast_description_indexing_status(self) -> int:
+        """
+        Reset all podcasts' description_file_search_status to pending.
+
+        Returns:
+            int: Number of podcasts reset.
+        """
+        from sqlalchemy import text
+
+        with self._get_session() as session:
+            result = session.execute(
+                text("""
+                    UPDATE podcasts
+                    SET description_file_search_status = 'pending',
+                        description_file_search_error = NULL,
+                        description_file_search_resource_name = NULL,
+                        description_file_search_display_name = NULL,
+                        description_file_search_uploaded_at = NULL
+                    WHERE description_file_search_status != 'pending'
+                """)
+            )
+            session.commit()
+            return result.rowcount
+
+    def count_podcasts_not_pending_description_indexing(self) -> int:
+        """
+        Count podcasts that are not in pending description indexing status.
+
+        Returns:
+            int: Number of podcasts with description_file_search_status != 'pending'.
+        """
+        from sqlalchemy import text
+
+        with self._get_session() as session:
+            result = session.execute(
+                text("SELECT COUNT(*) FROM podcasts WHERE description_file_search_status != 'pending'")
+            )
+            return result.scalar() or 0
 
     # --- Transcript Access ---
 
