@@ -74,6 +74,7 @@ class IndexingWorker(WorkerInterface):
             podcast_name = episode.podcast.title
 
         return {
+            "type": "transcript",  # Document type for filtering
             "podcast": podcast_name,
             "episode": episode.title,
             "release_date": (
@@ -91,8 +92,7 @@ class IndexingWorker(WorkerInterface):
         Returns:
             Number of episodes waiting to be indexed.
         """
-        episodes = self.repository.get_episodes_pending_indexing(limit=1000)
-        return len(episodes)
+        return self.repository.count_episodes_pending_indexing()
 
     def _build_display_name(self, episode: Episode) -> str:
         """Build a display name for the episode transcript.
