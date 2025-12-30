@@ -209,7 +209,7 @@ pytest tests/test_workflow.py -v
 **Gemini File Search:**
 - Google-hosted semantic search solution
 - Automatic chunking and embedding
-- Local metadata cache (`.file_search_cache.json`) for instant lookups
+- Metadata stored in database for instant lookups
 
 ### Known Constraints
 

@@ -114,7 +114,6 @@ cloudbuild.yaml             # Google Cloud Build configuration
 
 - Python 3.11+
 - uv (recommended) or pip
-- `.file_search_cache.json` (metadata cache)
 - Google ADK requires Gemini 2.0+ models
 
 ### Setup

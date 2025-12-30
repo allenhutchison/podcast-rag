@@ -111,12 +111,12 @@ Run both the encoding backend and web service together using docker-compose:
    - Start querying your podcast library!
 
 **What's running:**
-- **podcast-rag**: Processes new podcasts every hour, updates metadata cache
+- **podcast-rag**: Processes new podcasts every hour
 - **podcast-rag-web**: Serves web UI for real-time queries with streaming responses
 
 **Shared resources:**
-- `.file_search_cache.json`: Metadata cache (both services read/write)
 - Podcast directory: Source audio files (read-only)
+- Database: Episode metadata and File Search references
 
 ### Cloud Run Deployment (Web Service Only)
 

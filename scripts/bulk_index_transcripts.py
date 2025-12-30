@@ -5,17 +5,15 @@ This script is optimized for re-indexing scenarios where transcripts and
 metadata already exist. It bypasses the pipeline's transcription-driven
 flow and uploads directly with configurable parallelism.
 
-Key optimizations:
-- Pre-fetches existing files list once before starting workers
-- Shares the file search manager across workers to avoid redundant API calls
-- Skips duplicate checking when --fresh-store is used
+The database is the source of truth for which episodes need indexing.
+Episodes with file_search_status='pending' will be processed.
 """
 
 import logging
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict
 
 # Add parent directory to path to import from src
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -69,8 +67,6 @@ def index_single_episode(
     config: Config,
     repository,
     file_search_manager: GeminiFileSearchManager,
-    existing_files: Optional[Dict[str, str]] = None,
-    skip_existing: bool = False,
 ) -> tuple[str, bool, str]:
     """Index a single episode. Returns (episode_id, success, message)."""
     try:
@@ -80,17 +76,6 @@ def index_single_episode(
 
         # Build display name
         display_name = build_display_name(episode)
-
-        # Check if already exists (unless skipping)
-        if not skip_existing and existing_files and display_name in existing_files:
-            resource_name = existing_files[display_name]
-            # Update database to reflect existing file
-            repository.mark_indexing_complete(
-                episode_id=episode.id,
-                resource_name=resource_name,
-                display_name=display_name,
-            )
-            return episode_id, True, f"{display_name} (already exists)"
 
         # Get transcript text
         transcript_text = repository.get_transcript_text(episode.id)
@@ -150,11 +135,6 @@ def main():
         action="store_true",
         help="Show what would be done without making changes"
     )
-    parser.add_argument(
-        "--fresh-store",
-        action="store_true",
-        help="Skip duplicate checking (use when indexing to a fresh/empty store)"
-    )
 
     args = parser.parse_args()
 
@@ -189,21 +169,12 @@ def main():
     # Create shared file search manager
     file_search_manager = GeminiFileSearchManager(config=config)
 
-    # Pre-fetch existing files (once, before parallel processing)
-    existing_files = None
-    if not args.fresh_store:
-        logger.info("Pre-fetching existing files from File Search store...")
-        existing_files = file_search_manager.get_existing_files(use_cache=True)
-        logger.info(f"Found {len(existing_files)} existing files in store")
-    else:
-        logger.info("Skipping duplicate check (--fresh-store)")
-
     # Process in parallel
     success_count = 0
     fail_count = 0
 
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
-        # Submit all jobs with shared file_search_manager and existing_files
+        # Submit all jobs with shared file_search_manager
         futures = {
             executor.submit(
                 index_single_episode,
@@ -211,8 +182,6 @@ def main():
                 config,
                 repository,
                 file_search_manager,
-                existing_files,
-                args.fresh_store,
             ): episode
             for episode in episodes
         }

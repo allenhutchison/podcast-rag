@@ -66,10 +66,6 @@ docker compose down
    - Edit the path in `docker-compose.yml` to point to your podcasts
    - Contains your MP3 files organized by podcast name
 
-2. **Cache File**: `.file_search_cache.json`
-   - Stores metadata for fast lookups
-   - Persisted to the host via volume mount
-
 ## Usage Examples
 
 ### Running One-Time Processing
@@ -88,13 +84,6 @@ docker compose run --rm podcast-rag python -m src.cli podcast pipeline
 # Interactive query
 docker compose run --rm podcast-rag \
   python -m src.rag --query "What topics are discussed?"
-```
-
-### Rebuilding Cache
-
-```bash
-docker compose run --rm podcast-rag \
-  python scripts/rebuild_cache.py
 ```
 
 ### Managing File Search
@@ -144,7 +133,6 @@ Edit the volume mounts in `docker-compose.yml` to match your homelab paths:
 ```yaml
 volumes:
   - /mnt/media/podcasts:/data/podcasts:ro
-  - /mnt/data/podcast-rag/.file_search_cache.json:/app/.file_search_cache.json
 ```
 
 ## Monitoring
@@ -256,16 +244,13 @@ Expected resource consumption:
 - **Idle**: ~100MB RAM, minimal CPU
 - **Transcribing**: 1-2GB RAM, 50-100% CPU (per core)
 - **Metadata Extraction**: ~500MB RAM, 20% CPU
-- **Disk**: Minimal (cache file ~14MB for 17k files)
 
 ## Production Recommendations
 
-1. **Persistent Storage**: Store cache file on persistent volume
-2. **Monitoring**: Set up log aggregation (e.g., Loki, ELK)
-3. **Secrets**: Use Docker secrets for GEMINI_API_KEY
-4. **Backups**: Backup `.file_search_cache.json` regularly
-5. **Resource Limits**: Adjust based on your homelab capacity
-6. **Auto-updates**: Consider Watchtower for automatic updates
+1. **Monitoring**: Set up log aggregation (e.g., Loki, ELK)
+2. **Secrets**: Use Docker secrets for GEMINI_API_KEY
+3. **Resource Limits**: Adjust based on your homelab capacity
+4. **Auto-updates**: Consider Watchtower for automatic updates
 
 ## Example Homelab Stack
 
