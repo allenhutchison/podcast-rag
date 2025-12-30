@@ -25,13 +25,6 @@ fi
 # Load environment variables
 export $(cat .env | grep -v '^#' | xargs)
 
-# Check if cache file exists
-if [ ! -f .file_search_cache.json ]; then
-    echo -e "${RED}Warning: .file_search_cache.json not found${NC}"
-    echo "Metadata lookups will be slower. Run: python scripts/rebuild_cache.py"
-    echo ""
-fi
-
 # Check if virtual environment is active
 if [ -z "$VIRTUAL_ENV" ]; then
     echo -e "${BLUE}Activating virtual environment...${NC}"

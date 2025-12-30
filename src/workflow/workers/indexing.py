@@ -37,7 +37,6 @@ class IndexingWorker(WorkerInterface):
         self.config = config
         self.repository = repository
         self._file_search_manager: Optional[GeminiFileSearchManager] = None
-        self._existing_files: Optional[Dict[str, str]] = None
 
     @property
     def name(self) -> str:
@@ -50,14 +49,6 @@ class IndexingWorker(WorkerInterface):
         if self._file_search_manager is None:
             self._file_search_manager = GeminiFileSearchManager(config=self.config)
         return self._file_search_manager
-
-    def _get_existing_files(self) -> Dict[str, str]:
-        """Get cached list of existing files in File Search store."""
-        if self._existing_files is None:
-            self._existing_files = self.file_search_manager.get_existing_files(
-                use_cache=True
-            )
-        return self._existing_files
 
     def _build_metadata(self, episode: Episode) -> Dict:
         """Build metadata dict for File Search upload.
@@ -135,13 +126,6 @@ class IndexingWorker(WorkerInterface):
         # Build display name
         display_name = self._build_display_name(episode)
 
-        # Check if already exists
-        existing = self._get_existing_files()
-        if display_name in existing:
-            resource_name = existing[display_name]
-            logger.info(f"Transcript already indexed: {display_name}")
-            return resource_name, display_name
-
         # Build metadata
         metadata = self._build_metadata(episode)
 
@@ -153,10 +137,6 @@ class IndexingWorker(WorkerInterface):
             display_name=display_name,
             metadata=metadata,
         )
-
-        # Update cache with new file
-        if self._existing_files is not None:
-            self._existing_files[display_name] = resource_name
 
         return resource_name, display_name
 

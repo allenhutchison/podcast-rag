@@ -4,7 +4,7 @@ Uploads podcast descriptions to Gemini File Search for semantic search.
 """
 
 import logging
-from typing import Dict, Optional
+from typing import Optional
 
 from src.config import Config
 from src.db.gemini_file_search import GeminiFileSearchManager
@@ -37,7 +37,6 @@ class DescriptionIndexingWorker(WorkerInterface):
         self.config = config
         self.repository = repository
         self._file_search_manager: Optional[GeminiFileSearchManager] = None
-        self._existing_files: Optional[Dict[str, str]] = None
 
     @property
     def name(self) -> str:
@@ -50,14 +49,6 @@ class DescriptionIndexingWorker(WorkerInterface):
         if self._file_search_manager is None:
             self._file_search_manager = GeminiFileSearchManager(config=self.config)
         return self._file_search_manager
-
-    def _get_existing_files(self) -> Dict[str, str]:
-        """Get cached list of existing files in File Search store."""
-        if self._existing_files is None:
-            self._existing_files = self.file_search_manager.get_existing_files(
-                use_cache=True
-            )
-        return self._existing_files
 
     def get_pending_count(self) -> int:
         """Get the count of podcasts pending description indexing.
@@ -82,31 +73,13 @@ class DescriptionIndexingWorker(WorkerInterface):
         if not podcast.description:
             raise ValueError(f"Podcast {podcast.id} has no description")
 
-        # Build display name for checking existing files
-        safe_title = "".join(
-            c if c.isalnum() or c in " -_" else "_" for c in podcast.title
-        )
-        safe_title = safe_title.strip()[:100]
-        expected_display_name = f"{safe_title}_description.txt"
-
-        # Check if already exists
-        existing = self._get_existing_files()
-        if expected_display_name in existing:
-            resource_name = existing[expected_display_name]
-            logger.info(f"Description already indexed: {expected_display_name}")
-            return resource_name, expected_display_name
-
-        logger.info(f"Uploading description to File Search: {expected_display_name}")
+        logger.info(f"Uploading description to File Search: {podcast.title}")
 
         # Upload using the dedicated method
         resource_name, display_name = self.file_search_manager.upload_description_document(
             podcast_name=podcast.title,
             description=podcast.description,
         )
-
-        # Update cache with new file
-        if self._existing_files is not None:
-            self._existing_files[display_name] = resource_name
 
         return resource_name, display_name
 

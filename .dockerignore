@@ -35,9 +35,6 @@ htmlcov/
 *.log
 *.out
 
-# Cache files
-.file_search_cache.json
-
 # Documentation
 *.md
 !README.md

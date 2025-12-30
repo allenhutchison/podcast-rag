@@ -44,9 +44,6 @@ class GeminiFileSearchManager:
     - Batch upload existing transcripts
     """
 
-    # Cache file name for local storage
-    CACHE_FILE_NAME = '.file_search_cache.json'
-
     # Gemini API maximum documents per page for list operations
     MAX_PAGE_SIZE = 20
 
@@ -444,9 +441,6 @@ class GeminiFileSearchManager:
 
                     logging.info(f"Successfully uploaded: {display_name}")
 
-                    # Update cache with new file
-                    self._update_cache_entry(store_name, display_name, operation.name)
-
                     return operation.name
                 except Exception:
                     # Ensure FD is closed even if an error occurred before os.close
@@ -478,9 +472,6 @@ class GeminiFileSearchManager:
                 self._poll_operation(operation)
 
                 logging.info(f"Successfully uploaded: {display_name}")
-
-                # Update cache with new file
-                self._update_cache_entry(store_name, display_name, operation.name)
 
                 return operation.name
 
@@ -659,239 +650,9 @@ class GeminiFileSearchManager:
             logging.error(f"Failed to list documents: {e}")
             raise
 
-    def _get_cache_path(self) -> str:
-        """
-        Get the path to the local cache file.
-
-        Returns:
-            Path to cache file in project root or /app/cache for Docker
-        """
-        # Get project root (two levels up from this file: src/db/gemini_file_search.py -> root)
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-        # Use /app/cache directory if it exists (Docker environment)
-        cache_dir = os.path.join(project_root, 'cache')
-        if os.path.exists(cache_dir):
-            return os.path.join(cache_dir, self.CACHE_FILE_NAME)
-
-        # Otherwise use project root (local development)
-        return os.path.join(project_root, self.CACHE_FILE_NAME)
-
-    def _load_cache(self, store_name: str) -> Optional[Dict[str, str]]:
-        """
-        Load existing files list from local cache.
-
-        Args:
-            store_name: Store name to verify cache is for correct store
-
-        Returns:
-            Dictionary mapping display_name -> document resource name, or None if cache invalid/missing
-        """
-        cache_path = self._get_cache_path()
-
-        if not os.path.exists(cache_path):
-            logging.info("No local cache found, will fetch from remote")
-            return None
-
-        try:
-            with open(cache_path, 'r') as f:
-                cache_data = json.load(f)
-        except Exception as e:
-            logging.warning(f"Failed to load local cache: {e}")
-            return None
-
-        try:
-            from datetime import UTC, datetime
-            # cache_data is already loaded above
-
-            # Verify cache is for the same store
-            if cache_data.get('store_name') != store_name:
-                logging.warning(
-                    f"Cache store mismatch: cached '{cache_data.get('store_name')}' != current '{store_name}'. "
-                    "Will refresh from remote."
-                )
-                return None
-
-            # Log cache info
-            last_sync = cache_data.get('last_sync', 'unknown')
-            files_data = cache_data.get('files', {})
-
-            # Handle both old format (string) and new format (dict with metadata)
-            # Old format: {"filename.txt": "resource_name"}
-            # New format: {"filename.txt": {"resource_name": "...", "metadata": {...}}}
-            file_count = len(files_data)
-            logging.info(f"Loaded cache with {file_count} files (last synced: {last_sync})")
-
-            # Convert new format to simple mapping for backward compatibility
-            simple_mapping = {}
-            for display_name, value in files_data.items():
-                if isinstance(value, dict):
-                    simple_mapping[display_name] = value.get('resource_name', '')
-                else:
-                    # Old format - just a string
-                    simple_mapping[display_name] = value
-
-            return simple_mapping
-        except Exception as e:
-            logging.warning(f"Failed to load cache: {e}. Will fetch from remote.")
-            return None
-
-    def get_cache_data(self) -> Optional[Dict]:
-        """
-        Get the full cache data including metadata.
-
-        Returns:
-            Dictionary with cache data (files, last_sync, etc.) or None if not found/invalid
-        """
-        cache_path = self._get_cache_path()
-
-        if os.path.exists(cache_path):
-            try:
-                with open(cache_path, 'r') as f:
-                    return json.load(f)
-            except Exception:
-                pass
-
-        return None
-
-    def _save_cache(self, store_name: str, files: Dict[str, str]) -> None:
-        """
-        Save existing files list to local cache (legacy format).
-
-        Args:
-            store_name: Store name for this cache
-            files: Dictionary mapping display_name -> document resource name
-        """
-        if self.dry_run:
-            logging.debug("[DRY RUN] Would save cache to disk")
-            return
-
-        cache_path = self._get_cache_path()
-
-        try:
-            from datetime import UTC, datetime
-            import tempfile
-
-            cache_data = {
-                'version': '1.0',
-                'store_name': store_name,
-                'last_sync': datetime.now(UTC).isoformat() + 'Z',
-                'file_count': len(files),
-                'files': files
-            }
-
-            # Atomic write: write to temp file then rename
-            # Create temp file in the same directory to ensure atomic rename works
-            cache_dir = os.path.dirname(cache_path)
-            with tempfile.NamedTemporaryFile(mode='w', dir=cache_dir, delete=False) as tmp_file:
-                json.dump(cache_data, tmp_file, indent=2)
-                tmp_path = tmp_file.name
-
-            # Atomic rename
-            os.replace(tmp_path, cache_path)
-
-            logging.debug(f"Saved cache with {len(files)} files")
-        except Exception as e:
-            logging.warning(f"Failed to save cache: {e}. Will continue without caching.")
-            # Try to clean up temp file if it exists
-            if 'tmp_path' in locals() and os.path.exists(tmp_path):
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
-
-    def _save_cache_with_metadata(self, store_name: str, files_with_metadata: Dict[str, Dict]) -> None:
-        """
-        Save files list with metadata to local cache (enhanced format).
-
-        Args:
-            store_name: Store name for this cache
-            files_with_metadata: Dict mapping display_name -> {resource_name, metadata}
-        """
-        if self.dry_run:
-            logging.debug("[DRY RUN] Would save cache with metadata to disk")
-            return
-
-        cache_path = self._get_cache_path()
-
-        try:
-            from datetime import UTC, datetime
-            import tempfile
-
-            cache_data = {
-                'version': '2.0',  # Version 2 with metadata
-                'store_name': store_name,
-                'last_sync': datetime.now(UTC).isoformat() + 'Z',
-                'file_count': len(files_with_metadata),
-                'files': files_with_metadata
-            }
-
-            # Atomic write: write to temp file then rename
-            # Create temp file in the same directory to ensure atomic rename works
-            cache_dir = os.path.dirname(cache_path)
-            with tempfile.NamedTemporaryFile(mode='w', dir=cache_dir, delete=False) as tmp_file:
-                json.dump(cache_data, tmp_file, indent=2)
-                tmp_path = tmp_file.name
-
-            # Atomic rename
-            os.replace(tmp_path, cache_path)
-
-            logging.info(f"Saved cache with {len(files_with_metadata)} files and metadata")
-        except Exception as e:
-            logging.warning(f"Failed to save cache: {e}. Will continue without caching.")
-            # Try to clean up temp file if it exists
-            if 'tmp_path' in locals() and os.path.exists(tmp_path):
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
-
-    def _update_cache_entry(self, store_name: str, display_name: str, file_name: str) -> None:
-        """
-        Add or update a single entry in the cache.
-
-        Args:
-            store_name: Store name for this cache
-            display_name: Display name of the file
-            file_name: Document resource name
-        """
-        if self.dry_run:
-            return
-
-        cache_path = self._get_cache_path()
-
-        try:
-            from datetime import UTC, datetime
-
-            # Load existing cache or create new
-            cache_data = {}
-            if os.path.exists(cache_path):
-                with open(cache_path, 'r') as f:
-                    cache_data = json.load(f)
-            else:
-                cache_data = {
-                    'version': '1.0',
-                    'store_name': store_name,
-                    'files': {}
-                }
-
-            # Update entry
-            cache_data['files'][display_name] = file_name
-            cache_data['file_count'] = len(cache_data['files'])
-            cache_data['last_update'] = datetime.now(UTC).isoformat() + 'Z'
-
-            # Save updated cache
-            with open(cache_path, 'w') as f:
-                json.dump(cache_data, f, indent=2)
-
-            logging.debug(f"Updated cache entry: {display_name}")
-        except Exception as e:
-            logging.warning(f"Failed to update cache entry: {e}")
-
     def get_existing_files(
         self,
         store_name: Optional[str] = None,
-        use_cache: bool = True,
         show_progress: bool = False
     ) -> Dict[str, str]:
         """
@@ -899,8 +660,7 @@ class GeminiFileSearchManager:
 
         Args:
             store_name: Store to query (uses default if None)
-            use_cache: If True, try to load from local cache first (default: True)
-            show_progress: If True, show progress bar during remote fetch (default: False)
+            show_progress: If True, show progress bar during fetch (default: False)
 
         Returns:
             Dictionary mapping display_name -> document resource name
@@ -911,14 +671,7 @@ class GeminiFileSearchManager:
         if self.dry_run:
             return {}
 
-        # Try to load from cache if enabled
-        if use_cache:
-            cached_files = self._load_cache(store_name)
-            if cached_files is not None:
-                return cached_files
-
-        # Cache miss or disabled - fetch from remote WITH METADATA
-        logging.info("Fetching file list and metadata from remote File Search store...")
+        logging.info("Fetching file list from remote File Search store...")
         try:
             return self._fetch_files_sync(store_name, show_progress)
         except Exception as e:
@@ -950,7 +703,6 @@ class GeminiFileSearchManager:
             Dictionary mapping display_name -> document resource name
         """
         files = {}
-        files_with_metadata = {}
 
         # List documents from the store with max page size
         documents = self.client.file_search_stores.documents.list(
@@ -967,37 +719,24 @@ class GeminiFileSearchManager:
                 logging.info("Fetching files (install tqdm for progress bar)...")
 
         if tqdm_module:
-            print("Syncing files and metadata from remote File Search store...")
+            print("Fetching files from remote File Search store...")
 
             with tqdm_module.tqdm(desc="Fetching files", unit=" files") as pbar:
                 for doc in documents:
-                    metadata = self._extract_doc_metadata(doc)
                     files[doc.display_name] = doc.name
-                    files_with_metadata[doc.display_name] = {
-                        'resource_name': doc.name,
-                        'metadata': metadata
-                    }
                     pbar.update(1)
 
-            print(f"✓ Synced {len(files)} files with metadata from remote")
+            print(f"✓ Fetched {len(files)} files from remote")
         else:
             # No progress bar or tqdm not available
             count = 0
             for doc in documents:
-                metadata = self._extract_doc_metadata(doc)
                 files[doc.display_name] = doc.name
-                files_with_metadata[doc.display_name] = {
-                    'resource_name': doc.name,
-                    'metadata': metadata
-                }
                 count += 1
                 if count % 1000 == 0:
                     logging.info(f"  Fetched {count} files...")
 
             logging.info(f"Fetched {len(files)} files from remote")
-
-        # Save enhanced cache with metadata
-        self._save_cache_with_metadata(store_name, files_with_metadata)
 
         return files
 
@@ -1020,7 +759,6 @@ class GeminiFileSearchManager:
             Dictionary mapping display_name -> document resource name
         """
         files = {}
-        files_with_metadata = {}
 
         # Use async client with max page size
         documents = await self.client.aio.file_search_stores.documents.list(
@@ -1037,60 +775,40 @@ class GeminiFileSearchManager:
                 logging.info("Fetching files (install tqdm for progress bar)...")
 
         if tqdm_module:
-            print("Syncing files and metadata from remote File Search store (async)...")
+            print("Fetching files from remote File Search store (async)...")
 
             with tqdm_module.tqdm(desc="Fetching files", unit=" files") as pbar:
                 async for doc in documents:
-                    metadata = self._extract_doc_metadata(doc)
                     files[doc.display_name] = doc.name
-                    files_with_metadata[doc.display_name] = {
-                        'resource_name': doc.name,
-                        'metadata': metadata
-                    }
                     pbar.update(1)
 
-            print(f"✓ Synced {len(files)} files with metadata from remote")
+            print(f"✓ Fetched {len(files)} files from remote")
 
         elif show_progress:
             # No tqdm, but progress requested - log periodically
             count = 0
             async for doc in documents:
-                metadata = self._extract_doc_metadata(doc)
                 files[doc.display_name] = doc.name
-                files_with_metadata[doc.display_name] = {
-                    'resource_name': doc.name,
-                    'metadata': metadata
-                }
                 count += 1
                 if count % 1000 == 0:
                     logging.info(f"  Fetched {count} files...")
             logging.info(f"Fetched {len(files)} files from remote")
         else:
             async for doc in documents:
-                metadata = self._extract_doc_metadata(doc)
                 files[doc.display_name] = doc.name
-                files_with_metadata[doc.display_name] = {
-                    'resource_name': doc.name,
-                    'metadata': metadata
-                }
             logging.info(f"Fetched {len(files)} files from remote")
-
-        # Save enhanced cache with metadata
-        self._save_cache_with_metadata(store_name, files_with_metadata)
 
         return files
 
     def get_existing_files_async(
         self,
         store_name: Optional[str] = None,
-        use_cache: bool = True,
         show_progress: bool = False
     ) -> Dict[str, str]:
         """
         Get existing files using async API for faster fetching.
 
         This is a synchronous wrapper that runs the async fetch internally.
-        Use this for faster cache rebuilding.
 
         Note: This method creates a new event loop with asyncio.run(). It will
         fail if called from within an existing async context. For async contexts,
@@ -1098,8 +816,7 @@ class GeminiFileSearchManager:
 
         Args:
             store_name: Store to query (uses default if None)
-            use_cache: If True, try to load from local cache first (default: True)
-            show_progress: If True, show progress bar during remote fetch (default: False)
+            show_progress: If True, show progress bar during fetch (default: False)
 
         Returns:
             Dictionary mapping display_name -> document resource name
@@ -1117,12 +834,6 @@ class GeminiFileSearchManager:
         if self.dry_run:
             return {}
 
-        # Try to load from cache if enabled
-        if use_cache:
-            cached_files = self._load_cache(store_name)
-            if cached_files is not None:
-                return cached_files
-
         # Check for existing event loop to provide helpful error message
         try:
             asyncio.get_running_loop()
@@ -1137,7 +848,6 @@ class GeminiFileSearchManager:
                 raise  # Re-raise our custom error
             # Otherwise it's the expected "no running loop" case, proceed
 
-        # Cache miss - fetch from remote using async
         logging.info("Fetching file list using async API...")
         try:
             return asyncio.run(self._fetch_files_async(store_name, show_progress))
@@ -1216,51 +926,6 @@ class GeminiFileSearchManager:
 
         except Exception as e:
             logging.error(f"Failed to pre-fetch document metadata: {e}")
-
-    def get_document_metadata_from_cache(self, display_name: str) -> Optional[Dict]:
-        """
-        Get document metadata directly from cache (no API calls - instant!).
-
-        Args:
-            display_name: Display name of the document (e.g., 'filename.txt')
-
-        Returns:
-            Dictionary with metadata, or None if not found in cache
-        """
-        try:
-            cache_data = self.get_cache_data()
-            if not cache_data:
-                logging.warning(f"Cache not available when looking up metadata for: {display_name}")
-                return None
-
-            files_data = cache_data.get('files', {})
-
-            # Check if this file exists in cache
-            if display_name not in files_data:
-                logging.debug(f"Document not found in cache: {display_name}")
-                return None
-
-            file_info = files_data[display_name]
-
-            # Handle new format (dict with metadata)
-            if isinstance(file_info, dict):
-                metadata = file_info.get('metadata', {})
-                logging.debug(f"Retrieved metadata for {display_name}: {list(metadata.keys()) if metadata else 'empty'}")
-                return {
-                    'name': file_info.get('resource_name', ''),
-                    'display_name': display_name,
-                    'metadata': metadata,
-                    'create_time': None,
-                    'size_bytes': None
-                }
-
-            # Old format doesn't have metadata
-            logging.debug(f"Document {display_name} is in old cache format (no metadata)")
-            return None
-
-        except Exception as e:
-            logging.error(f"Failed to get metadata from cache for {display_name}: {e}", exc_info=True)
-            return None
 
     def get_document_by_resource_name(self, resource_name: str) -> Optional[Dict]:
         """

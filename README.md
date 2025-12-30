@@ -9,7 +9,6 @@ A Python-based Retrieval-Augmented Generation (RAG) system for intelligent searc
 - AI-powered metadata extraction (titles, hosts, guests, summaries, keywords)
 - Vector embeddings and semantic search using Gemini File Search
 - Natural language queries with source citations
-- Local metadata cache for instant lookups
 - Scheduled batch processing
 - Dry-run mode and comprehensive logging
 
@@ -111,12 +110,12 @@ Run both the encoding backend and web service together using docker-compose:
    - Start querying your podcast library!
 
 **What's running:**
-- **podcast-rag**: Processes new podcasts every hour, updates metadata cache
+- **podcast-rag**: Processes new podcasts every hour
 - **podcast-rag-web**: Serves web UI for real-time queries with streaming responses
 
 **Shared resources:**
-- `.file_search_cache.json`: Metadata cache (both services read/write)
 - Podcast directory: Source audio files (read-only)
+- Database: Episode metadata and File Search references
 
 ### Cloud Run Deployment (Web Service Only)
 
@@ -176,7 +175,6 @@ Both images:
 - Use multi-stage builds for smaller size
 - Run as non-root user (UID 1000)
 - Include health checks
-- Support automatic cache rebuilding
 
 ## Usage
 
@@ -218,14 +216,6 @@ python scripts/file_search_utils.py --action delete-duplicates
 # Delete all files (with confirmation)
 python scripts/file_search_utils.py --action delete-all
 ```
-
-### Rebuild metadata cache:
-```bash
-# Rebuild cache from remote File Search store
-python scripts/rebuild_cache.py
-```
-
-This fetches all document metadata from the remote File Search store and saves it to a local cache file for instant lookups during RAG queries.
 
 ## Logging
 The tool uses Python's built-in logging for tracking progress and errors. By default, logs are displayed in the console at INFO level.

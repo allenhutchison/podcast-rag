@@ -138,7 +138,6 @@ When running in Docker, edit the volume mounts in `docker-compose.yml` to set yo
 ```yaml
 volumes:
   - /your/podcast/path:/data/podcasts:ro
-  - /your/cache/path/.file_search_cache.json:/app/.file_search_cache.json
 ```
 
 Inside the container, `PODCAST_DOWNLOAD_DIRECTORY` is set to `/data/podcasts` to match the mount point.

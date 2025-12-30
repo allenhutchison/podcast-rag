@@ -7,7 +7,6 @@ A one-page guide to get your web app deployed quickly.
 - [ ] Google Cloud Project with billing enabled
 - [ ] `gcloud` CLI installed and authenticated
 - [ ] APIs enabled: Cloud Run, Cloud Build, Container Registry
-- [ ] `.file_search_cache.json` file exists in project root
 - [ ] Gemini API key ready
 
 ## 5-Minute Manual Deploy
@@ -123,17 +122,6 @@ Cloud Build will automatically build and deploy! 🚀
 git push origin main  # Triggers automatic build
 ```
 
-### Update Cache File
-```bash
-# 1. Rebuild cache locally
-python scripts/rebuild_cache.py
-
-# 2. Commit and push
-git add .file_search_cache.json
-git commit -m "Update cache"
-git push origin main
-```
-
 ### Update Environment Variables
 ```bash
 gcloud run services update $SERVICE_NAME \
@@ -166,15 +154,6 @@ https://console.cloud.google.com/run?project=$PROJECT_ID
 
 ## Troubleshooting
 
-### Build fails: "cache file not found"
-```bash
-# Make sure cache exists
-ls -lh .file_search_cache.json
-
-# Rebuild if needed
-python scripts/rebuild_cache.py
-```
-
 ### Deploy fails: "Permission denied"
 ```bash
 # Grant Cloud Run Admin role
@@ -191,7 +170,6 @@ gcloud run services logs tail $SERVICE_NAME --region $REGION
 # Common issues:
 # - GEMINI_API_KEY not set or invalid
 # - File Search store name doesn't match
-# - Cache file missing from image
 ```
 
 ### Slow responses
