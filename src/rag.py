@@ -112,7 +112,7 @@ class RagManager:
         try:
             # Query using File Search tool
             response = self.client.models.generate_content(
-                model=self.config.GEMINI_MODEL,
+                model=self.config.GEMINI_MODEL_FLASH,
                 contents=query,
                 config=types.GenerateContentConfig(
                     tools=[types.Tool(

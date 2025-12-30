@@ -343,7 +343,7 @@ Answer with just the letter "A" or "B"."""
 
             try:
                 classification_response = client.models.generate_content(
-                    model=config.GEMINI_MODEL,
+                    model=config.GEMINI_MODEL_LITE,
                     contents=classification_prompt,
                     config=types.GenerateContentConfig(
                         response_modalities=["TEXT"]
@@ -534,7 +534,7 @@ Do not include any other text or explanation."""
 
             try:
                 identification_response = client.models.generate_content(
-                    model=config.GEMINI_MODEL,
+                    model=config.GEMINI_MODEL_FLASH,
                     contents=identification_prompt,
                     config=types.GenerateContentConfig(
                         response_modalities=["TEXT"]
@@ -609,7 +609,7 @@ Please provide a comprehensive, detailed answer based on these podcast descripti
                 yield f"event: status\ndata: {json.dumps({'phase': 'synthesizing', 'message': 'Generating detailed response...'})}\n\n"
 
                 response = client.models.generate_content_stream(
-                    model=config.GEMINI_MODEL,
+                    model=config.GEMINI_MODEL_FLASH,
                     contents=detailed_prompt,
                     config=types.GenerateContentConfig(
                         response_modalities=["TEXT"]
@@ -619,7 +619,7 @@ Please provide a comprehensive, detailed answer based on these podcast descripti
                 logger.error(f"Two-stage discovery failed: {e}", exc_info=True)
                 # Fallback to single-stage approach
                 response = client.models.generate_content_stream(
-                    model=config.GEMINI_MODEL,
+                    model=config.GEMINI_MODEL_FLASH,
                     contents=query_text,
                     config=types.GenerateContentConfig(
                         response_modalities=["TEXT"]
@@ -628,7 +628,7 @@ Please provide a comprehensive, detailed answer based on these podcast descripti
         else:
             # For content queries, use File Search
             response = client.models.generate_content_stream(
-                model=config.GEMINI_MODEL,
+                model=config.GEMINI_MODEL_FLASH,
                 contents=query_text,
                 config=types.GenerateContentConfig(
                     tools=[types.Tool(
