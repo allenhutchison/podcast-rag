@@ -177,7 +177,7 @@ class MetadataWorker(WorkerInterface):
             logger.debug("Making AI metadata extraction request")
 
             response = client.models.generate_content(
-                model=self.config.GEMINI_MODEL,
+                model=self.config.GEMINI_MODEL_FLASH,
                 contents=prompt,
                 config={
                     "response_mime_type": "application/json",

@@ -61,7 +61,14 @@ class Config:
 
         # Model configuration
         self.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "your_api_key_here")
+
+        # Base model (used as fallback if tier-specific models not set)
         self.GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
+        # Tiered models for different use cases (fall back to GEMINI_MODEL)
+        self.GEMINI_MODEL_LITE = os.getenv("GEMINI_MODEL_LITE") or self.GEMINI_MODEL
+        self.GEMINI_MODEL_FLASH = os.getenv("GEMINI_MODEL_FLASH") or self.GEMINI_MODEL
+        self.GEMINI_MODEL_PRO = os.getenv("GEMINI_MODEL_PRO") or self.GEMINI_MODEL
 
         # Gemini File Search configuration
         self.GEMINI_FILE_SEARCH_STORE_NAME = os.getenv("GEMINI_FILE_SEARCH_STORE_NAME", "podcast-transcripts")
@@ -187,17 +194,17 @@ class Config:
 
     def validate_file_search_model(self):
         """
-        Validate that the configured model is compatible with File Search.
+        Validate that the configured Flash model is compatible with File Search.
 
         Raises:
             ValueError: If model is not compatible with File Search
         """
         # Extract base model name (remove version suffixes if present)
-        model_base = self.GEMINI_MODEL.split(':')[0]  # Handle versioned models
+        model_base = self.GEMINI_MODEL_FLASH.split(':')[0]  # Handle versioned models
 
         if not any(compatible in model_base for compatible in self.FILE_SEARCH_COMPATIBLE_MODELS):
             raise ValueError(
-                f"Model '{self.GEMINI_MODEL}' is not compatible with Gemini File Search. "
+                f"Model '{self.GEMINI_MODEL_FLASH}' is not compatible with Gemini File Search. "
                 f"Compatible models: {', '.join(self.FILE_SEARCH_COMPATIBLE_MODELS)}. "
-                f"Please update GEMINI_MODEL in your .env file."
+                f"Please update GEMINI_MODEL_FLASH (or GEMINI_MODEL) in your .env file."
             )

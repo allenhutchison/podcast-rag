@@ -98,7 +98,7 @@ class GeminiSearchManager:
 
             # Perform File Search query
             response = self.client.models.generate_content(
-                model=self.config.GEMINI_MODEL,
+                model=self.config.GEMINI_MODEL_FLASH,
                 contents=query,
                 config=types.GenerateContentConfig(
                     tools=[types.Tool(

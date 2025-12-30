@@ -402,7 +402,7 @@ def create_podcast_search_tool(
                     logger.info(f"Applying metadata filter: {metadata_filter}")
 
             response = client.models.generate_content(
-                model=config.GEMINI_MODEL,
+                model=config.GEMINI_MODEL_FLASH,
                 contents=f"Find and summarize relevant information about: {safe_query}",
                 config=types.GenerateContentConfig(
                     tools=[types.Tool(
@@ -533,7 +533,7 @@ def create_podcast_search_agent(
 
     return LlmAgent(
         name="PodcastSearchAgent",
-        model=config.GEMINI_MODEL,
+        model=config.GEMINI_MODEL_FLASH,
         instruction="""You are a podcast transcript search specialist.
 
 Your task is to search the podcast archive for relevant information based on the user's query.
