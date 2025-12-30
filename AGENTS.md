@@ -32,7 +32,7 @@ User Query → Vector Search → Context Retrieval → Prompt Formatting → AI 
 3. **Scheduler** (`src/scheduler.py`) - Entry point for running the pipeline
 4. **Search & Storage:**
    - Gemini File Search - Semantic search with automatic chunking and embeddings
-   - Local metadata cache - Fast lookups without API calls
+   - Database - Stores indexing status and metadata per episode
 5. **MCP Server** (`src/mcp_server.py`) - Claude integration protocol
 
 ### Project Structure
@@ -65,8 +65,7 @@ User Query → Vector Search → Context Retrieval → Prompt Formatting → AI 
 │       └── static/         # Frontend (Tailwind CSS + vanilla JS)
 │
 ├── scripts/
-│   ├── file_search_utils.py      # File Search management utilities
-│   └── rebuild_cache.py          # Cache rebuilding tool
+│   └── file_search_utils.py      # File Search management utilities
 │
 ├── prompts/                # AI prompt templates
 │   └── metadata_extraction.txt   # Metadata extraction
@@ -160,9 +159,6 @@ uv run poe serve
 
 # Manage File Search store (list, find duplicates, delete)
 python scripts/file_search_utils.py --action list
-
-# Rebuild cache with metadata
-python scripts/rebuild_cache.py
 ```
 
 **Testing:**
@@ -303,7 +299,7 @@ Check current branch with: `git branch --show-current`
 ### File Search Returns No Results
 - Verify files are uploaded to File Search store (`python scripts/file_search_utils.py --action list`)
 - Check if store name matches config (`GEMINI_FILE_SEARCH_STORE_NAME`)
-- Ensure cache is up to date (`python scripts/rebuild_cache.py`)
+- Verify database indexing status (`python -m src.cli podcast status`)
 
 ### AI Query Failures
 - Gemini: Verify `GEMINI_API_KEY` is valid
