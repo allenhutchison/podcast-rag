@@ -27,7 +27,7 @@ RUN apt-get update && \
 
 # Create non-root user
 RUN useradd -m -u 1000 -s /bin/bash podcast && \
-    mkdir -p /app /data/podcasts /data/cache && \
+    mkdir -p /app /data/podcasts && \
     chown -R podcast:podcast /app /data
 
 # Set working directory
