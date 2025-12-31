@@ -83,7 +83,7 @@ class Config:
 
         # Prompts configuration
         base_dir = os.path.dirname(__file__)
-        default_prompts_dir = os.path.join(base_dir, "../prompts")
+        default_prompts_dir = os.path.join(base_dir, "prompts")
         self.PROMPTS_DIR = os.getenv("PROMPTS_DIR", default_prompts_dir)
 
         # Web application configuration

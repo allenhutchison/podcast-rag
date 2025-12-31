@@ -63,6 +63,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from src.agents.podcast_search import get_podcast_citations, clear_podcast_citations, set_podcast_filter
 from src.config import Config
+from src.prompt_manager import PromptManager
 from src.db.factory import create_repository
 from src.web.admin_routes import router as admin_router
 from src.web.auth import get_current_user
@@ -82,6 +83,9 @@ logger = logging.getLogger(__name__)
 
 # Initialize configuration
 config = Config()
+
+# Initialize prompt manager
+prompt_manager = PromptManager(config=config)
 
 
 def _validate_jwt_config():
@@ -330,18 +334,12 @@ async def generate_streaming_response(
         # Classify query type for podcast/subscriptions/global scopes (using LLM)
         is_episode_discovery_query = False
         if podcast_obj or podcast_filter_list or (not episode_obj and not podcast_obj and not podcast_filter_list):
-            # Use LLM to classify the query intent
-            classification_prompt = f"""Classify this user query about a podcast:
-
-Query: "{query}"
-
-Is this query primarily asking to:
-A) Find or recommend specific episodes (e.g., "which episodes cover AI?", "what should I listen to about Tesla?")
-B) Get detailed content or quotes from episode transcripts (e.g., "what did they say about AI?", "summarize the discussion on Tesla")
-
-Answer with just the letter "A" or "B"."""
-
             try:
+                # Use LLM to classify the query intent
+                classification_prompt = prompt_manager.build_prompt(
+                    "query_classification",
+                    query=query
+                )
                 classification_response = client.models.generate_content(
                     model=config.GEMINI_MODEL_LITE,
                     contents=classification_prompt,
@@ -373,13 +371,11 @@ Answer with just the letter "A" or "B"."""
                 context_parts.append(f"Summary: {episode_obj.ai_summary}")
 
             context = "\n".join(context_parts)
-            query_text = f"""You are answering questions about a specific podcast episode. Here is the episode information:
-
-{context}
-
-User Question: {query}
-
-Please provide a comprehensive answer based on the episode transcript, citing specific details and quotes where relevant."""
+            query_text = prompt_manager.build_prompt(
+                "episode_context",
+                context=context,
+                query=query
+            )
         elif podcast_obj:
             # Rich podcast context prompt with episode list
             context_parts = [f"Podcast: {podcast_obj.title}"]
@@ -416,18 +412,12 @@ Please provide a comprehensive answer based on the episode transcript, citing sp
 
                 episode_list = "\n\nEpisode List:\n" + "\n".join(episode_lines)
 
-            query_text = f"""You are answering questions about a podcast series. Here is the podcast information:
-
-{context}{episode_list}
-
-User Question: {query}
-
-IMPORTANT INSTRUCTIONS:
-1. If the question asks "which episodes" or is about finding/recommending episodes, ONLY use the Episode List above. Look for relevant keywords in episode titles and summaries.
-2. For questions about specific content or quotes FROM episodes, use the transcript search results.
-3. When recommending episodes, cite the episode title and date from the list above.
-
-Please provide a comprehensive answer following these instructions."""
+            query_text = prompt_manager.build_prompt(
+                "podcast_context",
+                context=context,
+                episode_list=episode_list,
+                query=query
+            )
         elif podcast_filter_list:
             # Subscriptions chat - build podcast list
             context_parts = [f"Subscribed Podcasts ({len(podcast_filter_list)} total)"]
@@ -447,18 +437,12 @@ Please provide a comprehensive answer following these instructions."""
                 podcast_list = "\n\nPodcast List:\n" + "\n".join(podcast_lines)
 
             context = "\n".join(context_parts)
-            query_text = f"""You are helping a user explore their subscribed podcasts.
-
-{context}{podcast_list}
-
-User Question: {query}
-
-IMPORTANT INSTRUCTIONS:
-1. If the question asks "which podcasts" or is about finding/recommending podcasts, ONLY use the Podcast List above.
-2. For questions about specific content or quotes FROM podcasts, use the transcript search results.
-3. When recommending podcasts, cite the podcast title and description from the list above.
-
-Please provide a comprehensive answer following these instructions."""
+            query_text = prompt_manager.build_prompt(
+                "subscriptions_context",
+                context=context,
+                podcast_list=podcast_list,
+                query=query
+            )
         else:
             # Global chat - build podcast list
             context_parts = ["Search across all available podcasts"]
@@ -478,18 +462,12 @@ Please provide a comprehensive answer following these instructions."""
                 podcast_list = "\n\nPodcast List:\n" + "\n".join(podcast_lines)
 
             context = "\n".join(context_parts)
-            query_text = f"""You are helping a user explore available podcasts.
-
-{context}{podcast_list}
-
-User Question: {query}
-
-IMPORTANT INSTRUCTIONS:
-1. If the question asks "which podcasts" or is about finding/recommending podcasts, ONLY use the Podcast List above.
-2. For questions about specific content or quotes FROM podcasts, use the transcript search results.
-3. When recommending podcasts, cite the podcast title and description from the list above.
-
-Please provide a comprehensive answer following these instructions."""
+            query_text = prompt_manager.build_prompt(
+                "global_context",
+                context=context,
+                podcast_list=podcast_list,
+                query=query
+            )
 
         # Make streaming request (with or without File Search)
         if is_episode_discovery_query:
@@ -501,16 +479,12 @@ Please provide a comprehensive answer following these instructions."""
                 # Episode discovery (for podcast scope)
                 yield f"event: status\ndata: {json.dumps({'phase': 'filtering', 'message': 'Finding relevant episodes...'})}\n\n"
 
-                identification_prompt = f"""You are helping a user find relevant podcast episodes.
-
-Podcast: {podcast_obj.title}
-{episode_list}
-
-User Question: {query}
-
-Based on the episode list above, identify the most relevant episodes for this question.
-Return ONLY a JSON array of episode titles, like: ["Episode Title 1", "Episode Title 2"]
-Do not include any other text or explanation."""
+                identification_prompt = prompt_manager.build_prompt(
+                    "episode_identification",
+                    podcast_title=podcast_obj.title,
+                    episode_list=episode_list,
+                    query=query
+                )
             else:
                 # Podcast discovery (for subscriptions/global)
                 yield f"event: status\ndata: {json.dumps({'phase': 'filtering', 'message': 'Finding relevant podcasts...'})}\n\n"
@@ -521,16 +495,12 @@ Do not include any other text or explanation."""
                 else:
                     scope_context = "All Available Podcasts"
 
-                identification_prompt = f"""You are helping a user find relevant podcasts.
-
-{scope_context}
-{podcast_list}
-
-User Question: {query}
-
-Based on the podcast list above, identify the most relevant podcasts for this question.
-Return ONLY a JSON array of podcast titles, like: ["Podcast Title 1", "Podcast Title 2"]
-Do not include any other text or explanation."""
+                identification_prompt = prompt_manager.build_prompt(
+                    "podcast_identification",
+                    scope_context=scope_context,
+                    podcast_list=podcast_list,
+                    query=query
+                )
 
             try:
                 identification_response = client.models.generate_content(
@@ -569,13 +539,12 @@ Do not include any other text or explanation."""
                         focused_list.append(ep_info)
 
                     focused_context = "\n\n".join(focused_list)
-                    detailed_prompt = f"""Here are the relevant episodes from the {podcast_obj.title} podcast:
-
-{focused_context}
-
-User Question: {query}
-
-Please provide a comprehensive, detailed answer based on these episode summaries. Explain what each episode covers and how it relates to the question."""
+                    detailed_prompt = prompt_manager.build_prompt(
+                        "episode_analysis",
+                        podcast_title=podcast_obj.title,
+                        focused_context=focused_context,
+                        query=query
+                    )
 
                 elif relevant_titles and podcasts_for_discovery:
                     # Podcast discovery (for subscriptions/global)
@@ -594,13 +563,12 @@ Please provide a comprehensive, detailed answer based on these episode summaries
                     focused_context = "\n\n".join(focused_list)
 
                     scope_description = "from your subscribed podcasts" if podcast_filter_list else "from available podcasts"
-                    detailed_prompt = f"""Here are the relevant podcasts {scope_description}:
-
-{focused_context}
-
-User Question: {query}
-
-Please provide a comprehensive, detailed answer based on these podcast descriptions. Explain what each podcast covers and how it relates to the question."""
+                    detailed_prompt = prompt_manager.build_prompt(
+                        "podcast_analysis",
+                        scope_description=scope_description,
+                        focused_context=focused_context,
+                        query=query
+                    )
                 else:
                     # No relevant items found, skip to fallback
                     raise ValueError("No relevant items found after filtering")

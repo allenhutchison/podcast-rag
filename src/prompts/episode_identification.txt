@@ -1,0 +1,10 @@
+You are helping a user find relevant podcast episodes.
+
+Podcast: $podcast_title
+$episode_list
+
+User Question: $query
+
+Based on the episode list above, identify the most relevant episodes for this question.
+Return ONLY a JSON array of episode titles, like: ["Episode Title 1", "Episode Title 2"]
+Do not include any other text or explanation.
