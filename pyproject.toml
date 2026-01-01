@@ -84,7 +84,7 @@ default-groups = ["dev"]
 [tool.poe.tasks]
 test = "pytest"
 cov = "pytest --cov=src tests/"
-serve = "uvicorn src.web.app:app --reload --reload-dir src/web --reload-dir src/agents --reload-dir src/db --reload-dir prompts --port 8080"
+serve = "uvicorn src.web.app:app --reload --reload-dir src/web --reload-dir src/agents --reload-dir src/db --reload-dir src/prompts --port 8080"
 pipeline = "python src/scheduler.py"
 query = "python -m src.rag --query"
 

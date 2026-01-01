@@ -1,0 +1,7 @@
+Here are the relevant episodes from the $podcast_title podcast:
+
+$focused_context
+
+User Question: $query
+
+Please provide a comprehensive, detailed answer based on these episode summaries. Explain what each episode covers and how it relates to the question.

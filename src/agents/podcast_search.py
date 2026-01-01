@@ -16,6 +16,7 @@ from google.adk.agents import LlmAgent
 from src.config import Config
 from src.db.gemini_file_search import GeminiFileSearchManager
 from src.db.repository import PodcastRepositoryInterface
+from src.prompt_manager import PromptManager
 
 logger = logging.getLogger(__name__)
 
@@ -305,19 +306,21 @@ def create_podcast_search_tool(
     config: Config,
     file_search_manager: GeminiFileSearchManager,
     repository: PodcastRepositoryInterface,
-    session_id: str = "_default"
+    session_id: str = "_default",
+    prompt_manager: Optional[PromptManager] = None
 ):
     """
     Create a podcast-search tool function that queries Gemini File Search and returns structured results while storing per-session citations.
-    
+
     The returned function performs query sanitization, optionally applies per-session podcast, episode, or subscription-list filters to Gemini File Search, invokes Gemini to find and summarize relevant transcript content, extracts and enriches citations from the response using the provided repository, stores those citations under the given session, and returns a result dictionary. On failure it returns a dictionary containing an error message and an empty citations list.
-    
+
     Parameters:
         config: Application configuration object containing Gemini credentials and model selection.
         file_search_manager: GeminiFileSearchManager used to obtain or create the File Search store.
         repository: Repository used to look up episode/podcast metadata for citation enrichment.
         session_id: Session identifier used for thread-safe storage and retrieval of per-session citations and filters.
-    
+        prompt_manager: Optional PromptManager instance for loading prompt templates. If not provided, a new instance is created.
+
     Returns:
         search_podcasts (callable): A function that accepts a single `query` (str) and returns a dict with keys:
             - response_text: The model's textual response or an error message.
@@ -326,6 +329,10 @@ def create_podcast_search_tool(
             - query: The sanitized query string.
             - error: Present only on failure with the error text.
     """
+    # Use provided prompt manager or create a new one
+    if prompt_manager is None:
+        prompt_manager = PromptManager(config=config)
+
     def search_podcasts(query: str) -> Dict:
         """
         Search podcast transcripts for content relevant to the given natural-language query.
@@ -401,9 +408,13 @@ def create_podcast_search_tool(
                     )
                     logger.info(f"Applying metadata filter: {metadata_filter}")
 
+            search_prompt = prompt_manager.build_prompt(
+                "file_search_query",
+                safe_query=safe_query
+            )
             response = client.models.generate_content(
                 model=config.GEMINI_MODEL_FLASH,
-                contents=f"Find and summarize relevant information about: {safe_query}",
+                contents=search_prompt,
                 config=types.GenerateContentConfig(
                     tools=[types.Tool(
                         file_search=file_search_config
@@ -531,22 +542,17 @@ def create_podcast_search_agent(
     # Initialize file search manager for File Search store operations
     file_search_manager = GeminiFileSearchManager(config=config)
 
+    # Initialize prompt manager once and reuse for both agent instruction and tool
+    prompt_manager = PromptManager(config=config)
+    agent_instruction = prompt_manager.build_prompt("podcast_search_agent")
+
     return LlmAgent(
         name="PodcastSearchAgent",
         model=config.GEMINI_MODEL_FLASH,
-        instruction="""You are a podcast transcript search specialist.
-
-Your task is to search the podcast archive for relevant information based on the user's query.
-Use the search_podcasts tool to find relevant transcript excerpts.
-
-When you receive results:
-1. Summarize the key findings from the podcast transcripts
-2. Note specific episodes, hosts, and dates when available
-3. Include relevant quotes from the transcripts
-4. Preserve all citation information for later synthesis
-
-Be thorough but concise. Focus on factual information from the transcripts.""",
+        instruction=agent_instruction,
         description="Searches podcast transcripts using Gemini File Search",
-        tools=[create_podcast_search_tool(config, file_search_manager, repository, session_id)],
+        tools=[create_podcast_search_tool(
+            config, file_search_manager, repository, session_id, prompt_manager
+        )],
         output_key="podcast_results"
     )

@@ -1,0 +1,9 @@
+Classify this user query about a podcast:
+
+Query: "$query"
+
+Is this query primarily asking to:
+A) Find or recommend specific episodes (e.g., "which episodes cover AI?", "what should I listen to about Tesla?")
+B) Get detailed content or quotes from episode transcripts (e.g., "what did they say about AI?", "summarize the discussion on Tesla")
+
+Answer with just the letter "A" or "B".
