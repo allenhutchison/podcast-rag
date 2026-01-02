@@ -324,7 +324,7 @@ async def generate_agentic_response(
                     tools=[types.Tool(function_declarations=tool_declarations)],
                     response_modalities=["TEXT"],
                     thinking_config=types.ThinkingConfig(
-                        thinkingBudget=1024  # Low budget for faster responses with some reasoning
+                        thinking_budget=1024  # Low budget for faster responses with some reasoning
                     )
                 )
             )
