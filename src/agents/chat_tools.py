@@ -200,6 +200,7 @@ def create_chat_tools(
             )
 
             # Execute search
+            logger.info("Starting File Search API call...")
             response = client.models.generate_content(
                 model=config.GEMINI_MODEL_FLASH,
                 contents=f"Search podcast transcripts for: {safe_query}",
@@ -208,6 +209,7 @@ def create_chat_tools(
                     response_modalities=["TEXT"]
                 )
             )
+            logger.info(f"File Search API call completed, response type: {type(response)}")
 
             # Extract citations
             citations = _extract_citations_from_response(response, repository, "transcript")
