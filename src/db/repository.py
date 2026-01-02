@@ -232,6 +232,23 @@ class PodcastRepositoryInterface(ABC):
         pass
 
     @abstractmethod
+    def get_podcast_by_description_display_name(
+        self, display_name: str
+    ) -> Optional[Podcast]:
+        """
+        Retrieve a podcast by its description File Search display name.
+
+        Used by the web app to look up podcast metadata for discovery queries.
+
+        Parameters:
+            display_name (str): The description_file_search_display_name (e.g., "Podcast_Name_description.txt")
+
+        Returns:
+            Optional[Podcast]: The matching Podcast if found, `None` otherwise.
+        """
+        pass
+
+    @abstractmethod
     def list_episodes(
         self,
         podcast_id: Optional[str] = None,
@@ -1644,6 +1661,23 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 .where(Episode.file_search_display_name == display_name)
             )
             return session.scalars(stmt).unique().first()
+
+    def get_podcast_by_description_display_name(
+        self, display_name: str
+    ) -> Optional[Podcast]:
+        """
+        Retrieve a podcast by its description File Search display name.
+
+        Used by the web app to look up podcast metadata for discovery queries.
+
+        @returns The Podcast if found, `None` otherwise.
+        """
+        with self._get_session() as session:
+            stmt = (
+                select(Podcast)
+                .where(Podcast.description_file_search_display_name == display_name)
+            )
+            return session.scalars(stmt).first()
 
     def list_episodes(
         self,

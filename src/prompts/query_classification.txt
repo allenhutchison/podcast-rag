@@ -2,8 +2,13 @@ Classify this user query about a podcast:
 
 Query: "$query"
 
-Is this query primarily asking to:
-A) Find or recommend specific episodes (e.g., "which episodes cover AI?", "what should I listen to about Tesla?")
-B) Get detailed content or quotes from episode transcripts (e.g., "what did they say about AI?", "summarize the discussion on Tesla")
+Is this query asking to:
+A) Get RECOMMENDATIONS for what to listen to (e.g., "what should I listen to?", "recommend episodes about AI", "suggest a good starting episode", "what podcasts cover technology?")
+B) Find INFORMATION or answers from podcast content (e.g., "what did they say about AI?", "which episodes discuss Tesla?", "summarize the discussion on climate change", "tell me about their views on X")
+
+Choose A ONLY if the user explicitly wants listening recommendations or suggestions.
+Choose B for all other queries, including questions about topics, finding episodes that cover something, or any informational request.
+
+When in doubt, choose B.
 
 Answer with just the letter "A" or "B".

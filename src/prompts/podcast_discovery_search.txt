@@ -1,0 +1,3 @@
+Find podcasts relevant to this question: $query
+
+Use the podcast descriptions to identify which podcasts would be most helpful for answering this question.
