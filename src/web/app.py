@@ -52,6 +52,123 @@ def truncate_text(text: str, max_length: int = 200) -> str:
     return truncated + "..."
 
 
+def extract_podcast_info_from_description_search(
+    response,
+    repository
+) -> List[dict]:
+    """
+    Extract podcast info from File Search description results.
+
+    Parses grounding chunks from a Gemini response to extract podcast metadata.
+    Deduplicates by display name to avoid showing the same podcast multiple times.
+
+    Args:
+        response: Gemini API response with grounding metadata
+        repository: Repository for database lookups
+
+    Returns:
+        List of dicts with: podcast_id, title, author, description, image_url, matched_text
+    """
+    podcasts = []
+    seen_titles = set()
+
+    if not hasattr(response, 'candidates') or not response.candidates:
+        return podcasts
+
+    candidate = response.candidates[0]
+    if not hasattr(candidate, 'grounding_metadata'):
+        return podcasts
+
+    grounding = candidate.grounding_metadata
+    if not hasattr(grounding, 'grounding_chunks') or not grounding.grounding_chunks:
+        return podcasts
+
+    for chunk in grounding.grounding_chunks:
+        if not hasattr(chunk, 'retrieved_context'):
+            continue
+
+        ctx = chunk.retrieved_context
+        display_name = getattr(ctx, 'title', 'Unknown')
+        matched_text = getattr(ctx, 'text', '')
+
+        # Skip duplicates
+        if display_name in seen_titles:
+            continue
+        seen_titles.add(display_name)
+
+        # Look up podcast in database
+        podcast = repository.get_podcast_by_description_display_name(display_name)
+        if podcast:
+            podcasts.append({
+                'podcast_id': str(podcast.id),
+                'title': podcast.title,
+                'author': podcast.itunes_author or podcast.author or '',
+                'description': podcast.description or '',
+                'image_url': podcast.image_url or '',
+                'matched_text': matched_text
+            })
+
+    return podcasts
+
+
+def extract_episode_info_from_transcript_search(
+    response,
+    repository
+) -> List[dict]:
+    """
+    Extract episode info from File Search transcript results.
+
+    Parses grounding chunks from a Gemini response to extract episode metadata.
+    Deduplicates by display name to avoid showing the same episode multiple times.
+
+    Args:
+        response: Gemini API response with grounding metadata
+        repository: Repository for database lookups
+
+    Returns:
+        List of dicts with: episode_id, title, published_date, ai_summary, matched_text
+    """
+    episodes = []
+    seen_titles = set()
+
+    if not hasattr(response, 'candidates') or not response.candidates:
+        return episodes
+
+    candidate = response.candidates[0]
+    if not hasattr(candidate, 'grounding_metadata'):
+        return episodes
+
+    grounding = candidate.grounding_metadata
+    if not hasattr(grounding, 'grounding_chunks') or not grounding.grounding_chunks:
+        return episodes
+
+    for chunk in grounding.grounding_chunks:
+        if not hasattr(chunk, 'retrieved_context'):
+            continue
+
+        ctx = chunk.retrieved_context
+        display_name = getattr(ctx, 'title', 'Unknown')
+        matched_text = getattr(ctx, 'text', '')
+
+        # Skip duplicates
+        if display_name in seen_titles:
+            continue
+        seen_titles.add(display_name)
+
+        # Look up episode in database
+        episode = repository.get_episode_by_file_search_display_name(display_name)
+        if episode:
+            episodes.append({
+                'episode_id': str(episode.id),
+                'title': episode.title,
+                'published_date': episode.published_date.strftime('%B %d, %Y') if episode.published_date else '',
+                'ai_summary': episode.ai_summary or '',
+                'matched_text': matched_text
+            })
+
+    return episodes
+
+
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, RedirectResponse
@@ -61,7 +178,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from starlette.middleware.sessions import SessionMiddleware
 
-from src.agents.podcast_search import get_podcast_citations, clear_podcast_citations, set_podcast_filter
+from src.agents.podcast_search import get_podcast_citations, clear_podcast_citations, set_podcast_filter, escape_filter_value, extract_citations
 from src.config import Config
 from src.prompt_manager import PromptManager
 from src.db.factory import create_repository
@@ -471,130 +588,195 @@ async def generate_streaming_response(
 
         # Make streaming request (with or without File Search)
         if is_episode_discovery_query:
-            # Two-stage approach for discovery:
-            # For podcast scope: discover episodes
-            # For subscriptions/global: discover podcasts
+            # Discovery queries use File Search to find relevant items
+            # For podcast scope: search transcripts to find episodes
+            # For subscriptions/global: search descriptions to find podcasts
 
             if podcast_obj:
-                # Episode discovery (for podcast scope)
+                # Episode discovery (for podcast scope) - search transcripts
                 yield f"event: status\ndata: {json.dumps({'phase': 'filtering', 'message': 'Finding relevant episodes...'})}\n\n"
 
-                identification_prompt = prompt_manager.build_prompt(
-                    "episode_identification",
+                # Build File Search config for transcripts filtered to this podcast
+                discovery_filter_parts = ['type="transcript"']
+                escaped_podcast = escape_filter_value(podcast_obj.title)
+                if escaped_podcast:
+                    discovery_filter_parts.append(f'podcast="{escaped_podcast}"')
+                discovery_metadata_filter = " AND ".join(discovery_filter_parts)
+
+                discovery_file_search_config = types.FileSearch(
+                    file_search_store_names=[store_name],
+                    metadata_filter=discovery_metadata_filter
+                )
+                logger.info(f"Episode discovery filter: {discovery_metadata_filter}")
+
+                # Build discovery search prompt
+                discovery_prompt = prompt_manager.build_prompt(
+                    "episode_discovery_search",
                     podcast_title=podcast_obj.title,
-                    episode_list=episode_list,
                     query=query
                 )
+
+                try:
+                    # Search transcripts to find relevant episodes
+                    discovery_response = client.models.generate_content(
+                        model=config.GEMINI_MODEL_FLASH,
+                        contents=discovery_prompt,
+                        config=types.GenerateContentConfig(
+                            tools=[types.Tool(
+                                file_search=discovery_file_search_config
+                            )],
+                            response_modalities=["TEXT"]
+                        )
+                    )
+
+                    # Extract episode info from grounding chunks
+                    relevant_episodes = extract_episode_info_from_transcript_search(
+                        discovery_response, _repository
+                    )
+                    logger.info(f"Found {len(relevant_episodes)} relevant episodes via File Search")
+
+                    if relevant_episodes:
+                        # Build focused episode list with full summaries
+                        focused_list = []
+                        for ep in relevant_episodes:
+                            ep_info = f"**{ep['title']}**"
+                            if ep['published_date']:
+                                ep_info += f" ({ep['published_date']})"
+                            if ep['ai_summary']:
+                                ep_info += f"\n{ep['ai_summary']}"
+                            focused_list.append(ep_info)
+
+                        focused_context = "\n\n".join(focused_list)
+                        detailed_prompt = prompt_manager.build_prompt(
+                            "episode_analysis",
+                            podcast_title=podcast_obj.title,
+                            focused_context=focused_context,
+                            query=query
+                        )
+                    else:
+                        raise ValueError("No relevant episodes found via File Search")
+
+                    # Generate response using detailed_prompt
+                    yield f"event: status\ndata: {json.dumps({'phase': 'synthesizing', 'message': 'Generating detailed response...'})}\n\n"
+
+                    response = client.models.generate_content_stream(
+                        model=config.GEMINI_MODEL_FLASH,
+                        contents=detailed_prompt,
+                        config=types.GenerateContentConfig(
+                            response_modalities=["TEXT"]
+                        )
+                    )
+                except Exception as e:
+                    logger.error(f"Episode discovery via File Search failed: {e}", exc_info=True)
+                    # Fallback to content search
+                    response = client.models.generate_content_stream(
+                        model=config.GEMINI_MODEL_FLASH,
+                        contents=query_text,
+                        config=types.GenerateContentConfig(
+                            tools=[types.Tool(
+                                file_search=file_search_config
+                            )],
+                            response_modalities=["TEXT"]
+                        )
+                    )
             else:
-                # Podcast discovery (for subscriptions/global)
+                # Podcast discovery (for subscriptions/global) - search descriptions
                 yield f"event: status\ndata: {json.dumps({'phase': 'filtering', 'message': 'Finding relevant podcasts...'})}\n\n"
 
-                scope_context = ""
-                if podcast_filter_list:
-                    scope_context = f"User's Subscribed Podcasts ({len(podcast_filter_list)} total)"
-                else:
-                    scope_context = "All Available Podcasts"
+                # Build File Search config for descriptions
+                discovery_filter_parts = ['type="description"']
 
-                identification_prompt = prompt_manager.build_prompt(
-                    "podcast_identification",
-                    scope_context=scope_context,
-                    podcast_list=podcast_list,
+                # Add subscription filter if applicable
+                if podcast_filter_list:
+                    podcast_or_conditions = []
+                    for podcast_name in podcast_filter_list:
+                        escaped_podcast = escape_filter_value(podcast_name)
+                        if escaped_podcast:
+                            podcast_or_conditions.append(f'podcast="{escaped_podcast}"')
+                    if podcast_or_conditions:
+                        discovery_filter_parts.append(f"({' OR '.join(podcast_or_conditions)})")
+
+                discovery_metadata_filter = " AND ".join(discovery_filter_parts)
+
+                discovery_file_search_config = types.FileSearch(
+                    file_search_store_names=[store_name],
+                    metadata_filter=discovery_metadata_filter
+                )
+                logger.info(f"Podcast discovery filter: {discovery_metadata_filter}")
+
+                # Build discovery search prompt
+                discovery_prompt = prompt_manager.build_prompt(
+                    "podcast_discovery_search",
                     query=query
                 )
 
-            try:
-                identification_response = client.models.generate_content(
-                    model=config.GEMINI_MODEL_FLASH,
-                    contents=identification_prompt,
-                    config=types.GenerateContentConfig(
-                        response_modalities=["TEXT"]
-                    )
-                )
-
-                # Parse the episode titles from the response
-                import json as json_lib
-                response_text = identification_response.text.strip()
-                # Extract JSON array if it's wrapped in markdown code blocks
-                if "```json" in response_text:
-                    response_text = response_text.split("```json")[1].split("```")[0].strip()
-                elif "```" in response_text:
-                    response_text = response_text.split("```")[1].split("```")[0].strip()
-
-                relevant_titles = json_lib.loads(response_text)
-                logger.info(f"Identified {len(relevant_titles)} relevant items: {relevant_titles}")
-
-                # Stage 2: Build detailed response using relevant items
-                if podcast_obj and relevant_titles and episodes:
-                    # Episode discovery (for podcast scope)
-                    relevant_episodes = [ep for ep in episodes if ep.title in relevant_titles]
-
-                    # Build focused episode list with full summaries
-                    focused_list = []
-                    for ep in relevant_episodes:
-                        ep_info = f"**{ep.title}**"
-                        if ep.published_date:
-                            ep_info += f" ({ep.published_date.strftime('%B %d, %Y')})"
-                        if ep.ai_summary:
-                            ep_info += f"\n{ep.ai_summary}"
-                        focused_list.append(ep_info)
-
-                    focused_context = "\n\n".join(focused_list)
-                    detailed_prompt = prompt_manager.build_prompt(
-                        "episode_analysis",
-                        podcast_title=podcast_obj.title,
-                        focused_context=focused_context,
-                        query=query
+                try:
+                    # Search descriptions to find relevant podcasts
+                    discovery_response = client.models.generate_content(
+                        model=config.GEMINI_MODEL_FLASH,
+                        contents=discovery_prompt,
+                        config=types.GenerateContentConfig(
+                            tools=[types.Tool(
+                                file_search=discovery_file_search_config
+                            )],
+                            response_modalities=["TEXT"]
+                        )
                     )
 
-                elif relevant_titles and podcasts_for_discovery:
-                    # Podcast discovery (for subscriptions/global)
-                    relevant_podcasts = [p for p in podcasts_for_discovery if p.title in relevant_titles]
-
-                    # Build focused podcast list with full descriptions
-                    focused_list = []
-                    for podcast in relevant_podcasts:
-                        podcast_info = f"**{podcast.title}**"
-                        if podcast.author:
-                            podcast_info += f" by {podcast.author}"
-                        if podcast.description:
-                            podcast_info += f"\n{podcast.description}"
-                        focused_list.append(podcast_info)
-
-                    focused_context = "\n\n".join(focused_list)
-
-                    scope_description = "from your subscribed podcasts" if podcast_filter_list else "from available podcasts"
-                    detailed_prompt = prompt_manager.build_prompt(
-                        "podcast_analysis",
-                        scope_description=scope_description,
-                        focused_context=focused_context,
-                        query=query
+                    # Extract podcast info from grounding chunks
+                    relevant_podcasts = extract_podcast_info_from_description_search(
+                        discovery_response, _repository
                     )
-                else:
-                    # No relevant items found, skip to fallback
-                    raise ValueError("No relevant items found after filtering")
+                    logger.info(f"Found {len(relevant_podcasts)} relevant podcasts via File Search")
 
-                # Generate response using detailed_prompt
-                yield f"event: status\ndata: {json.dumps({'phase': 'synthesizing', 'message': 'Generating detailed response...'})}\n\n"
+                    if relevant_podcasts:
+                        # Build focused podcast list with full descriptions
+                        focused_list = []
+                        for podcast in relevant_podcasts:
+                            podcast_info = f"**{podcast['title']}**"
+                            if podcast['author']:
+                                podcast_info += f" by {podcast['author']}"
+                            if podcast['description']:
+                                podcast_info += f"\n{podcast['description']}"
+                            focused_list.append(podcast_info)
 
-                response = client.models.generate_content_stream(
-                    model=config.GEMINI_MODEL_FLASH,
-                    contents=detailed_prompt,
-                    config=types.GenerateContentConfig(
-                        response_modalities=["TEXT"]
+                        focused_context = "\n\n".join(focused_list)
+
+                        scope_description = "from your subscribed podcasts" if podcast_filter_list else "from available podcasts"
+                        detailed_prompt = prompt_manager.build_prompt(
+                            "podcast_analysis",
+                            scope_description=scope_description,
+                            focused_context=focused_context,
+                            query=query
+                        )
+                    else:
+                        raise ValueError("No relevant podcasts found via File Search")
+
+                    # Generate response using detailed_prompt
+                    yield f"event: status\ndata: {json.dumps({'phase': 'synthesizing', 'message': 'Generating detailed response...'})}\n\n"
+
+                    response = client.models.generate_content_stream(
+                        model=config.GEMINI_MODEL_FLASH,
+                        contents=detailed_prompt,
+                        config=types.GenerateContentConfig(
+                            response_modalities=["TEXT"]
+                        )
                     )
-                )
-            except Exception as e:
-                logger.error(f"Two-stage discovery failed: {e}", exc_info=True)
-                # Fallback to single-stage approach
-                response = client.models.generate_content_stream(
-                    model=config.GEMINI_MODEL_FLASH,
-                    contents=query_text,
-                    config=types.GenerateContentConfig(
-                        response_modalities=["TEXT"]
+                except Exception as e:
+                    logger.error(f"Podcast discovery via File Search failed: {e}", exc_info=True)
+                    # Fallback to content search on transcripts
+                    response = client.models.generate_content_stream(
+                        model=config.GEMINI_MODEL_FLASH,
+                        contents=query_text,
+                        config=types.GenerateContentConfig(
+                            tools=[types.Tool(
+                                file_search=file_search_config
+                            )],
+                            response_modalities=["TEXT"]
+                        )
                     )
-                )
         else:
-            # For content queries, use File Search
+            # For content queries, use File Search on transcripts
             response = client.models.generate_content_stream(
                 model=config.GEMINI_MODEL_FLASH,
                 contents=query_text,
