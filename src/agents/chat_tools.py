@@ -223,7 +223,7 @@ def create_chat_tools(
         except Exception as e:
             logger.error(f"search_transcripts failed: {e}", exc_info=True)
             return {
-                'response_text': f"Error searching transcripts: {str(e)}",
+                'response_text': f"Error searching transcripts: {e!s}",
                 'citations': [],
                 'source': 'transcripts',
                 'error': str(e)
@@ -309,7 +309,7 @@ def create_chat_tools(
         except Exception as e:
             logger.error(f"search_podcast_descriptions failed: {e}", exc_info=True)
             return {
-                'response_text': f"Error searching podcast descriptions: {str(e)}",
+                'response_text': f"Error searching podcast descriptions: {e!s}",
                 'podcasts': [],
                 'citations': [],
                 'source': 'descriptions',

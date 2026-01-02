@@ -340,6 +340,9 @@ async def send_message(
                 # Format: "event: <type>\ndata: <json>\n\n"
                 # This parsing is tightly coupled to generate_agentic_response's
                 # output format in app.py - update both if the format changes.
+                # Note: Only token, citations, and done events are captured for
+                # persistence. Other events (status, tool_call, tool_result) are
+                # streamed to the client but not stored.
                 if chunk.startswith("event: token"):
                     try:
                         data_line = chunk.split("\n")[1]
