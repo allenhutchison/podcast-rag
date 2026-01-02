@@ -328,27 +328,27 @@ class TestChatRequestModel:
         assert request.subscribed_only is True
 
 
-class TestGenerateStreamingResponseSignature:
-    """Tests for updated generate_streaming_response function signature."""
+class TestGenerateAgenticResponseSignature:
+    """Tests for generate_agentic_response function signature."""
 
-    def test_generate_streaming_response_has_user_id_parameter(self):
-        """Test that generate_streaming_response now requires user_id."""
-        from src.web.app import generate_streaming_response
+    def test_generate_agentic_response_has_user_id_parameter(self):
+        """Test that generate_agentic_response requires user_id."""
+        from src.web.app import generate_agentic_response
         import inspect
 
-        sig = inspect.signature(generate_streaming_response)
+        sig = inspect.signature(generate_agentic_response)
         params = list(sig.parameters.keys())
 
         assert "user_id" in params
         assert "session_id" in params
         assert "query" in params
 
-    def test_generate_streaming_response_has_subscribed_only_parameter(self):
-        """Test that generate_streaming_response accepts subscribed_only parameter."""
-        from src.web.app import generate_streaming_response
+    def test_generate_agentic_response_has_subscribed_only_parameter(self):
+        """Test that generate_agentic_response accepts subscribed_only parameter."""
+        from src.web.app import generate_agentic_response
         import inspect
 
-        sig = inspect.signature(generate_streaming_response)
+        sig = inspect.signature(generate_agentic_response)
         params = list(sig.parameters.keys())
 
         assert "subscribed_only" in params
@@ -356,12 +356,12 @@ class TestGenerateStreamingResponseSignature:
         param = sig.parameters["subscribed_only"]
         assert param.default is None
 
-    def test_generate_streaming_response_parameter_order(self):
-        """Test parameter order in generate_streaming_response."""
-        from src.web.app import generate_streaming_response
+    def test_generate_agentic_response_parameter_order(self):
+        """Test parameter order in generate_agentic_response."""
+        from src.web.app import generate_agentic_response
         import inspect
 
-        sig = inspect.signature(generate_streaming_response)
+        sig = inspect.signature(generate_agentic_response)
         params = list(sig.parameters.keys())
 
         # Check required params come first
@@ -369,12 +369,12 @@ class TestGenerateStreamingResponseSignature:
         assert params[1] == "session_id"
         assert params[2] == "user_id"
 
-    def test_generate_streaming_response_is_async(self):
-        """Test that generate_streaming_response is an async generator."""
-        from src.web.app import generate_streaming_response
+    def test_generate_agentic_response_is_async(self):
+        """Test that generate_agentic_response is an async generator."""
+        from src.web.app import generate_agentic_response
         import inspect
 
-        assert inspect.isasyncgenfunction(generate_streaming_response)
+        assert inspect.isasyncgenfunction(generate_agentic_response)
 
 
 class TestChatEndpointWithSubscribedOnly:

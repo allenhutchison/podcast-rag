@@ -1,7 +1,0 @@
-Here are the relevant podcasts $scope_description:
-
-$focused_context
-
-User Question: $query
-
-Please provide a comprehensive, detailed answer based on these podcast descriptions. Explain what each podcast covers and how it relates to the question.

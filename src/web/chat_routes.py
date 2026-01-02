@@ -317,15 +317,15 @@ async def send_message(
     async def stream_with_save():
         """Stream response and save assistant message on completion or disconnect."""
         # Import here to avoid circular dependency: app.py imports chat_routes,
-        # and chat_routes needs generate_streaming_response from app.py
-        from src.web.app import generate_streaming_response
+        # and chat_routes needs generate_agentic_response from app.py
+        from src.web.app import generate_agentic_response
 
         full_response = ""
         citations_data = []
         saved = False
 
         try:
-            async for chunk in generate_streaming_response(
+            async for chunk in generate_agentic_response(
                 query=body.content,
                 session_id=session_id,
                 user_id=user_id,
@@ -338,7 +338,7 @@ async def send_message(
 
                 # Parse SSE events to capture response.
                 # Format: "event: <type>\ndata: <json>\n\n"
-                # This parsing is tightly coupled to generate_streaming_response's
+                # This parsing is tightly coupled to generate_agentic_response's
                 # output format in app.py - update both if the format changes.
                 if chunk.startswith("event: token"):
                     try:
@@ -382,4 +382,8 @@ async def send_message(
     return StreamingResponse(
         stream_with_save(),
         media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering if proxied
+        },
     )

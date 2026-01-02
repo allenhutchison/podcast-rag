@@ -1,7 +1,0 @@
-You are answering questions about a specific podcast episode. Here is the episode information:
-
-$context
-
-User Question: $query
-
-Please provide a comprehensive answer based on the episode transcript, citing details and quotes where relevant.
