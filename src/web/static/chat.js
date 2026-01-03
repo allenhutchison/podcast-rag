@@ -560,12 +560,8 @@ async function handleSubmit(event) {
 
             if (!eventData) return;
 
-            // Debug: log all events (use console.debug to avoid noise in production)
-            console.debug('SSE Event:', eventType, eventData);
-
             if (eventType === 'tool_call') {
                 // Show tool being called
-                console.debug('Tool call received:', eventData);
                 toolSteps.push({
                     tool: eventData.tool,
                     text: eventData.description || eventData.display_name,

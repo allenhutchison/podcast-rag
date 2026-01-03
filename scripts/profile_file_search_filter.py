@@ -18,6 +18,7 @@ print = partial(print, flush=True)
 from src.config import Config
 from src.db.gemini_file_search import GeminiFileSearchManager
 from src.db.repository import SQLAlchemyPodcastRepository
+from src.agents.podcast_search import escape_filter_value
 
 import argparse
 
@@ -45,11 +46,19 @@ def build_filter(podcasts: list[str], num_podcasts: int) -> str:
         return 'type="transcript"'
 
     subset = podcasts[:num_podcasts]
-    or_clauses = [f'podcast="{p}"' for p in subset]
+    or_clauses = []
+    for title in subset:
+        escaped = escape_filter_value(title)
+        if escaped:
+            or_clauses.append(f'podcast="{escaped}"')
+
+    if not or_clauses:
+        return 'type="transcript"'
+
     return f'type="transcript" AND ({" OR ".join(or_clauses)})'
 
 
-def test_query(client: genai.Client, store_name: str, podcasts: list[str], num_podcasts: int, timeout: float = 60.0) -> dict:
+def test_query(client: genai.Client, store_name: str, podcasts: list[str], num_podcasts: int) -> dict:
     """Test a query with the given number of OR clauses."""
     metadata_filter = build_filter(podcasts, num_podcasts)
     filter_len = len(metadata_filter)

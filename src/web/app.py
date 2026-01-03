@@ -415,7 +415,7 @@ async def generate_agentic_response(
 
             # Add function responses to conversation
             contents.append(types.Content(
-                role="user",
+                role="tool",
                 parts=function_responses
             ))
 

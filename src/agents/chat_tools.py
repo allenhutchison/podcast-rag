@@ -36,6 +36,12 @@ def _extract_citations_from_response(
     Returns:
         List of citation dicts with index, source_type, title, text, metadata
     """
+    # Validate source_type parameter
+    valid_source_types = ("transcript", "description")
+    if source_type not in valid_source_types:
+        logger.warning(f"Invalid source_type '{source_type}', defaulting to 'transcript'")
+        source_type = "transcript"
+
     citations = []
     seen_titles = set()
 
@@ -71,7 +77,12 @@ def _extract_citations_from_response(
         episode_id = None
 
         if source_type == "transcript":
-            episode = repository.get_episode_by_file_search_display_name(title)
+            try:
+                episode = repository.get_episode_by_file_search_display_name(title)
+            except Exception as e:
+                logger.warning(f"Database lookup failed for transcript '{title}': {e!s}")
+                continue
+
             if episode:
                 episode_id = str(episode.id)
                 podcast_id = str(episode.podcast.id) if episode.podcast else None
@@ -86,7 +97,12 @@ def _extract_citations_from_response(
                 logger.debug(f"Skipping citation '{title}' - not found as transcript")
                 continue
         elif source_type == "description":
-            podcast = repository.get_podcast_by_description_display_name(title)
+            try:
+                podcast = repository.get_podcast_by_description_display_name(title)
+            except Exception as e:
+                logger.warning(f"Database lookup failed for description '{title}': {e!s}")
+                continue
+
             if podcast:
                 podcast_id = str(podcast.id)
                 metadata = {
@@ -138,12 +154,38 @@ def create_chat_tools(
     Returns:
         List of tool functions for the agent
     """
-    # Resolve scope context upfront
-    podcast_obj = repository.get_podcast(podcast_id) if podcast_id else None
-    episode_obj = repository.get_episode(episode_id) if episode_id else None
+    # Resolve scope context upfront with error handling
+    podcast_obj = None
+    if podcast_id:
+        try:
+            podcast_obj = repository.get_podcast(podcast_id)
+        except Exception as e:
+            logger.warning(f"Failed to fetch podcast {podcast_id}: {e!s}")
 
-    # Get File Search store name
-    store_name = file_search_manager.create_or_get_store()
+    episode_obj = None
+    if episode_id:
+        try:
+            episode_obj = repository.get_episode(episode_id)
+        except Exception as e:
+            logger.warning(f"Failed to fetch episode {episode_id}: {e!s}")
+
+    # Get File Search store name - critical for search functionality
+    store_name = None
+    try:
+        store_name = file_search_manager.create_or_get_store()
+    except Exception as e:
+        logger.error(f"Failed to get File Search store: {e!s}")
+        # Store is critical - tools will return errors if store_name is None
+
+    # Create shared Gemini client with extended timeout for File Search queries
+    # File Search can take longer than default timeout, especially for large stores
+    FILE_SEARCH_TIMEOUT_SECONDS = 120.0
+    client = genai.Client(
+        api_key=config.GEMINI_API_KEY,
+        http_options=types.HttpOptions(
+            timeout=int(FILE_SEARCH_TIMEOUT_SECONDS * 1000),  # API expects milliseconds
+        )
+    )
 
     def search_transcripts(query: str) -> Dict:
         """
@@ -161,17 +203,16 @@ def create_chat_tools(
         safe_query = sanitize_query(query)
         logger.info(f"search_transcripts called: {safe_query[:100]}...")
 
-        try:
-            # Use explicit timeout for File Search queries which can take longer
-            # Pass timeout via client_args to ensure httpx receives it
-            client = genai.Client(
-                api_key=config.GEMINI_API_KEY,
-                http_options=types.HttpOptions(
-                    timeout=120000,  # 120s timeout in milliseconds
-                    client_args={"timeout": 120.0}  # Also set httpx timeout in seconds
-                )
-            )
+        # Check if File Search store is available
+        if not store_name:
+            return {
+                'response_text': "Search is temporarily unavailable. Please try again later.",
+                'citations': [],
+                'source': 'transcripts',
+                'error': "File Search store not initialized"
+            }
 
+        try:
             # Build metadata filter
             # NOTE: The type="transcript" filter causes API timeouts when used alone
             # (global scope). Only include it when we have episode/podcast scope.
@@ -259,17 +300,17 @@ def create_chat_tools(
         safe_query = sanitize_query(query)
         logger.info(f"search_podcast_descriptions called: {safe_query[:100]}...")
 
-        try:
-            # Use explicit timeout for File Search queries which can take longer
-            # Pass timeout via client_args to ensure httpx receives it
-            client = genai.Client(
-                api_key=config.GEMINI_API_KEY,
-                http_options=types.HttpOptions(
-                    timeout=120000,  # 120s timeout in milliseconds
-                    client_args={"timeout": 120.0}  # Also set httpx timeout in seconds
-                )
-            )
+        # Check if File Search store is available
+        if not store_name:
+            return {
+                'response_text': "Search is temporarily unavailable. Please try again later.",
+                'podcasts': [],
+                'citations': [],
+                'source': 'descriptions',
+                'error': "File Search store not initialized"
+            }
 
+        try:
             # Build metadata filter for descriptions
             # NOTE: type="description" filter works fine (unlike type="transcript")
             metadata_filter = 'type="description"'
