@@ -162,9 +162,13 @@ def create_chat_tools(
 
         try:
             # Use explicit timeout for File Search queries which can take longer
+            # Pass timeout via client_args to ensure httpx receives it
             client = genai.Client(
                 api_key=config.GEMINI_API_KEY,
-                http_options=types.HttpOptions(timeout=120000)  # 120s timeout
+                http_options=types.HttpOptions(
+                    timeout=120000,  # 120s timeout in milliseconds
+                    client_args={"timeout": 120.0}  # Also set httpx timeout in seconds
+                )
             )
 
             # Build metadata filter
@@ -253,9 +257,13 @@ def create_chat_tools(
 
         try:
             # Use explicit timeout for File Search queries which can take longer
+            # Pass timeout via client_args to ensure httpx receives it
             client = genai.Client(
                 api_key=config.GEMINI_API_KEY,
-                http_options=types.HttpOptions(timeout=120000)  # 120s timeout
+                http_options=types.HttpOptions(
+                    timeout=120000,  # 120s timeout in milliseconds
+                    client_args={"timeout": 120.0}  # Also set httpx timeout in seconds
+                )
             )
 
             # Build metadata filter for descriptions
