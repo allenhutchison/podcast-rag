@@ -324,7 +324,7 @@ async def generate_agentic_response(
                     tools=[types.Tool(function_declarations=tool_declarations)],
                     response_modalities=["TEXT"],
                     thinking_config=types.ThinkingConfig(
-                        thinking_level="low"  # Gemini 3: use thinking_level (low/medium/high)
+                        thinking_budget=-1  # -1 = automatic/dynamic thinking
                     )
                 )
             )
