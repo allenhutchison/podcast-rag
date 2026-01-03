@@ -161,7 +161,11 @@ def create_chat_tools(
         logger.info(f"search_transcripts called: {safe_query[:100]}...")
 
         try:
-            client = genai.Client(api_key=config.GEMINI_API_KEY)
+            # Use explicit timeout for File Search queries which can take longer
+            client = genai.Client(
+                api_key=config.GEMINI_API_KEY,
+                http_options=types.HttpOptions(timeout=120000)  # 120s timeout
+            )
 
             # Build metadata filter
             filter_parts = ['type="transcript"']
@@ -248,7 +252,11 @@ def create_chat_tools(
         logger.info(f"search_podcast_descriptions called: {safe_query[:100]}...")
 
         try:
-            client = genai.Client(api_key=config.GEMINI_API_KEY)
+            # Use explicit timeout for File Search queries which can take longer
+            client = genai.Client(
+                api_key=config.GEMINI_API_KEY,
+                http_options=types.HttpOptions(timeout=120000)  # 120s timeout
+            )
 
             # Build metadata filter for descriptions
             filter_parts = ['type="description"']
