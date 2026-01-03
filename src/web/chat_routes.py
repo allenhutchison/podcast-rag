@@ -309,7 +309,6 @@ async def send_message(
     # Get scope parameters
     podcast_id = conversation.podcast_id
     episode_id = conversation.episode_id
-    subscribed_only = conversation.scope == "subscriptions"
 
     # Generate session ID for this request
     session_id = str(uuid.uuid4())
@@ -332,7 +331,6 @@ async def send_message(
                 _history=history[:-1],  # Exclude current message (already in query)
                 podcast_id=podcast_id,
                 episode_id=episode_id,
-                subscribed_only=subscribed_only,
             ):
                 yield chunk
 

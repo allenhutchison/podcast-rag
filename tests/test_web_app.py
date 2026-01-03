@@ -250,37 +250,16 @@ class TestDopplerEnvLoading:
 
 
 class TestChatRequestModel:
-    """Tests for updated ChatRequest model with subscribed_only field."""
+    """Tests for ChatRequest model."""
 
-    def test_chat_request_with_subscribed_only_true(self):
-        """Test ChatRequest model accepts subscribed_only=True."""
+    def test_chat_request_basic(self):
+        """Test ChatRequest model with basic query."""
         from src.web.models import ChatRequest
 
-        request = ChatRequest(
-            query="What are the latest episodes?",
-            subscribed_only=True
-        )
+        request = ChatRequest(query="What are the latest episodes?")
         assert request.query == "What are the latest episodes?"
-        assert request.subscribed_only is True
         assert request.podcast_id is None
         assert request.episode_id is None
-
-    def test_chat_request_with_subscribed_only_false(self):
-        """Test ChatRequest model accepts subscribed_only=False."""
-        from src.web.models import ChatRequest
-
-        request = ChatRequest(
-            query="Search all podcasts",
-            subscribed_only=False
-        )
-        assert request.subscribed_only is False
-
-    def test_chat_request_subscribed_only_optional(self):
-        """Test that subscribed_only field is optional."""
-        from src.web.models import ChatRequest
-
-        request = ChatRequest(query="Test query")
-        assert request.subscribed_only is None
 
     def test_chat_request_all_filters_together(self):
         """Test ChatRequest with all filter fields populated."""
@@ -290,12 +269,10 @@ class TestChatRequestModel:
             query="Complex query",
             podcast_id="123e4567-e89b-12d3-a456-426614174000",
             episode_id="episode-123",
-            subscribed_only=True
         )
         assert request.query == "Complex query"
         assert request.podcast_id == "123e4567-e89b-12d3-a456-426614174000"
         assert request.episode_id == "episode-123"
-        assert request.subscribed_only is True
 
     def test_chat_request_validation_empty_query(self):
         """Test that empty query is rejected."""
@@ -314,18 +291,16 @@ class TestChatRequestModel:
         with pytest.raises(ValidationError):
             ChatRequest(query=long_query)
 
-    def test_chat_request_mutually_exclusive_filters(self):
-        """Test that multiple filters can coexist (validation happens at endpoint level)."""
+    def test_chat_request_with_podcast_id(self):
+        """Test ChatRequest with podcast_id filter."""
         from src.web.models import ChatRequest
 
-        # Model allows all filters - logic validation is in the endpoint
         request = ChatRequest(
             query="Test",
             podcast_id="podcast-123",
-            subscribed_only=True
         )
-        assert request.podcast_id is not None
-        assert request.subscribed_only is True
+        assert request.podcast_id == "podcast-123"
+        assert request.episode_id is None
 
 
 class TestGenerateAgenticResponseSignature:
@@ -342,19 +317,6 @@ class TestGenerateAgenticResponseSignature:
         assert "user_id" in params
         assert "session_id" in params
         assert "query" in params
-
-    def test_generate_agentic_response_has_subscribed_only_parameter(self):
-        """Test that generate_agentic_response accepts subscribed_only parameter."""
-        from src.web.app import generate_agentic_response
-        import inspect
-
-        sig = inspect.signature(generate_agentic_response)
-        params = list(sig.parameters.keys())
-
-        assert "subscribed_only" in params
-        # Verify it's optional with default None
-        param = sig.parameters["subscribed_only"]
-        assert param.default is None
 
     def test_generate_agentic_response_parameter_order(self):
         """Test parameter order in generate_agentic_response."""

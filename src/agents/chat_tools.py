@@ -3,7 +3,7 @@ Chat tools for the podcast chat agent.
 
 This module provides tool functions that the chat agent can use to search
 and retrieve podcast information. Tools are scope-aware and capture context
-(podcast_id, episode_id, subscribed_only) at creation time.
+(podcast_id, episode_id) at creation time.
 """
 
 import logging
@@ -64,6 +64,8 @@ def _extract_citations_from_response(
         seen_titles.add(title)
 
         # Get metadata from database, including IDs for internal linking
+        # Skip citations that don't match the expected source type (this filters
+        # out non-transcript results when searching globally without type filter)
         metadata = {}
         podcast_id = None
         episode_id = None
@@ -79,6 +81,10 @@ def _extract_citations_from_response(
                     'release_date': episode.published_date.strftime('%Y-%m-%d') if episode.published_date else '',
                     'hosts': episode.ai_hosts or ''
                 }
+            else:
+                # Not a transcript - skip this citation
+                logger.debug(f"Skipping citation '{title}' - not found as transcript")
+                continue
         elif source_type == "description":
             podcast = repository.get_podcast_by_description_display_name(title)
             if podcast:
@@ -87,6 +93,10 @@ def _extract_citations_from_response(
                     'podcast': podcast.title or '',
                     'author': podcast.itunes_author or podcast.author or '',
                 }
+            else:
+                # Not a description - skip this citation
+                logger.debug(f"Skipping citation '{title}' - not found as description")
+                continue
 
         citations.append({
             'index': len(citations) + 1,
@@ -108,7 +118,6 @@ def create_chat_tools(
     user_id: str,
     podcast_id: Optional[str] = None,
     episode_id: Optional[str] = None,
-    subscribed_only: Optional[bool] = None,
 ) -> List[Callable]:
     """
     Create scope-aware tools for the chat agent.
@@ -116,7 +125,6 @@ def create_chat_tools(
     Tools capture the current scope context at creation time:
     - episode_id: Scope to specific episode
     - podcast_id: Scope to specific podcast
-    - subscribed_only: Scope to user's subscribed podcasts
     - None of the above: Global scope (all podcasts)
 
     Args:
@@ -126,7 +134,6 @@ def create_chat_tools(
         user_id: Current user ID
         podcast_id: Optional podcast ID to scope to
         episode_id: Optional episode ID to scope to
-        subscribed_only: If True, scope to user's subscriptions
 
     Returns:
         List of tool functions for the agent
@@ -134,12 +141,6 @@ def create_chat_tools(
     # Resolve scope context upfront
     podcast_obj = repository.get_podcast(podcast_id) if podcast_id else None
     episode_obj = repository.get_episode(episode_id) if episode_id else None
-
-    # Get subscription list if needed
-    subscription_list = None
-    if subscribed_only:
-        subscriptions = repository.get_user_subscriptions(user_id)
-        subscription_list = [p.title for p in subscriptions] if subscriptions else []
 
     # Get File Search store name
     store_name = file_search_manager.create_or_get_store()
@@ -172,11 +173,15 @@ def create_chat_tools(
             )
 
             # Build metadata filter
-            filter_parts = ['type="transcript"']
+            # NOTE: The type="transcript" filter causes API timeouts when used alone
+            # (global scope). Only include it when we have episode/podcast scope.
+            # For global scope, we search without type filter and post-filter citations.
+            filter_parts = []
 
             # Apply scope filters
             if episode_obj:
                 # Episode scope - filter to specific episode
+                filter_parts.append('type="transcript"')
                 if episode_obj.podcast:
                     escaped_podcast = escape_filter_value(episode_obj.podcast.title)
                     if escaped_podcast:
@@ -186,26 +191,25 @@ def create_chat_tools(
                     filter_parts.append(f'episode="{escaped_episode}"')
             elif podcast_obj:
                 # Podcast scope - filter to specific podcast
+                filter_parts.append('type="transcript"')
                 escaped_podcast = escape_filter_value(podcast_obj.title)
                 if escaped_podcast:
                     filter_parts.append(f'podcast="{escaped_podcast}"')
-            elif subscription_list:
-                # Subscriptions scope - filter to subscribed podcasts
-                podcast_or_conditions = []
-                for podcast_name in subscription_list:
-                    escaped_podcast = escape_filter_value(podcast_name)
-                    if escaped_podcast:
-                        podcast_or_conditions.append(f'podcast="{escaped_podcast}"')
-                if podcast_or_conditions:
-                    filter_parts.append(f"({' OR '.join(podcast_or_conditions)})")
+            # Global scope: no filter, rely on post-filtering in _extract_citations_from_response
 
-            metadata_filter = " AND ".join(filter_parts)
+            metadata_filter = " AND ".join(filter_parts) if filter_parts else None
             logger.info(f"Transcript search filter: {metadata_filter}")
 
-            file_search_config = types.FileSearch(
-                file_search_store_names=[store_name],
-                metadata_filter=metadata_filter
-            )
+            # Build FileSearch config
+            if metadata_filter:
+                file_search_config = types.FileSearch(
+                    file_search_store_names=[store_name],
+                    metadata_filter=metadata_filter
+                )
+            else:
+                file_search_config = types.FileSearch(
+                    file_search_store_names=[store_name]
+                )
 
             # Execute search
             logger.info("Starting File Search API call...")
@@ -236,7 +240,7 @@ def create_chat_tools(
                 'response_text': f"Error searching transcripts: {e!s}",
                 'citations': [],
                 'source': 'transcripts',
-                'error': str(e)
+                'error': f"{e!s}"
             }
 
     def search_podcast_descriptions(query: str) -> Dict:
@@ -267,19 +271,8 @@ def create_chat_tools(
             )
 
             # Build metadata filter for descriptions
-            filter_parts = ['type="description"']
-
-            # Apply subscription filter if applicable
-            if subscription_list:
-                podcast_or_conditions = []
-                for podcast_name in subscription_list:
-                    escaped_podcast = escape_filter_value(podcast_name)
-                    if escaped_podcast:
-                        podcast_or_conditions.append(f'podcast="{escaped_podcast}"')
-                if podcast_or_conditions:
-                    filter_parts.append(f"({' OR '.join(podcast_or_conditions)})")
-
-            metadata_filter = " AND ".join(filter_parts)
+            # NOTE: type="description" filter works fine (unlike type="transcript")
+            metadata_filter = 'type="description"'
             logger.info(f"Description search filter: {metadata_filter}")
 
             file_search_config = types.FileSearch(
@@ -331,7 +324,7 @@ def create_chat_tools(
                 'podcasts': [],
                 'citations': [],
                 'source': 'descriptions',
-                'error': str(e)
+                'error': f"{e!s}"
             }
 
     def get_user_subscriptions() -> Dict:
@@ -371,7 +364,7 @@ def create_chat_tools(
             return {
                 'subscriptions': [],
                 'count': 0,
-                'error': str(e)
+                'error': f"{e!s}"
             }
 
     def get_podcast_info(podcast_id_param: str) -> Dict:
@@ -432,7 +425,7 @@ def create_chat_tools(
             return {
                 'podcast': None,
                 'episodes': [],
-                'error': str(e)
+                'error': f"{e!s}"
             }
 
     def get_episode_info(episode_id_param: str) -> Dict:
@@ -485,7 +478,7 @@ def create_chat_tools(
             logger.error(f"get_episode_info failed: {e}", exc_info=True)
             return {
                 'episode': None,
-                'error': str(e)
+                'error': f"{e!s}"
             }
 
     return [

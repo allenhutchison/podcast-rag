@@ -187,7 +187,6 @@ async def generate_agentic_response(
     _history: Optional[List[dict]] = None,
     podcast_id: Optional[str] = None,
     episode_id: Optional[str] = None,
-    subscribed_only: Optional[bool] = None,
 ) -> AsyncGenerator[str, None]:
     """
     Stream SSE events from agentic chat using function calling.
@@ -208,7 +207,6 @@ async def generate_agentic_response(
         user_id: User ID for subscription lookups
         podcast_id: Optional podcast ID to scope searches to
         episode_id: Optional episode ID to scope searches to
-        subscribed_only: If true, restricts scope to user's subscriptions
 
     Returns:
         AsyncGenerator yielding SSE-formatted event strings
@@ -234,7 +232,6 @@ async def generate_agentic_response(
             user_id=user_id,
             podcast_id=podcast_id,
             episode_id=episode_id,
-            subscribed_only=subscribed_only
         )
 
         # Build tool declarations for Gemini
@@ -295,7 +292,6 @@ async def generate_agentic_response(
             user_id=user_id,
             podcast_id=podcast_id,
             episode_id=episode_id,
-            subscribed_only=subscribed_only
         )
 
         system_instruction = prompt_manager.build_prompt(
@@ -508,7 +504,6 @@ def _build_scope_context(
     user_id: str,
     podcast_id: Optional[str] = None,
     episode_id: Optional[str] = None,
-    subscribed_only: Optional[bool] = None,
 ) -> str:
     """
     Build a scope context string for the agent's system prompt.
@@ -548,14 +543,6 @@ def _build_scope_context(
             context_parts.append(f"Episodes available: {len(episodes)}")
             return "\n".join(context_parts)
 
-    if subscribed_only:
-        subscriptions = repository.get_user_subscriptions(user_id)
-        context_parts = [
-            f"Searching within user's {len(subscriptions)} subscribed podcasts.",
-            "Use search_transcripts to find content, or search_podcast_descriptions to find podcasts."
-        ]
-        return "\n".join(context_parts)
-
     # Global scope
     return (
         "Global search across all available podcasts.\n"
@@ -572,11 +559,11 @@ async def chat(
 ):
     """
     Handle a chat request and stream Server-Sent Events (SSE) responses for a podcast-aware conversational search.
-    
+
     Parameters:
         request (Request): Incoming FastAPI request; used to read headers such as X-Session-ID.
-        chat_request (ChatRequest): Client-provided query and optional filters (podcast_id, episode_id, subscribed_only, history).
-    
+        chat_request (ChatRequest): Client-provided query and optional filters (podcast_id, episode_id, history).
+
     Returns:
         StreamingResponse: An SSE stream that emits events for search/response lifecycle, including status updates, incremental token events, a final citations event, and a done or error event.
     """
@@ -603,7 +590,6 @@ async def chat(
             history_dicts,
             chat_request.podcast_id,
             chat_request.episode_id,
-            chat_request.subscribed_only
         ),
         media_type="text/event-stream"
     )

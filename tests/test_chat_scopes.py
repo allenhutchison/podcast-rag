@@ -1,8 +1,8 @@
 """
-Tests for the new chat scoping and discovery functionality.
+Tests for the chat scoping functionality.
 
 Tests cover:
-- Chat endpoint with different scopes (episode, podcast, subscriptions, global)
+- Chat endpoint with different scopes (episode, podcast, global)
 - Request validation for new parameters
 - Response format validation
 """
@@ -46,18 +46,6 @@ class TestChatScopes:
         # Without auth, should return 401
         assert response.status_code == 401
 
-    def test_chat_with_subscribed_only_flag(self, client):
-        """Test that chat endpoint accepts subscribed_only parameter."""
-        response = client.post(
-            "/api/chat",
-            json={
-                "query": "What do my podcasts say about AI?",
-                "subscribed_only": True
-            }
-        )
-        # Without auth, should return 401
-        assert response.status_code == 401
-
     def test_chat_global_scope_no_filters(self, client):
         """Test that chat endpoint works without any scope filters."""
         response = client.post(
@@ -89,18 +77,6 @@ class TestChatScopes:
             json={
                 "query": "What is this about?",
                 "podcast_id": 123  # Should be string (UUID)
-            }
-        )
-        # Auth is checked first, so returns 401
-        assert response.status_code == 401
-
-    def test_chat_validates_subscribed_only_type(self, client):
-        """Test that chat endpoint validates subscribed_only type (after auth)."""
-        response = client.post(
-            "/api/chat",
-            json={
-                "query": "What is this about?",
-                "subscribed_only": "yes"  # Should be boolean
             }
         )
         # Auth is checked first, so returns 401
