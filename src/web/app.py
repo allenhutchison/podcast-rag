@@ -1,173 +1,19 @@
 """
 FastAPI web application for podcast RAG chat interface.
 
-Uses Gemini File Search directly for semantic search over podcast transcripts.
-Provides streaming chat responses with citations using Server-Sent Events (SSE).
+Uses an agentic architecture with function-calling tools for intelligent
+podcast search and discovery. Provides streaming chat responses with
+citations using Server-Sent Events (SSE).
 """
 
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
 import json
 import logging
 import os
 import re
 import uuid
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, Iterator, List, Optional, TypeVar
-
-T = TypeVar('T')
-
-
-async def async_iterate(sync_iterator: Iterator[T]) -> AsyncGenerator[T, None]:
-    """
-    Wrap a synchronous iterator to yield items asynchronously without blocking the event loop.
-
-    Uses a thread pool to run the blocking next() calls, allowing other async tasks to proceed.
-    """
-    loop = asyncio.get_event_loop()
-    executor = ThreadPoolExecutor(max_workers=1)
-
-    def get_next():
-        try:
-            return next(sync_iterator), False
-        except StopIteration:
-            return None, True
-
-    try:
-        while True:
-            item, done = await loop.run_in_executor(executor, get_next)
-            if done:
-                break
-            yield item
-    finally:
-        executor.shutdown(wait=True, cancel_futures=True)
-
-
-def truncate_text(text: str, max_length: int = 200) -> str:
-    """Truncate text to max_length, adding ellipsis if truncated."""
-    if not text or len(text) <= max_length:
-        return text
-    # Try to break at a word boundary
-    truncated = text[:max_length].rsplit(' ', 1)[0]
-    return truncated + "..."
-
-
-def extract_podcast_info_from_description_search(
-    response,
-    repository
-) -> List[dict]:
-    """
-    Extract podcast info from File Search description results.
-
-    Parses grounding chunks from a Gemini response to extract podcast metadata.
-    Deduplicates by display name to avoid showing the same podcast multiple times.
-
-    Args:
-        response: Gemini API response with grounding metadata
-        repository: Repository for database lookups
-
-    Returns:
-        List of dicts with: podcast_id, title, author, description, image_url, matched_text
-    """
-    podcasts = []
-    seen_titles = set()
-
-    if not hasattr(response, 'candidates') or not response.candidates:
-        return podcasts
-
-    candidate = response.candidates[0]
-    if not hasattr(candidate, 'grounding_metadata'):
-        return podcasts
-
-    grounding = candidate.grounding_metadata
-    if not hasattr(grounding, 'grounding_chunks') or not grounding.grounding_chunks:
-        return podcasts
-
-    for chunk in grounding.grounding_chunks:
-        if not hasattr(chunk, 'retrieved_context'):
-            continue
-
-        ctx = chunk.retrieved_context
-        display_name = getattr(ctx, 'title', 'Unknown')
-        matched_text = getattr(ctx, 'text', '')
-
-        # Skip duplicates
-        if display_name in seen_titles:
-            continue
-        seen_titles.add(display_name)
-
-        # Look up podcast in database
-        podcast = repository.get_podcast_by_description_display_name(display_name)
-        if podcast:
-            podcasts.append({
-                'podcast_id': str(podcast.id),
-                'title': podcast.title,
-                'author': podcast.itunes_author or podcast.author or '',
-                'description': podcast.description or '',
-                'image_url': podcast.image_url or '',
-                'matched_text': matched_text
-            })
-
-    return podcasts
-
-
-def extract_episode_info_from_transcript_search(
-    response,
-    repository
-) -> List[dict]:
-    """
-    Extract episode info from File Search transcript results.
-
-    Parses grounding chunks from a Gemini response to extract episode metadata.
-    Deduplicates by display name to avoid showing the same episode multiple times.
-
-    Args:
-        response: Gemini API response with grounding metadata
-        repository: Repository for database lookups
-
-    Returns:
-        List of dicts with: episode_id, title, published_date, ai_summary, matched_text
-    """
-    episodes = []
-    seen_titles = set()
-
-    if not hasattr(response, 'candidates') or not response.candidates:
-        return episodes
-
-    candidate = response.candidates[0]
-    if not hasattr(candidate, 'grounding_metadata'):
-        return episodes
-
-    grounding = candidate.grounding_metadata
-    if not hasattr(grounding, 'grounding_chunks') or not grounding.grounding_chunks:
-        return episodes
-
-    for chunk in grounding.grounding_chunks:
-        if not hasattr(chunk, 'retrieved_context'):
-            continue
-
-        ctx = chunk.retrieved_context
-        display_name = getattr(ctx, 'title', 'Unknown')
-        matched_text = getattr(ctx, 'text', '')
-
-        # Skip duplicates
-        if display_name in seen_titles:
-            continue
-        seen_titles.add(display_name)
-
-        # Look up episode in database
-        episode = repository.get_episode_by_file_search_display_name(display_name)
-        if episode:
-            episodes.append({
-                'episode_id': str(episode.id),
-                'title': episode.title,
-                'published_date': episode.published_date.strftime('%B %d, %Y') if episode.published_date else '',
-                'ai_summary': episode.ai_summary or '',
-                'matched_text': matched_text
-            })
-
-    return episodes
-
+from typing import AsyncGenerator, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -178,7 +24,8 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from starlette.middleware.sessions import SessionMiddleware
 
-from src.agents.podcast_search import get_podcast_citations, clear_podcast_citations, set_podcast_filter, escape_filter_value, extract_citations
+from src.db.gemini_file_search import GeminiFileSearchManager
+from src.db.repository import PodcastRepositoryInterface
 from src.config import Config
 from src.prompt_manager import PromptManager
 from src.db.factory import create_repository
@@ -333,502 +180,376 @@ def _validate_session_id(session_id: str) -> str:
     return session_id
 
 
-async def generate_streaming_response(
+async def generate_agentic_response(
     query: str,
     session_id: str,
     user_id: str,
     _history: Optional[List[dict]] = None,
     podcast_id: Optional[str] = None,
     episode_id: Optional[str] = None,
-    subscribed_only: Optional[bool] = None,
 ) -> AsyncGenerator[str, None]:
     """
-    Stream Server-Sent Events (SSE) for a user query using Gemini File Search with optional podcast or episode filtering.
-    
+    Stream SSE events from agentic chat using function calling.
+
+    The agent has access to tools for searching transcripts, finding podcasts,
+    and retrieving metadata. The LLM decides which tools to use based on the query.
+
     Streams SSE-formatted strings representing the processing lifecycle:
-    - status: search/filtering/responding phases
+    - status: searching/responding phases
     - token: incremental text tokens from the model
-    - citations: extracted File Search citations (when applicable)
+    - citations: extracted citations from tool responses
     - done: completion signal
     - error: error details if processing fails
-    
+
     Parameters:
-        podcast_id (Optional[str]): If provided, restricts search and context to the given podcast.
-        episode_id (Optional[str]): If provided, restricts search and context to the given episode.
-        subscribed_only (Optional[bool]): If true, restricts discovery scope to the user's subscribed podcasts.
-    
+        query: User's natural language query
+        session_id: Session identifier for tracking
+        user_id: User ID for subscription lookups
+        podcast_id: Optional podcast ID to scope searches to
+        episode_id: Optional episode ID to scope searches to
+
     Returns:
-        str: SSE-formatted event strings (one per yield) containing JSON-serializable payloads for the events described above.
+        AsyncGenerator yielding SSE-formatted event strings
     """
     from google import genai
     from google.genai import types
-    from src.agents.podcast_search import escape_filter_value, extract_citations
-
-    # Get podcast and episode names for filtering if specified
-    podcast_filter_name: Optional[str] = None
-    episode_filter_name: Optional[str] = None
-    podcast_filter_list: Optional[list[str]] = None
-    episode_obj = None  # Store full episode object for rich context
-    podcast_obj = None  # Store full podcast object for rich context
-
-    # Initialize variables used in conditional branches
-    podcasts_for_discovery = []
-    episodes = []
-    episode_list = ""
-    podcast_list = ""
-
-    if episode_id is not None:
-        episode_obj = _repository.get_episode(episode_id)
-        if episode_obj:
-            episode_filter_name = episode_obj.title
-            if episode_obj.podcast:
-                podcast_filter_name = episode_obj.podcast.title
-            logger.info(f"Filtering search to episode: {episode_filter_name}")
-    elif podcast_id is not None:
-        podcast_obj = _repository.get_podcast(podcast_id)
-        if podcast_obj:
-            podcast_filter_name = podcast_obj.title
-            logger.info(f"Filtering search to podcast: {podcast_filter_name}")
-    elif subscribed_only:
-        subscribed_podcasts = _repository.get_user_subscriptions(user_id)
-        if subscribed_podcasts:
-            podcast_filter_list = [p.title for p in subscribed_podcasts]
-            podcasts_for_discovery = subscribed_podcasts  # Use podcasts for discovery, not episodes
-            logger.info(f"Filtering search to {len(podcast_filter_list)} subscribed podcasts for user {user_id}")
-    else:
-        # Global scope - fetch all podcasts for discovery
-        try:
-            podcasts_for_discovery = _repository.list_podcasts()
-            logger.info(f"Fetched {len(podcasts_for_discovery)} podcasts for global search")
-        except Exception as e:
-            logger.warning(f"Could not fetch podcasts for global search: {e}")
-            podcasts_for_discovery = []
+    from src.agents.chat_tools import create_chat_tools
 
     try:
         # Signal search phase
-        yield f"event: status\ndata: {json.dumps({'phase': 'searching', 'message': 'Searching podcast transcripts...'})}\n\n"
+        yield f"event: status\ndata: {json.dumps({'phase': 'searching', 'message': 'Processing your request...'})}\n\n"
+        await asyncio.sleep(0)  # Ensure event is flushed to client
 
         # Initialize Gemini client and File Search manager
         client = genai.Client(api_key=config.GEMINI_API_KEY)
-        from src.db.gemini_file_search import GeminiFileSearchManager
         file_search_manager = GeminiFileSearchManager(config=config)
-        store_name = file_search_manager.create_or_get_store()
 
-        # Build File Search configuration with metadata filter
-        # Always filter by type="transcript" to exclude description documents
-        filter_parts = ['type="transcript"']
-
-        # Single podcast filter
-        if podcast_filter_name:
-            escaped_podcast = escape_filter_value(podcast_filter_name)
-            if escaped_podcast:
-                filter_parts.append(f'podcast="{escaped_podcast}"')
-
-        # Podcast list filter (for subscriptions)
-        elif podcast_filter_list:
-            podcast_or_conditions = []
-            for podcast_name in podcast_filter_list:
-                escaped_podcast = escape_filter_value(podcast_name)
-                if escaped_podcast:
-                    podcast_or_conditions.append(f'podcast="{escaped_podcast}"')
-            if podcast_or_conditions:
-                filter_parts.append(f"({' OR '.join(podcast_or_conditions)})")
-
-        # Episode filter
-        if episode_filter_name:
-            escaped_episode = escape_filter_value(episode_filter_name)
-            if escaped_episode:
-                filter_parts.append(f'episode="{escaped_episode}"')
-
-        # Build the final metadata filter and File Search config
-        metadata_filter = " AND ".join(filter_parts)
-        file_search_config = types.FileSearch(
-            file_search_store_names=[store_name],
-            metadata_filter=metadata_filter
+        # Create scope-aware tools
+        tools = create_chat_tools(
+            config=config,
+            repository=_repository,
+            file_search_manager=file_search_manager,
+            user_id=user_id,
+            podcast_id=podcast_id,
+            episode_id=episode_id,
         )
-        logger.info(f"Applying metadata filter: {metadata_filter}")
 
-        # Classify query type for podcast/subscriptions/global scopes (using LLM)
-        is_episode_discovery_query = False
-        if podcast_obj or podcast_filter_list or (not episode_obj and not podcast_obj and not podcast_filter_list):
-            try:
-                # Use LLM to classify the query intent
-                classification_prompt = prompt_manager.build_prompt(
-                    "query_classification",
-                    query=query
-                )
-                classification_response = client.models.generate_content(
-                    model=config.GEMINI_MODEL_LITE,
-                    contents=classification_prompt,
-                    config=types.GenerateContentConfig(
-                        response_modalities=["TEXT"]
-                    )
-                )
-                classification = classification_response.text.strip().upper()
-                is_episode_discovery_query = classification == "A"
-                logger.info(f"Query classified as: {classification} (episode_discovery={is_episode_discovery_query})")
-            except Exception as e:
-                logger.warning(f"Query classification failed, defaulting to content mode: {e}")
-                is_episode_discovery_query = False
+        # Build tool declarations for Gemini
+        # Note: We manually define parameter schemas rather than deriving from type
+        # annotations because Gemini requires specific JSON schema formats with
+        # descriptions, and the overhead of using inspect/typing introspection
+        # doesn't justify the complexity for a small, stable set of tools.
+        tool_declarations = []
+        tool_map = {}
+        for tool_func in tools:
+            tool_name = tool_func.__name__
+            tool_map[tool_name] = tool_func
 
-        # Build query with context
-        query_text = query
-        if episode_obj:
-            # Rich episode context prompt
-            context_parts = [
-                f"Podcast: {podcast_filter_name}",
-                f"Episode: {episode_filter_name}"
-            ]
-
-            if episode_obj.published_date:
-                pub_date = episode_obj.published_date.strftime('%B %d, %Y')
-                context_parts.append(f"Published: {pub_date}")
-
-            if episode_obj.ai_summary:
-                context_parts.append(f"Summary: {episode_obj.ai_summary}")
-
-            context = "\n".join(context_parts)
-            query_text = prompt_manager.build_prompt(
-                "episode_context",
-                context=context,
-                query=query
-            )
-        elif podcast_obj:
-            # Rich podcast context prompt with episode list
-            context_parts = [f"Podcast: {podcast_obj.title}"]
-
-            if podcast_obj.author:
-                context_parts.append(f"Author/Host: {podcast_obj.author}")
-
-            if podcast_obj.description:
-                context_parts.append(f"Description: {podcast_obj.description}")
-
-            # Get episodes from repository (avoids lazy loading issue)
-            episodes = []
-            try:
-                episodes = _repository.list_episodes(podcast_id=podcast_obj.id)
-                if episodes:
-                    context_parts.append(f"Total Episodes: {len(episodes)}")
-            except Exception as e:
-                logger.warning(f"Could not fetch episodes: {e}")
-
-            context = "\n".join(context_parts)
-
-            # Build episode list with titles and truncated summaries to avoid exceeding token limits
-            episode_list = ""
-            if episodes:
-                episode_lines = []
-                for ep in episodes:
-                    # Format: "Episode Title (Date)" - Summary
-                    ep_line = f"- {ep.title}"
-                    if ep.published_date:
-                        ep_line += f" ({ep.published_date.strftime('%Y-%m-%d')})"
-                    if ep.ai_summary:
-                        ep_line += f": {truncate_text(ep.ai_summary, 200)}"
-                    episode_lines.append(ep_line)
-
-                episode_list = "\n\nEpisode List:\n" + "\n".join(episode_lines)
-
-            query_text = prompt_manager.build_prompt(
-                "podcast_context",
-                context=context,
-                episode_list=episode_list,
-                query=query
-            )
-        elif podcast_filter_list:
-            # Subscriptions chat - build podcast list
-            context_parts = [f"Subscribed Podcasts ({len(podcast_filter_list)} total)"]
-
-            # Build podcast list with truncated descriptions to avoid exceeding token limits
-            podcast_list = ""
-            if podcasts_for_discovery:
-                podcast_lines = []
-                for podcast in podcasts_for_discovery:
-                    podcast_line = f"- **{podcast.title}**"
-                    if podcast.author:
-                        podcast_line += f" by {podcast.author}"
-                    if podcast.description:
-                        podcast_line += f"\n  {truncate_text(podcast.description, 200)}"
-                    podcast_lines.append(podcast_line)
-
-                podcast_list = "\n\nPodcast List:\n" + "\n".join(podcast_lines)
-
-            context = "\n".join(context_parts)
-            query_text = prompt_manager.build_prompt(
-                "subscriptions_context",
-                context=context,
-                podcast_list=podcast_list,
-                query=query
-            )
-        else:
-            # Global chat - build podcast list
-            context_parts = ["Search across all available podcasts"]
-
-            # Build podcast list with truncated descriptions to avoid exceeding token limits
-            podcast_list = ""
-            if podcasts_for_discovery:
-                podcast_lines = []
-                for podcast in podcasts_for_discovery:
-                    podcast_line = f"- **{podcast.title}**"
-                    if podcast.author:
-                        podcast_line += f" by {podcast.author}"
-                    if podcast.description:
-                        podcast_line += f"\n  {truncate_text(podcast.description, 200)}"
-                    podcast_lines.append(podcast_line)
-
-                podcast_list = "\n\nPodcast List:\n" + "\n".join(podcast_lines)
-
-            context = "\n".join(context_parts)
-            query_text = prompt_manager.build_prompt(
-                "global_context",
-                context=context,
-                podcast_list=podcast_list,
-                query=query
-            )
-
-        # Make streaming request (with or without File Search)
-        if is_episode_discovery_query:
-            # Discovery queries use File Search to find relevant items
-            # For podcast scope: search transcripts to find episodes
-            # For subscriptions/global: search descriptions to find podcasts
-
-            if podcast_obj:
-                # Episode discovery (for podcast scope) - search transcripts
-                yield f"event: status\ndata: {json.dumps({'phase': 'filtering', 'message': 'Finding relevant episodes...'})}\n\n"
-
-                # Build File Search config for transcripts filtered to this podcast
-                discovery_filter_parts = ['type="transcript"']
-                escaped_podcast = escape_filter_value(podcast_obj.title)
-                if escaped_podcast:
-                    discovery_filter_parts.append(f'podcast="{escaped_podcast}"')
-                discovery_metadata_filter = " AND ".join(discovery_filter_parts)
-
-                discovery_file_search_config = types.FileSearch(
-                    file_search_store_names=[store_name],
-                    metadata_filter=discovery_metadata_filter
-                )
-                logger.info(f"Episode discovery filter: {discovery_metadata_filter}")
-
-                # Build discovery search prompt
-                discovery_prompt = prompt_manager.build_prompt(
-                    "episode_discovery_search",
-                    podcast_title=podcast_obj.title,
-                    query=query
-                )
-
-                try:
-                    # Search transcripts to find relevant episodes
-                    discovery_response = client.models.generate_content(
-                        model=config.GEMINI_MODEL_FLASH,
-                        contents=discovery_prompt,
-                        config=types.GenerateContentConfig(
-                            tools=[types.Tool(
-                                file_search=discovery_file_search_config
-                            )],
-                            response_modalities=["TEXT"]
-                        )
-                    )
-
-                    # Extract episode info from grounding chunks
-                    relevant_episodes = extract_episode_info_from_transcript_search(
-                        discovery_response, _repository
-                    )
-                    logger.info(f"Found {len(relevant_episodes)} relevant episodes via File Search")
-
-                    if relevant_episodes:
-                        # Build focused episode list with full summaries
-                        focused_list = []
-                        for ep in relevant_episodes:
-                            ep_info = f"**{ep['title']}**"
-                            if ep['published_date']:
-                                ep_info += f" ({ep['published_date']})"
-                            if ep['ai_summary']:
-                                ep_info += f"\n{ep['ai_summary']}"
-                            focused_list.append(ep_info)
-
-                        focused_context = "\n\n".join(focused_list)
-                        detailed_prompt = prompt_manager.build_prompt(
-                            "episode_analysis",
-                            podcast_title=podcast_obj.title,
-                            focused_context=focused_context,
-                            query=query
-                        )
-                    else:
-                        raise ValueError("No relevant episodes found via File Search")
-
-                    # Generate response using detailed_prompt
-                    yield f"event: status\ndata: {json.dumps({'phase': 'synthesizing', 'message': 'Generating detailed response...'})}\n\n"
-
-                    response = client.models.generate_content_stream(
-                        model=config.GEMINI_MODEL_FLASH,
-                        contents=detailed_prompt,
-                        config=types.GenerateContentConfig(
-                            response_modalities=["TEXT"]
-                        )
-                    )
-                except Exception as e:
-                    logger.error(f"Episode discovery via File Search failed: {e}", exc_info=True)
-                    # Fallback to content search
-                    response = client.models.generate_content_stream(
-                        model=config.GEMINI_MODEL_FLASH,
-                        contents=query_text,
-                        config=types.GenerateContentConfig(
-                            tools=[types.Tool(
-                                file_search=file_search_config
-                            )],
-                            response_modalities=["TEXT"]
-                        )
-                    )
+            # Define parameter schema based on tool type
+            params = {}
+            if tool_name in ["search_transcripts", "search_podcast_descriptions"]:
+                params = {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Natural language search query"
+                        }
+                    },
+                    "required": ["query"]
+                }
+            elif tool_name == "get_podcast_info":
+                params = {
+                    "type": "object",
+                    "properties": {
+                        "podcast_id_param": {
+                            "type": "string",
+                            "description": "The podcast UUID to look up"
+                        }
+                    },
+                    "required": ["podcast_id_param"]
+                }
+            elif tool_name == "get_episode_info":
+                params = {
+                    "type": "object",
+                    "properties": {
+                        "episode_id_param": {
+                            "type": "string",
+                            "description": "The episode UUID to look up"
+                        }
+                    },
+                    "required": ["episode_id_param"]
+                }
             else:
-                # Podcast discovery (for subscriptions/global) - search descriptions
-                yield f"event: status\ndata: {json.dumps({'phase': 'filtering', 'message': 'Finding relevant podcasts...'})}\n\n"
+                # get_user_subscriptions takes no params
+                params = {"type": "object", "properties": {}}
 
-                # Build File Search config for descriptions
-                discovery_filter_parts = ['type="description"']
+            tool_declarations.append(types.FunctionDeclaration(
+                name=tool_name,
+                description=tool_func.__doc__ or f"Call the {tool_name} function",
+                parameters=params
+            ))
 
-                # Add subscription filter if applicable
-                if podcast_filter_list:
-                    podcast_or_conditions = []
-                    for podcast_name in podcast_filter_list:
-                        escaped_podcast = escape_filter_value(podcast_name)
-                        if escaped_podcast:
-                            podcast_or_conditions.append(f'podcast="{escaped_podcast}"')
-                    if podcast_or_conditions:
-                        discovery_filter_parts.append(f"({' OR '.join(podcast_or_conditions)})")
+        # Build system prompt with scope context
+        scope_context = _build_scope_context(
+            repository=_repository,
+            podcast_id=podcast_id,
+            episode_id=episode_id,
+        )
 
-                discovery_metadata_filter = " AND ".join(discovery_filter_parts)
+        system_instruction = prompt_manager.build_prompt(
+            "chat_agent",
+            scope_context=scope_context
+        )
 
-                discovery_file_search_config = types.FileSearch(
-                    file_search_store_names=[store_name],
-                    metadata_filter=discovery_metadata_filter
-                )
-                logger.info(f"Podcast discovery filter: {discovery_metadata_filter}")
+        # Conversation history for multi-turn
+        contents = [types.Content(role="user", parts=[types.Part(text=query)])]
 
-                # Build discovery search prompt
-                discovery_prompt = prompt_manager.build_prompt(
-                    "podcast_discovery_search",
-                    query=query
-                )
+        # Agentic loop - handle function calls until we get a final response
+        all_citations = []
+        max_iterations = 5  # Prevent infinite loops
 
-                try:
-                    # Search descriptions to find relevant podcasts
-                    discovery_response = client.models.generate_content(
-                        model=config.GEMINI_MODEL_FLASH,
-                        contents=discovery_prompt,
-                        config=types.GenerateContentConfig(
-                            tools=[types.Tool(
-                                file_search=discovery_file_search_config
-                            )],
-                            response_modalities=["TEXT"]
-                        )
-                    )
+        for iteration in range(max_iterations):
+            logger.info(f"Agentic loop iteration {iteration + 1}")
 
-                    # Extract podcast info from grounding chunks
-                    relevant_podcasts = extract_podcast_info_from_description_search(
-                        discovery_response, _repository
-                    )
-                    logger.info(f"Found {len(relevant_podcasts)} relevant podcasts via File Search")
-
-                    if relevant_podcasts:
-                        # Build focused podcast list with full descriptions
-                        focused_list = []
-                        for podcast in relevant_podcasts:
-                            podcast_info = f"**{podcast['title']}**"
-                            if podcast['author']:
-                                podcast_info += f" by {podcast['author']}"
-                            if podcast['description']:
-                                podcast_info += f"\n{podcast['description']}"
-                            focused_list.append(podcast_info)
-
-                        focused_context = "\n\n".join(focused_list)
-
-                        scope_description = "from your subscribed podcasts" if podcast_filter_list else "from available podcasts"
-                        detailed_prompt = prompt_manager.build_prompt(
-                            "podcast_analysis",
-                            scope_description=scope_description,
-                            focused_context=focused_context,
-                            query=query
-                        )
-                    else:
-                        raise ValueError("No relevant podcasts found via File Search")
-
-                    # Generate response using detailed_prompt
-                    yield f"event: status\ndata: {json.dumps({'phase': 'synthesizing', 'message': 'Generating detailed response...'})}\n\n"
-
-                    response = client.models.generate_content_stream(
-                        model=config.GEMINI_MODEL_FLASH,
-                        contents=detailed_prompt,
-                        config=types.GenerateContentConfig(
-                            response_modalities=["TEXT"]
-                        )
-                    )
-                except Exception as e:
-                    logger.error(f"Podcast discovery via File Search failed: {e}", exc_info=True)
-                    # Fallback to content search on transcripts
-                    response = client.models.generate_content_stream(
-                        model=config.GEMINI_MODEL_FLASH,
-                        contents=query_text,
-                        config=types.GenerateContentConfig(
-                            tools=[types.Tool(
-                                file_search=file_search_config
-                            )],
-                            response_modalities=["TEXT"]
-                        )
-                    )
-        else:
-            # For content queries, use File Search on transcripts
-            response = client.models.generate_content_stream(
+            # Make request with tools (run in thread to not block event loop)
+            # Enable thinking mode for better tool selection reasoning
+            response = await asyncio.to_thread(
+                client.models.generate_content,
                 model=config.GEMINI_MODEL_FLASH,
-                contents=query_text,
+                contents=contents,
                 config=types.GenerateContentConfig(
-                    tools=[types.Tool(
-                        file_search=file_search_config
-                    )],
-                    response_modalities=["TEXT"]
+                    system_instruction=system_instruction,
+                    tools=[types.Tool(function_declarations=tool_declarations)],
+                    response_modalities=["TEXT"],
+                    thinking_config=types.ThinkingConfig(
+                        thinking_budget=-1  # -1 = automatic/dynamic thinking
+                    )
                 )
             )
 
-        # Stream the response
-        yield f"event: status\ndata: {json.dumps({'phase': 'responding'})}\n\n"
+            # Check if the model wants to call functions
+            if not response.candidates:
+                logger.warning("No candidates in response")
+                break
 
-        full_text = ""
-        final_response = None
-        chunk_count = 0
-        async for chunk in async_iterate(iter(response)):
-            chunk_count += 1
-            # Each chunk contains its own text (not accumulated)
-            if hasattr(chunk, 'text') and chunk.text:
-                chunk_text = chunk.text
-                logger.debug(f"Streaming chunk {chunk_count}: {len(chunk_text)} chars")
-                yield f"event: token\ndata: {json.dumps({'token': chunk_text})}\n\n"
-                full_text += chunk_text
-            # Keep reference to last chunk which may contain grounding metadata
-            final_response = chunk
+            candidate = response.candidates[0]
+            if not candidate.content or not candidate.content.parts:
+                logger.warning("No content parts in response")
+                break
 
-        logger.info(f"Streamed {chunk_count} chunks, {len(full_text)} total chars")
+            # Check for function calls
+            function_calls = []
+            text_parts = []
 
-        # Extract citations from the streamed response (only for File Search queries)
-        citations = []
-        if not is_episode_discovery_query and final_response:
-            # Extract citations from the final streamed response
-            citations = extract_citations(final_response, _repository)
-            logger.debug(f"Extracted {len(citations)} citations from File Search")
+            for part in candidate.content.parts:
+                if hasattr(part, 'function_call') and part.function_call:
+                    function_calls.append(part.function_call)
+                elif hasattr(part, 'text') and part.text:
+                    text_parts.append(part.text)
+
+            if not function_calls:
+                # No function calls - this is the final response
+                # Stream the text response
+                if text_parts:
+                    yield f"event: status\ndata: {json.dumps({'phase': 'responding'})}\n\n"
+                    for text in text_parts:
+                        yield f"event: token\ndata: {json.dumps({'token': text})}\n\n"
+                break
+
+            # Add the assistant's response to conversation
+            contents.append(candidate.content)
+
+            # Execute each function call and collect results
+            function_responses = []
+            for fc in function_calls:
+                tool_name = fc.name
+                args = dict(fc.args) if fc.args else {}
+
+                # Emit tool_call event to show user what's happening
+                tool_display_name = _get_tool_display_name(tool_name)
+                tool_description = _get_tool_description(tool_name, args)
+                tool_call_event = f"event: tool_call\ndata: {json.dumps({'tool': tool_name, 'display_name': tool_display_name, 'description': tool_description, 'args': args})}\n\n"
+                logger.info(f"Yielding tool_call event: {tool_call_event[:100]}...")
+                yield tool_call_event
+
+                logger.info(f"Executing tool: {tool_name} with args: {args}")
+
+                # Small delay to ensure event is flushed to client
+                await asyncio.sleep(0)
+
+                if tool_name in tool_map:
+                    try:
+                        # Run tool in thread to not block event loop
+                        result = await asyncio.to_thread(tool_map[tool_name], **args)
+
+                        # Extract citations from tool results
+                        if isinstance(result, dict) and 'citations' in result:
+                            all_citations.extend(result['citations'])
+
+                        # Emit tool_result event with summary
+                        result_summary = _summarize_tool_result(tool_name, result)
+                        yield f"event: tool_result\ndata: {json.dumps({'tool': tool_name, 'summary': result_summary, 'success': True})}\n\n"
+
+                        function_responses.append(types.Part(
+                            function_response=types.FunctionResponse(
+                                name=tool_name,
+                                response=result
+                            )
+                        ))
+                    except Exception as e:
+                        logger.error(f"Tool {tool_name} failed: {e}", exc_info=True)
+                        yield f"event: tool_result\ndata: {json.dumps({'tool': tool_name, 'summary': str(e), 'success': False})}\n\n"
+                        function_responses.append(types.Part(
+                            function_response=types.FunctionResponse(
+                                name=tool_name,
+                                response={"error": str(e)}
+                            )
+                        ))
+                else:
+                    logger.warning(f"Unknown tool: {tool_name}")
+                    yield f"event: tool_result\ndata: {json.dumps({'tool': tool_name, 'summary': f'Unknown tool: {tool_name}', 'success': False})}\n\n"
+                    function_responses.append(types.Part(
+                        function_response=types.FunctionResponse(
+                            name=tool_name,
+                            response={"error": f"Unknown tool: {tool_name}"}
+                        )
+                    ))
+
+            # Add function responses to conversation
+            contents.append(types.Content(
+                role="tool",
+                parts=function_responses
+            ))
+
         else:
-            logger.debug("Skipping citation extraction for episode discovery query")
+            # Max iterations reached
+            logger.warning("Max agentic iterations reached")
+            yield f"event: token\ndata: {json.dumps({'token': 'I apologize, but I encountered an issue processing your request. Please try rephrasing your question.'})}\n\n"
 
-        # Send citations
-        citations_data = {'citations': citations}
-        yield f"event: citations\ndata: {json.dumps(citations_data)}\n\n"
+        # Send citations (deduplicated)
+        seen_titles = set()
+        unique_citations = []
+        for citation in all_citations:
+            title = citation.get('title', '')
+            if title not in seen_titles:
+                seen_titles.add(title)
+                citation['index'] = len(unique_citations) + 1
+                unique_citations.append(citation)
+
+        yield f"event: citations\ndata: {json.dumps({'citations': unique_citations})}\n\n"
 
         # Signal completion
         yield f"event: done\ndata: {json.dumps({'status': 'complete'})}\n\n"
 
-        logger.debug(f"Query completed with {len(citations)} citations")
+        logger.info(f"Agentic query completed with {len(unique_citations)} citations")
 
     except Exception as e:
-        logger.error(f"Streaming error: {e}", exc_info=True)
+        logger.error(f"Agentic response error: {e}", exc_info=True)
         yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
         yield f"event: done\ndata: {json.dumps({'status': 'error'})}\n\n"
+
+
+def _get_tool_display_name(tool_name: str) -> str:
+    """Get a user-friendly display name for a tool."""
+    display_names = {
+        'search_transcripts': 'Searching transcripts',
+        'search_podcast_descriptions': 'Finding podcasts',
+        'get_user_subscriptions': 'Getting subscriptions',
+        'get_podcast_info': 'Getting podcast details',
+        'get_episode_info': 'Getting episode details',
+    }
+    return display_names.get(tool_name, tool_name)
+
+
+def _get_tool_description(tool_name: str, args: dict) -> str:
+    """Get a human-readable description of what the tool is doing."""
+    if tool_name == 'search_transcripts':
+        query = args.get('query', '')
+        return f'Searching podcast transcripts for "{query}"'
+    elif tool_name == 'search_podcast_descriptions':
+        query = args.get('query', '')
+        return f'Finding podcasts about "{query}"'
+    elif tool_name == 'get_user_subscriptions':
+        return 'Retrieving your subscribed podcasts'
+    elif tool_name == 'get_podcast_info':
+        return 'Looking up podcast details'
+    elif tool_name == 'get_episode_info':
+        return 'Looking up episode details'
+    return f'Running {tool_name}'
+
+
+def _summarize_tool_result(tool_name: str, result: dict) -> str:
+    """Create a brief summary of a tool's result."""
+    if tool_name == 'search_transcripts':
+        num_citations = len(result.get('citations', []))
+        return f'Found {num_citations} relevant transcript{"s" if num_citations != 1 else ""}'
+    elif tool_name == 'search_podcast_descriptions':
+        num_podcasts = len(result.get('podcasts', []))
+        return f'Found {num_podcasts} matching podcast{"s" if num_podcasts != 1 else ""}'
+    elif tool_name == 'get_user_subscriptions':
+        num_subs = result.get('count', 0)
+        return f'You have {num_subs} subscribed podcast{"s" if num_subs != 1 else ""}'
+    elif tool_name == 'get_podcast_info':
+        podcast = result.get('podcast', {})
+        title = podcast.get('title', 'Unknown')
+        num_episodes = result.get('episode_count', 0)
+        return f'{title} ({num_episodes} episodes)'
+    elif tool_name == 'get_episode_info':
+        episode = result.get('episode', {})
+        title = episode.get('title', 'Unknown')
+        return f'Episode: {title}'
+    return 'Completed'
+
+
+def _build_scope_context(
+    repository: PodcastRepositoryInterface,
+    podcast_id: Optional[str] = None,
+    episode_id: Optional[str] = None,
+) -> str:
+    """
+    Build a scope context string for the agent's system prompt.
+
+    The context describes the current search scope so the agent understands
+    what data is available and relevant.
+    """
+    if episode_id:
+        episode = repository.get_episode(episode_id)
+        if episode:
+            podcast = episode.podcast
+            context_parts = [
+                f"Currently viewing episode: \"{episode.title}\"",
+            ]
+            if podcast:
+                context_parts.append(f"From podcast: \"{podcast.title}\"")
+            if episode.published_date:
+                context_parts.append(f"Published: {episode.published_date.strftime('%B %d, %Y')}")
+            if episode.ai_summary:
+                context_parts.append(f"Summary: {episode.ai_summary}")
+            return "\n".join(context_parts)
+
+    if podcast_id:
+        podcast = repository.get_podcast(podcast_id)
+        if podcast:
+            context_parts = [
+                f"Currently viewing podcast: \"{podcast.title}\"",
+            ]
+            if podcast.itunes_author or podcast.author:
+                context_parts.append(f"By: {podcast.itunes_author or podcast.author}")
+            if podcast.description:
+                desc = podcast.description
+                if len(desc) > 300:
+                    desc = desc[:300] + "..."
+                context_parts.append(f"Description: {desc}")
+            episodes = repository.list_episodes(podcast_id=podcast.id)
+            context_parts.append(f"Episodes available: {len(episodes)}")
+            return "\n".join(context_parts)
+
+    # Global scope
+    return (
+        "Global search across all available podcasts.\n"
+        "Use search_transcripts to find content, or search_podcast_descriptions to discover podcasts."
+    )
 
 
 @app.post("/api/chat")
@@ -840,11 +561,11 @@ async def chat(
 ):
     """
     Handle a chat request and stream Server-Sent Events (SSE) responses for a podcast-aware conversational search.
-    
+
     Parameters:
         request (Request): Incoming FastAPI request; used to read headers such as X-Session-ID.
-        chat_request (ChatRequest): Client-provided query and optional filters (podcast_id, episode_id, subscribed_only, history).
-    
+        chat_request (ChatRequest): Client-provided query and optional filters (podcast_id, episode_id, history).
+
     Returns:
         StreamingResponse: An SSE stream that emits events for search/response lifecycle, including status updates, incremental token events, a final citations event, and a done or error event.
     """
@@ -864,14 +585,13 @@ async def chat(
         history_dicts = [{"role": msg.role, "content": msg.content} for msg in chat_request.history]
 
     return StreamingResponse(
-        generate_streaming_response(
+        generate_agentic_response(
             chat_request.query,
             session_id,
             user_id,
             history_dicts,
             chat_request.podcast_id,
             chat_request.episode_id,
-            chat_request.subscribed_only
         ),
         media_type="text/event-stream"
     )

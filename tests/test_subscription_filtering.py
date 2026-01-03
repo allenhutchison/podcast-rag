@@ -237,49 +237,6 @@ class TestSubscriptionFilteringIntegration:
         # but the API allows it and it's up to the application logic to handle
 
 
-class TestChatRequestWithSubscribedOnly:
-    """Test ChatRequest model with subscribed_only parameter."""
-
-    def test_chat_request_subscribed_only_serialization(self):
-        """Test that ChatRequest correctly serializes subscribed_only."""
-        from src.web.models import ChatRequest
-
-        request = ChatRequest(
-            query="Find relevant episodes",
-            subscribed_only=True
-        )
-
-        # Convert to dict
-        request_dict = request.model_dump()
-        assert request_dict["subscribed_only"] is True
-        assert request_dict["query"] == "Find relevant episodes"
-
-    def test_chat_request_subscribed_only_deserialization(self):
-        """Test that ChatRequest correctly deserializes subscribed_only."""
-        from src.web.models import ChatRequest
-
-        data = {
-            "query": "Search my podcasts",
-            "subscribed_only": True,
-            "podcast_id": None,
-            "episode_id": None
-        }
-
-        request = ChatRequest(**data)
-        assert request.subscribed_only is True
-
-    def test_chat_request_json_schema_includes_subscribed_only(self):
-        """Test that JSON schema includes subscribed_only field."""
-        from src.web.models import ChatRequest
-
-        schema = ChatRequest.model_json_schema()
-        assert "subscribed_only" in schema["properties"]
-
-        subscribed_only_field = schema["properties"]["subscribed_only"]
-        # Should be optional (not in required list)
-        assert "subscribed_only" not in schema.get("required", [])
-
-
 class TestMetadataFilterBuilding:
     """Test building metadata filter strings for File Search."""
 

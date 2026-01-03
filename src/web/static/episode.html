@@ -364,9 +364,9 @@
                     linkSection.classList.remove('hidden');
                 }
 
-                // Update chat link with episode_id
+                // Update chat link with episode_id and podcast_id
                 const chatLink = document.getElementById('openChatBtn');
-                chatLink.href = `/chat.html?scope=episode&episode_id=${encodeURIComponent(episodeId)}`;
+                chatLink.href = `/chat.html?scope=episode&episode_id=${encodeURIComponent(episodeId)}&podcast_id=${encodeURIComponent(podcast.id)}`;
 
             } catch (error) {
                 console.error('Error loading episode:', error);

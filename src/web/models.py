@@ -23,7 +23,6 @@ class ChatRequest(BaseModel):
     history: Optional[List[Message]] = Field(default=None, description="Conversation history")
     podcast_id: Optional[str] = Field(default=None, description="Filter to specific podcast (UUID)")
     episode_id: Optional[str] = Field(default=None, description="Filter to specific episode")
-    subscribed_only: Optional[bool] = Field(default=None, description="Filter to user's subscribed podcasts only")
 
 
 class CitationMetadata(BaseModel):
@@ -160,7 +159,7 @@ class OPMLImportResponse(BaseModel):
 
 class CreateConversationRequest(BaseModel):
     """Request to create a new conversation."""
-    scope: Literal["subscriptions", "all", "podcast", "episode"] = Field(
+    scope: Literal["all", "podcast", "episode"] = Field(
         ..., description="Chat scope type"
     )
     podcast_id: Optional[str] = Field(

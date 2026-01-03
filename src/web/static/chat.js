@@ -5,7 +5,7 @@
 
 // State
 let currentConversationId = null;
-let currentScope = 'subscriptions';
+let currentScope = 'all';
 let selectedPodcastId = null;
 let selectedEpisodeId = null;
 let isStreaming = false;
@@ -139,19 +139,19 @@ async function loadEpisodes(podcastId) {
 }
 
 // Handle URL parameters (for deep linking from podcast/episode pages)
-function handleUrlParams() {
+async function handleUrlParams() {
     const params = new URLSearchParams(window.location.search);
     const scope = params.get('scope');
     const podcastId = params.get('podcast_id');
     const episodeId = params.get('episode_id');
 
     if (scope) {
-        setScope(scope, podcastId, episodeId);
+        await setScope(scope, podcastId, episodeId);
     }
 }
 
 // Set scope programmatically
-function setScope(scope, podcastId = null, episodeId = null) {
+async function setScope(scope, podcastId = null, episodeId = null) {
     currentScope = scope;
     selectedPodcastId = podcastId;
     selectedEpisodeId = episodeId;
@@ -161,10 +161,13 @@ function setScope(scope, podcastId = null, episodeId = null) {
 
     if (podcastId) {
         podcastSelect.value = podcastId;
-        handlePodcastChange();
-    }
-    if (episodeId) {
-        episodeSelect.value = episodeId;
+        // For episode scope, load episodes and wait before setting the value
+        if (scope === 'episode' && episodeId) {
+            await loadEpisodes(podcastId);
+            episodeSelect.value = episodeId;
+        } else {
+            handlePodcastChange();
+        }
     }
 }
 
@@ -324,19 +327,129 @@ function renderMessages(messages) {
     scrollToBottom();
 }
 
-// Render citations
+// Check if a text range falls inside an existing markdown link
+function isInsideMarkdownLink(text, startIndex, endIndex) {
+    const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+    let match;
+    while ((match = linkRegex.exec(text)) !== null) {
+        const linkStart = match.index;
+        const linkEnd = match.index + match[0].length;
+        if (startIndex >= linkStart && endIndex <= linkEnd) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Add internal links to podcast/episode names in the response text
+function addInternalLinks(content, citations) {
+    // Build a mapping of names to links from citations
+    const linkMap = [];
+
+    for (const c of citations) {
+        // Add podcast name → podcast link
+        if (c.metadata && c.metadata.podcast && c.podcast_id) {
+            linkMap.push({
+                name: c.metadata.podcast,
+                url: `/podcast.html?id=${c.podcast_id}`,
+                type: 'podcast'
+            });
+        }
+        // Add episode name → episode link (for transcript sources)
+        if (c.metadata && c.metadata.episode && c.episode_id) {
+            linkMap.push({
+                name: c.metadata.episode,
+                url: `/episode.html?id=${c.episode_id}`,
+                type: 'episode'
+            });
+        }
+    }
+
+    // Sort by name length (longest first) to avoid partial matches
+    linkMap.sort((a, b) => b.name.length - a.name.length);
+
+    // Replace each name with a markdown link (only first occurrence to avoid duplicates)
+    let result = content;
+    const replaced = new Set();
+
+    for (const item of linkMap) {
+        if (replaced.has(item.name)) continue;
+
+        // Escape special regex characters in the name
+        const escapedName = item.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+        // Try to find and replace the name (only first occurrence)
+        // Check for bold format first: **Name** or **Name:**
+        const boldRegex = new RegExp(`(\\*\\*)(${escapedName})(:\\*\\*|\\*\\*)`, 'i');
+        const boldMatch = result.match(boldRegex);
+
+        if (boldMatch) {
+            // Bold format: **Name** → **[Name](url)**
+            const name = boldMatch[2];
+            const suffix = boldMatch[3];
+            const replacement = `**[${name}](${item.url})${suffix.replace('**', '')}**`;
+            result = result.replace(boldRegex, replacement);
+            replaced.add(item.name);
+        } else {
+            // Try standalone name (word boundary match)
+            const standaloneRegex = new RegExp(`\\b(${escapedName})\\b`, 'i');
+            const standaloneMatch = result.match(standaloneRegex);
+
+            if (standaloneMatch) {
+                // Check if it's already inside a markdown link [...](...)
+                const idx = result.indexOf(standaloneMatch[0]);
+                const endIdx = idx + standaloneMatch[0].length;
+
+                // Skip if already inside an existing markdown link
+                if (!isInsideMarkdownLink(result, idx, endIdx)) {
+                    const name = standaloneMatch[1];
+                    const replacement = `[${name}](${item.url})`;
+                    result = result.replace(standaloneRegex, replacement);
+                    replaced.add(item.name);
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+// Render citations with links to internal podcast/episode pages
 function renderCitations(citations) {
     return `
         <div class="citations">
-            ${citations.map(c => `
-                <div class="citation">
-                    <span class="citation-number">${c.index}</span>
-                    <span class="citation-text">
-                        ${escapeHtml(c.metadata.podcast)} - ${escapeHtml(c.metadata.episode)}
-                        ${c.metadata.release_date ? `(${c.metadata.release_date})` : ''}
-                    </span>
-                </div>
-            `).join('')}
+            ${citations.map(c => {
+                // Build the link based on source type and available IDs
+                let linkHref = '#';
+                let linkText = '';
+
+                if (c.source_type === 'description' && c.podcast_id) {
+                    // Podcast description - link to podcast page
+                    linkHref = `/podcast.html?id=${c.podcast_id}`;
+                    linkText = escapeHtml(c.metadata.podcast || c.title);
+                } else if (c.episode_id) {
+                    // Transcript - link to episode page
+                    linkHref = `/episode.html?id=${c.episode_id}`;
+                    const podcast = c.metadata.podcast ? escapeHtml(c.metadata.podcast) + ' - ' : '';
+                    const episode = escapeHtml(c.metadata.episode || c.title);
+                    const date = c.metadata.release_date ? ` (${c.metadata.release_date})` : '';
+                    linkText = podcast + episode + date;
+                } else if (c.podcast_id) {
+                    // Fallback to podcast link if no episode_id
+                    linkHref = `/podcast.html?id=${c.podcast_id}`;
+                    linkText = escapeHtml(c.metadata.podcast || c.title);
+                } else {
+                    // No IDs available - just show text
+                    linkText = escapeHtml(c.metadata.podcast || c.title);
+                }
+
+                return `
+                    <div class="citation">
+                        <span class="citation-number">${c.index}</span>
+                        <a href="${linkHref}" class="citation-link">${linkText}</a>
+                    </div>
+                `;
+            }).join('')}
         </div>
     `;
 }
@@ -412,33 +525,88 @@ async function handleSubmit(event) {
         let assistantMessageEl = null;
         let buffer = '';  // Buffer to handle SSE events split across chunks
 
+        // Track tool activity
+        let toolActivityEl = null;
+        let toolSteps = [];
+
+        // Helper to update tool activity display
+        function updateToolActivity() {
+            if (!toolActivityEl) {
+                // Create tool activity element before the typing indicator
+                toolActivityEl = document.createElement('div');
+                toolActivityEl.className = 'tool-activity';
+                typingIndicator.parentNode.insertBefore(toolActivityEl, typingIndicator);
+            }
+
+            toolActivityEl.innerHTML = `
+                <div class="tool-activity-header">🔍 Searching...</div>
+                ${toolSteps.map(step => `
+                    <div class="tool-step ${step.status}">
+                        <span class="tool-icon">${step.status === 'running' ? '⏳' : step.success ? '✓' : '✗'}</span>
+                        <span class="tool-text">${escapeHtml(step.text)}</span>
+                    </div>
+                `).join('')}
+            `;
+            scrollToBottom();
+        }
+
         // Helper to parse a single SSE event and update state
         function processSSEEvent(event) {
             if (!event.trim()) return;
 
-            // Parse SSE event - find the data line
+            // Parse SSE event - find the event type and data
             const lines = event.split('\n');
+            let eventType = 'message';
+            let eventData = null;
+
             for (const line of lines) {
-                if (!line.startsWith('data: ')) continue;
-
-                const data = line.slice(6);
-                try {
-                    const parsed = JSON.parse(data);
-
-                    if (parsed.token) {
-                        // Remove typing indicator on first token
-                        if (!assistantMessageEl) {
-                            typingIndicator.remove();
-                            assistantMessageEl = addMessageToUI('', 'assistant');
-                        }
-                        assistantContent += parsed.token;
-                        updateAssistantMessage(assistantMessageEl, assistantContent);
-                    } else if (parsed.citations) {
-                        citations = parsed.citations;
+                if (line.startsWith('event: ')) {
+                    eventType = line.slice(7).trim();
+                } else if (line.startsWith('data: ')) {
+                    try {
+                        eventData = JSON.parse(line.slice(6));
+                    } catch (e) {
+                        // Ignore parse errors
                     }
-                } catch (e) {
-                    // Ignore parse errors for malformed events
                 }
+            }
+
+            if (!eventData) return;
+
+            if (eventType === 'tool_call') {
+                // Show tool being called
+                toolSteps.push({
+                    tool: eventData.tool,
+                    text: eventData.description || eventData.display_name,
+                    status: 'running',
+                    success: null
+                });
+                updateToolActivity();
+            } else if (eventType === 'tool_result') {
+                // Update the matching tool step
+                const step = toolSteps.find(s => s.tool === eventData.tool && s.status === 'running');
+                if (step) {
+                    step.status = 'complete';
+                    step.success = eventData.success;
+                    step.text = eventData.summary || step.text;
+                    updateToolActivity();
+                }
+            } else if (eventData.token) {
+                // Remove typing indicator on first token, but keep tool activity visible
+                if (!assistantMessageEl) {
+                    typingIndicator.remove();
+                    // Move tool activity before creating assistant message so it stays visible
+                    assistantMessageEl = addMessageToUI('', 'assistant');
+                    // If we have tool activity, move it inside the assistant message at the top
+                    if (toolActivityEl && toolSteps.length > 0) {
+                        toolActivityEl.classList.add('complete');
+                        assistantMessageEl.insertBefore(toolActivityEl, assistantMessageEl.firstChild);
+                    }
+                }
+                assistantContent += eventData.token;
+                updateAssistantMessage(assistantMessageEl, assistantContent);
+            } else if (eventData.citations) {
+                citations = eventData.citations;
             }
         }
 
@@ -462,6 +630,11 @@ async function handleSubmit(event) {
         // Process any remaining buffer content (final event without trailing \n\n)
         if (buffer.trim()) {
             processSSEEvent(buffer);
+        }
+
+        // Add internal links to podcast/episode names based on citations
+        if (citations.length > 0) {
+            assistantContent = addInternalLinks(assistantContent, citations);
         }
 
         // Force final render to ensure all content is displayed with proper markdown
@@ -581,8 +754,6 @@ function updateMobileTitle(title) {
 // Get scope label
 function getScopeLabel(scope, podcastTitle, episodeTitle) {
     switch (scope) {
-        case 'subscriptions':
-            return 'My Subscriptions';
         case 'all':
             return 'All Podcasts';
         case 'podcast':

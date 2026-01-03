@@ -205,6 +205,67 @@
 .citation-text {
     flex: 1;
 }
+.citation-link {
+    flex: 1;
+    color: #2563eb;
+    text-decoration: none;
+    transition: color 0.15s ease;
+}
+.citation-link:hover {
+    color: #1d4ed8;
+    text-decoration: underline;
+}
+
+/* Tool activity indicator */
+.tool-activity {
+    margin-bottom: 0.5rem;
+    padding: 0.75rem;
+    background-color: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+}
+.tool-activity.complete {
+    margin-bottom: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    background-color: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+    opacity: 0.8;
+}
+.tool-activity-header {
+    font-weight: 600;
+    color: #475569;
+    margin-bottom: 0.25rem;
+}
+.tool-activity.complete .tool-activity-header {
+    display: none;
+}
+.tool-step {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0;
+    color: #64748b;
+}
+.tool-step.running {
+    color: #3b82f6;
+}
+.tool-step.complete {
+    color: #22c55e;
+}
+.tool-step.complete:not([data-success="true"]) {
+    color: #ef4444;
+}
+.tool-icon {
+    font-size: 0.75rem;
+    width: 1rem;
+    text-align: center;
+}
+.tool-text {
+    flex: 1;
+}
 
 /* Typing indicator */
 .typing-indicator {

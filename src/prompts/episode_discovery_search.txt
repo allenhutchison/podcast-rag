@@ -1,3 +1,0 @@
-Find episodes from "$podcast_title" relevant to: $query
-
-Identify which episodes discuss topics related to this question.
