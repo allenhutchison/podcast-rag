@@ -108,6 +108,8 @@ def _extract_citations_from_response(
                 metadata = {
                     'podcast': podcast.title or '',
                     'author': podcast.itunes_author or podcast.author or '',
+                    'description': podcast.description or '',
+                    'image_url': podcast.image_url or '',
                 }
             else:
                 # Not a description - skip this citation
@@ -173,8 +175,8 @@ def create_chat_tools(
     store_name = None
     try:
         store_name = file_search_manager.create_or_get_store()
-    except Exception as e:
-        logger.error(f"Failed to get File Search store: {e!s}")
+    except Exception:
+        logger.exception("Failed to get File Search store")
         # Store is critical - tools will return errors if store_name is None
 
     # Create shared Gemini client with extended timeout for File Search queries
@@ -334,18 +336,17 @@ def create_chat_tools(
             # Extract podcast info from citations
             citations = _extract_citations_from_response(response, repository, "description")
 
-            # Also get full podcast objects for richer info
+            # Build podcast list from citation metadata (already fetched during extraction)
             podcasts = []
             for citation in citations:
-                display_name = citation.get('title')
-                podcast = repository.get_podcast_by_description_display_name(display_name)
-                if podcast:
+                if citation.get('podcast_id') and citation.get('metadata'):
+                    meta = citation['metadata']
                     podcasts.append({
-                        'podcast_id': str(podcast.id),
-                        'title': podcast.title,
-                        'author': podcast.itunes_author or podcast.author or '',
-                        'description': podcast.description or '',
-                        'image_url': podcast.image_url or ''
+                        'podcast_id': citation['podcast_id'],
+                        'title': meta.get('podcast', ''),
+                        'author': meta.get('author', ''),
+                        'description': meta.get('description', ''),
+                        'image_url': meta.get('image_url', '')
                     })
 
             logger.info(f"Found {len(podcasts)} matching podcasts")

@@ -235,13 +235,17 @@ async def generate_agentic_response(
         )
 
         # Build tool declarations for Gemini
+        # Note: We manually define parameter schemas rather than deriving from type
+        # annotations because Gemini requires specific JSON schema formats with
+        # descriptions, and the overhead of using inspect/typing introspection
+        # doesn't justify the complexity for a small, stable set of tools.
         tool_declarations = []
         tool_map = {}
         for tool_func in tools:
             tool_name = tool_func.__name__
             tool_map[tool_name] = tool_func
 
-            # Build parameter schema from docstring/annotations
+            # Define parameter schema based on tool type
             params = {}
             if tool_name in ["search_transcripts", "search_podcast_descriptions"]:
                 params = {
@@ -289,7 +293,6 @@ async def generate_agentic_response(
         # Build system prompt with scope context
         scope_context = _build_scope_context(
             repository=_repository,
-            user_id=user_id,
             podcast_id=podcast_id,
             episode_id=episode_id,
         )
@@ -501,7 +504,6 @@ def _summarize_tool_result(tool_name: str, result: dict) -> str:
 
 def _build_scope_context(
     repository: PodcastRepositoryInterface,
-    user_id: str,
     podcast_id: Optional[str] = None,
     episode_id: Optional[str] = None,
 ) -> str:

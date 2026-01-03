@@ -327,6 +327,20 @@ function renderMessages(messages) {
     scrollToBottom();
 }
 
+// Check if a text range falls inside an existing markdown link
+function isInsideMarkdownLink(text, startIndex, endIndex) {
+    const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+    let match;
+    while ((match = linkRegex.exec(text)) !== null) {
+        const linkStart = match.index;
+        const linkEnd = match.index + match[0].length;
+        if (startIndex >= linkStart && endIndex <= linkEnd) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Add internal links to podcast/episode names in the response text
 function addInternalLinks(content, citations) {
     // Build a mapping of names to links from citations
@@ -384,11 +398,10 @@ function addInternalLinks(content, citations) {
             if (standaloneMatch) {
                 // Check if it's already inside a markdown link [...](...)
                 const idx = result.indexOf(standaloneMatch[0]);
-                const before = result.substring(Math.max(0, idx - 50), idx);
-                const after = result.substring(idx, Math.min(result.length, idx + standaloneMatch[0].length + 50));
+                const endIdx = idx + standaloneMatch[0].length;
 
-                // Skip if already in a link (preceded by [ or followed by ]( patterns)
-                if (!before.includes('[') || before.lastIndexOf(']') > before.lastIndexOf('[')) {
+                // Skip if already inside an existing markdown link
+                if (!isInsideMarkdownLink(result, idx, endIdx)) {
                     const name = standaloneMatch[1];
                     const replacement = `[${name}](${item.url})`;
                     result = result.replace(standaloneRegex, replacement);
