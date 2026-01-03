@@ -69,7 +69,6 @@
                     onchange="handleScopeChange()"
                     class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                 >
-                    <option value="subscriptions">My Subscriptions</option>
                     <option value="all">All Podcasts</option>
                     <option value="podcast">Specific Podcast...</option>
                     <option value="episode">Specific Episode...</option>
@@ -141,13 +140,13 @@
                         Select a scope from the sidebar and start a conversation. Your chat history will be saved automatically.
                     </p>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg w-full">
-                        <button onclick="setScope('subscriptions')" class="p-3 text-left border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                            <div class="font-medium text-gray-900 text-sm">My Subscriptions</div>
-                            <div class="text-xs text-gray-500">Ask about podcasts you follow</div>
-                        </button>
                         <button onclick="setScope('all')" class="p-3 text-left border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
                             <div class="font-medium text-gray-900 text-sm">All Podcasts</div>
                             <div class="text-xs text-gray-500">Search the entire library</div>
+                        </button>
+                        <button onclick="setScope('podcast')" class="p-3 text-left border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                            <div class="font-medium text-gray-900 text-sm">Specific Podcast</div>
+                            <div class="text-xs text-gray-500">Focus on a single show</div>
                         </button>
                     </div>
                 </div>

@@ -5,7 +5,7 @@
 
 // State
 let currentConversationId = null;
-let currentScope = 'subscriptions';
+let currentScope = 'all';
 let selectedPodcastId = null;
 let selectedEpisodeId = null;
 let isStreaming = false;
@@ -745,8 +745,6 @@ function updateMobileTitle(title) {
 // Get scope label
 function getScopeLabel(scope, podcastTitle, episodeTitle) {
     switch (scope) {
-        case 'subscriptions':
-            return 'My Subscriptions';
         case 'all':
             return 'All Podcasts';
         case 'podcast':
