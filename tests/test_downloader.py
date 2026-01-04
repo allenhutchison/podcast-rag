@@ -5,7 +5,6 @@ import os
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
-from dataclasses import dataclass
 
 from src.podcast.downloader import EpisodeDownloader, DownloadResult
 

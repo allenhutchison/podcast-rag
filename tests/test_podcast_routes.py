@@ -771,15 +771,26 @@ class TestSearchPodcastsEndpoint:
 
         assert response.status_code == 502
 
-    def test_search_limit_clamping(self, client):
+    @patch("src.web.podcast_routes.httpx.AsyncClient")
+    def test_search_limit_clamping(self, mock_client_class, client):
         """Test search limit is clamped between 1 and 50."""
         test_client, _ = client
 
-        # This test just verifies the endpoint handles limit param
-        # The actual clamping is tested when the iTunes API is called
+        mock_response = Mock()
+        mock_response.json.return_value = {"results": []}
+        mock_response.raise_for_status = Mock()
+
+        mock_async_client = MagicMock()
+        mock_async_client.__aenter__ = AsyncMock(return_value=mock_async_client)
+        mock_async_client.__aexit__ = AsyncMock(return_value=None)
+        mock_async_client.get = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value = mock_async_client
+
+        # Request with limit > 50 should be clamped
         response = test_client.get("/api/podcasts/search?q=test&limit=100")
-        # Will fail because iTunes API isn't mocked, but request is valid
-        assert response.status_code in [200, 500, 502]
+        assert response.status_code == 200
+        # Verify the request was made (clamping happens internally)
+        mock_async_client.get.assert_called_once()
 
 
 class TestImportOPMLEndpoint:

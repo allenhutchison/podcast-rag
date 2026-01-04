@@ -56,12 +56,12 @@ class TestMCPTools:
         config.GEMINI_FILE_SEARCH_STORE_NAME = "test-store"
         return config
 
-    def test_get_rag_context_decorator_exists(self):
-        """Test that get_rag_context tool is defined."""
-        # Import the module to verify the tool decorator structure
-        with patch("src.mcp_server.MCP"):
-            with patch("src.mcp_server.Config"):
-                pass  # Module structure verified
+    def test_mcp_server_module_has_main(self):
+        """Test that mcp_server module has expected entry point."""
+        import src.mcp_server
+        # Verify main entry point exists and is callable
+        assert hasattr(src.mcp_server, "main")
+        assert callable(src.mcp_server.main)
 
     @patch("src.mcp_server.GeminiSearchManager")
     def test_search_manager_created_with_config(self, mock_search_manager_class, mock_config):
@@ -311,12 +311,11 @@ class TestMCPToolFunctions:
         mock_search_manager_class.return_value = mock_manager
 
         query = "search"
-        limit = None
 
         search_manager = mock_search_manager_class(config=mock_config, dry_run=False)
         results = search_manager.search_transcriptions(query, print_results=False)
 
-        # No limit applied
+        # No limit applied - all results returned
         response = {
             "query": query,
             "results": results,

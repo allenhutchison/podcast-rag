@@ -290,9 +290,10 @@ class TestLogoutRoute:
 class TestMeRoute:
     """Tests for /auth/me endpoint."""
 
-    @patch("src.web.auth_routes.get_current_user")
-    def test_me_returns_user_info(self, mock_get_user, app, mock_repository):
+    def test_me_returns_user_info(self, app, mock_repository):
         """Test /me returns current user info."""
+        from src.web.auth import get_current_user
+
         mock_current_user = {
             "sub": "user-123",
             "email": "test@example.com",
@@ -305,20 +306,41 @@ class TestMeRoute:
         mock_repository.get_user.return_value = mock_db_user
 
         # Override dependency
-        app.dependency_overrides[
-            __import__("src.web.auth", fromlist=["get_current_user"]).get_current_user
-        ] = lambda: mock_current_user
+        app.dependency_overrides[get_current_user] = lambda: mock_current_user
 
         client = TestClient(app, raise_server_exceptions=False)
+        response = client.get("/auth/me")
 
-        # Mock the dependency for this specific test
-        with patch("src.web.auth.get_current_user", return_value=mock_current_user):
-            # We need to override at the route level
-            pass
+        assert response.status_code == 200
+        data = response.json()
+        assert data["email"] == "test@example.com"
+        assert data["is_admin"] is False
 
-    @patch("src.web.auth_routes.get_current_user")
-    def test_me_returns_admin_status(self, mock_get_user, app, mock_repository):
+        # Clean up override
+        app.dependency_overrides.clear()
+
+    def test_me_returns_admin_status(self, app, mock_repository):
         """Test /me returns admin status from database."""
+        from src.web.auth import get_current_user
+
+        mock_current_user = {
+            "sub": "admin-123",
+            "email": "admin@example.com",
+            "name": "Admin User",
+        }
+
         mock_db_user = Mock()
         mock_db_user.is_admin = True
         mock_repository.get_user.return_value = mock_db_user
+
+        app.dependency_overrides[get_current_user] = lambda: mock_current_user
+
+        client = TestClient(app, raise_server_exceptions=False)
+        response = client.get("/auth/me")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["is_admin"] is True
+
+        # Clean up override
+        app.dependency_overrides.clear()

@@ -680,15 +680,15 @@ class TestMetadataWorker:
         assert count == 2
         mock_repository.get_episodes_pending_metadata.assert_called_with(limit=1000)
 
-    def test_read_mp3_tags_success(self, metadata_worker, tmp_path):
-        """Test reading MP3 tags - mock the mutagen import."""
-        with patch("src.workflow.workers.metadata.MetadataWorker._read_mp3_tags") as mock_read:
-            mock_read.return_value = {"artist": "Test Artist", "album": "Test Album"}
+    def test_read_mp3_tags_returns_dict(self, metadata_worker, tmp_path):
+        """Test that _read_mp3_tags returns a dictionary for valid MP3 files."""
+        # Create a dummy file (not a real MP3, so mutagen will fail gracefully)
+        dummy_file = tmp_path / "test.mp3"
+        dummy_file.write_bytes(b"fake mp3 content")
 
-            tags = metadata_worker._read_mp3_tags("/path/to/file.mp3")
-
-            assert tags["artist"] == "Test Artist"
-            assert tags["album"] == "Test Album"
+        # The method should return empty dict for invalid MP3 files
+        tags = metadata_worker._read_mp3_tags(str(dummy_file))
+        assert isinstance(tags, dict)
 
     def test_read_mp3_tags_no_file(self, metadata_worker):
         """Test reading MP3 tags when file doesn't exist."""

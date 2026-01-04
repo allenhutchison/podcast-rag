@@ -145,8 +145,10 @@ class TestFeedSyncAddPodcast:
 
         result = sync_service.add_podcast_from_url("https://example.com/feed.xml")
 
-        # Should return info about existing podcast
-        assert result.get("error") is not None or result.get("podcast_id") == "existing-id"
+        # Should return info about existing podcast with error message
+        assert result["podcast_id"] == "existing-id"
+        assert result["title"] == "Existing Podcast"
+        assert "already exists" in result["error"]
 
     def test_add_podcast_parse_error(self, sync_service, mock_repository):
         """Test adding a podcast when parsing fails."""
