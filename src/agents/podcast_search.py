@@ -9,7 +9,6 @@ import logging
 import re
 import threading
 import time
-from typing import Dict, List, Optional
 
 from google.adk.agents import LlmAgent
 
@@ -76,7 +75,7 @@ def sanitize_query(query: str) -> str:
 _MAX_FILTER_VALUE_LENGTH = 500
 
 
-def escape_filter_value(value: Optional[str]) -> Optional[str]:
+def escape_filter_value(value: str | None) -> str | None:
     """
     Escape and validate a value for use in AIP-160 metadata filters.
 
@@ -117,19 +116,19 @@ def escape_filter_value(value: Optional[str]) -> Optional[str]:
 
 # Thread-safe session-based storage for podcast citations
 # Key: session_id, Value: {'citations': List[Dict], 'timestamp': float}
-_session_citations: Dict[str, Dict] = {}
+_session_citations: dict[str, dict] = {}
 _citations_lock = threading.Lock()
 
 # Thread-safe session-based storage for podcast/episode filter
 # Key: session_id, Value: {'podcast': Optional[str], 'episode': Optional[str], 'timestamp': float}
-_session_podcast_filter: Dict[str, Dict] = {}
+_session_podcast_filter: dict[str, dict] = {}
 _filter_lock = threading.Lock()
 
 # Citation storage TTL (5 minutes) - entries older than this will be cleaned up
 _CITATION_TTL_SECONDS = 300
 
 
-def get_podcast_citations(session_id: str) -> List[Dict]:
+def get_podcast_citations(session_id: str) -> list[dict]:
     """
     Get the citations for a specific session.
 
@@ -150,7 +149,7 @@ def get_podcast_citations(session_id: str) -> List[Dict]:
         return session_data.get('citations', []).copy()
 
 
-def set_podcast_citations(session_id: str, citations: List[Dict]):
+def set_podcast_citations(session_id: str, citations: list[dict]):
     """
     Store citations for a specific session.
 
@@ -179,7 +178,7 @@ def clear_podcast_citations(session_id: str):
             del _session_citations[session_id]
 
 
-def get_podcast_filter(session_id: str) -> Optional[str]:
+def get_podcast_filter(session_id: str) -> str | None:
     """
     Get the podcast filter for a specific session.
 
@@ -194,13 +193,13 @@ def get_podcast_filter(session_id: str) -> Optional[str]:
         return session_data.get('podcast')
 
 
-def get_episode_filter(session_id: str) -> Optional[str]:
+def get_episode_filter(session_id: str) -> str | None:
     """
     Retrieve the episode filter for a session.
-    
+
     Parameters:
         session_id (str): Session identifier whose episode filter to retrieve.
-    
+
     Returns:
         Optional[str]: The episode name to filter by, or None if no episode filter is set.
     """
@@ -209,13 +208,13 @@ def get_episode_filter(session_id: str) -> Optional[str]:
         return session_data.get('episode')
 
 
-def get_podcast_filter_list(session_id: str) -> Optional[list[str]]:
+def get_podcast_filter_list(session_id: str) -> list[str] | None:
     """
     Retrieve the list-based podcast filter for a session.
-    
+
     Parameters:
         session_id (str): Session identifier whose podcast filter list should be retrieved.
-    
+
     Returns:
         Optional[list[str]]: List of podcast display names to filter by, or `None` if no list filter is set.
     """
@@ -226,9 +225,9 @@ def get_podcast_filter_list(session_id: str) -> Optional[list[str]]:
 
 def set_podcast_filter(
     session_id: str,
-    podcast_name: Optional[str] = None,
-    episode_name: Optional[str] = None,
-    podcast_list: Optional[list[str]] = None
+    podcast_name: str | None = None,
+    episode_name: str | None = None,
+    podcast_list: list[str] | None = None
 ):
     """
     Set per-session podcast/episode filters used by podcast searches.
@@ -236,16 +235,16 @@ def set_podcast_filter(
     Stores the provided podcast name, episode name, or list of podcast names for the given session_id; if no filter values are provided the session's filter is removed.
 
     Parameters:
-    	session_id (str): Session identifier to associate the filter with.
-    	podcast_name (Optional[str]): Single podcast name to filter by. Mutually exclusive with `podcast_list`.
-    	episode_name (Optional[str]): Episode name to filter by.
-    	podcast_list (Optional[list[str]]): List of podcast names for subscription-style filtering. Mutually exclusive with `podcast_name`.
+        session_id (str): Session identifier to associate the filter with.
+        podcast_name (Optional[str]): Single podcast name to filter by. Mutually exclusive with `podcast_list`.
+        episode_name (Optional[str]): Episode name to filter by.
+        podcast_list (Optional[list[str]]): List of podcast names for subscription-style filtering. Mutually exclusive with `podcast_name`.
 
     Raises:
-    	ValueError: If both `podcast_name` and `podcast_list` are provided.
+        ValueError: If both `podcast_name` and `podcast_list` are provided.
 
     Notes:
-    	The filter is saved with a timestamp and will be subject to TTL-based cleanup.
+        The filter is saved with a timestamp and will be subject to TTL-based cleanup.
     """
     # Enforce mutual exclusivity
     if podcast_name and podcast_list:
@@ -294,7 +293,7 @@ def _cleanup_old_citations():
 
 # Backwards compatibility - module-level functions that use a default session
 # These are deprecated and should not be used in production
-def get_latest_podcast_citations() -> List[Dict]:
+def get_latest_podcast_citations() -> list[dict]:
     """
     DEPRECATED: Get citations from default session.
     Use get_podcast_citations(session_id) instead.
@@ -307,7 +306,7 @@ def create_podcast_search_tool(
     file_search_manager: GeminiFileSearchManager,
     repository: PodcastRepositoryInterface,
     session_id: str = "_default",
-    prompt_manager: Optional[PromptManager] = None
+    prompt_manager: PromptManager | None = None
 ):
     """
     Create a podcast-search tool function that queries Gemini File Search and returns structured results while storing per-session citations.
@@ -333,15 +332,15 @@ def create_podcast_search_tool(
     if prompt_manager is None:
         prompt_manager = PromptManager(config=config)
 
-    def search_podcasts(query: str) -> Dict:
+    def search_podcasts(query: str) -> dict:
         """
         Search podcast transcripts for content relevant to the given natural-language query.
-        
+
         This function sanitizes the provided query, clears any existing session citations, performs a Gemini File Search (applying any session-level podcast/episode filters), extracts and enriches citations from the search response, stores those citations in session storage, and returns a structured result. On error, returns an error payload instead of raising.
-        
+
         Parameters:
             query (str): User-supplied natural-language search string to find relevant podcast transcript content.
-        
+
         Returns:
             dict: Result object with the following keys:
                 - response_text (str): Textual result or error message from the search operation.
@@ -455,7 +454,7 @@ def create_podcast_search_tool(
 def extract_citations(
     response,
     repository: PodcastRepositoryInterface
-) -> List[Dict]:
+) -> list[dict]:
     """
     Extract citations from Gemini response with metadata enrichment.
 

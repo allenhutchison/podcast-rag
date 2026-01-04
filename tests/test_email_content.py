@@ -5,8 +5,6 @@ and fallback behavior when email content is not available.
 """
 
 from datetime import datetime
-from typing import Optional
-from unittest.mock import Mock
 
 import pytest
 
@@ -28,12 +26,12 @@ class MockEpisode:
         self,
         id: str = "test-id",
         title: str = "Test Episode",
-        published_date: Optional[datetime] = None,
+        published_date: datetime | None = None,
         ai_summary: str = "Default AI summary for testing.",
-        ai_keywords: Optional[list] = None,
-        ai_email_content: Optional[dict] = None,
+        ai_keywords: list | None = None,
+        ai_email_content: dict | None = None,
         enclosure_url: str = "https://example.com/ep.mp3",
-        podcast: Optional[MockPodcast] = None,
+        podcast: MockPodcast | None = None,
     ):
         self.id = id
         self.title = title

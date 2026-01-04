@@ -6,7 +6,6 @@ for SQLite (local development) or PostgreSQL (Cloud SQL production).
 
 import logging
 import os
-from typing import Optional
 
 from .models import Base
 from .repository import PodcastRepositoryInterface, SQLAlchemyPodcastRepository
@@ -18,7 +17,7 @@ DEFAULT_DATABASE_URL = "sqlite:///./podcast_rag.db"
 
 
 def create_repository(
-    database_url: Optional[str] = None,
+    database_url: str | None = None,
     pool_size: int = 3,  # Supabase-optimized
     max_overflow: int = 2,  # Supabase-optimized
     echo: bool = False,
@@ -87,10 +86,10 @@ def create_repository(
 def get_database_url_from_config(config) -> str:
     """
     Retrieve the database URL from a configuration object, falling back to the environment and a default.
-    
+
     Parameters:
         config: An object that may have a `DATABASE_URL` attribute.
-    
+
     Returns:
         The resolved database URL string from `config.DATABASE_URL`, the `DATABASE_URL` environment variable, or `DEFAULT_DATABASE_URL`.
     """

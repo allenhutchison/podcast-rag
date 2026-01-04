@@ -5,9 +5,9 @@ This module provides a simplified RAG interface that leverages Google's
 hosted File Search solution for automatic semantic search with citations.
 """
 
-import logging
 import json
-from typing import Dict, List, Optional, TypedDict
+import logging
+from typing import TypedDict
 
 from google import genai
 from google.genai import types
@@ -16,7 +16,7 @@ from src.argparse_shared import (
     add_dry_run_argument,
     add_log_level_argument,
     add_query_argument,
-    get_base_parser
+    get_base_parser,
 )
 from src.config import Config
 from src.db.gemini_file_search import GeminiFileSearchManager
@@ -25,9 +25,9 @@ from src.db.gemini_file_search import GeminiFileSearchManager
 # Citation type definitions
 class LegacyCitation(TypedDict):
     """Legacy citation format from file_search_citations."""
-    file_id: Optional[str]
-    chunk_index: Optional[int]
-    score: Optional[float]
+    file_id: str | None
+    chunk_index: int | None
+    score: float | None
 
 
 class GroundingCitation(TypedDict):
@@ -35,7 +35,7 @@ class GroundingCitation(TypedDict):
     index: int
     title: str
     text: str
-    uri: Optional[str]
+    uri: str | None
 
 
 # Union type for citations (can be either format)
@@ -207,7 +207,7 @@ class RagManager:
 
         return result
 
-    def get_citations(self) -> List[Citation]:
+    def get_citations(self) -> list[Citation]:
         """
         Get citations from the last query's grounding metadata.
 
@@ -268,7 +268,7 @@ class RagManager:
 
         return citations
 
-    def search_snippets(self, query: Optional[str] = None) -> str:
+    def search_snippets(self, query: str | None = None) -> str:
         """
         Get search snippets with citations for the last query.
 
@@ -299,7 +299,6 @@ class RagManager:
 
 
 if __name__ == "__main__":
-    import argparse
 
     parser = get_base_parser()
     parser.description = "Query podcast transcriptions using Gemini File Search"

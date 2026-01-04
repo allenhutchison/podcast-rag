@@ -9,11 +9,13 @@ chunking, and citation support.
 import json
 import logging
 import os
+import shutil
+import tempfile
 import time
-from typing import Callable, Dict, List, Literal, Optional, TypedDict, TypeVar
+from collections.abc import Callable
+from typing import Literal, TypedDict, TypeVar
 
 from google import genai
-from google.genai import types
 from google.genai.errors import APIError, ClientError
 
 from src.utils.metadata_utils import flatten_episode_metadata
@@ -189,7 +191,7 @@ class GeminiFileSearchManager:
             # Fall back to ASCII with replacement
             return result.encode('ascii', 'replace').decode('ascii')
 
-    def _prepare_metadata(self, metadata: Optional[Dict]) -> List[Dict]:
+    def _prepare_metadata(self, metadata: dict | None) -> list[dict]:
         """
         Convert metadata dictionary to File Search custom_metadata format.
 
@@ -275,7 +277,7 @@ class GeminiFileSearchManager:
 
         return custom_metadata
 
-    def create_or_get_store(self, display_name: Optional[str] = None) -> str:
+    def create_or_get_store(self, display_name: str | None = None) -> str:
         """
         Create a new File Search store or get existing one.
 
@@ -325,11 +327,11 @@ class GeminiFileSearchManager:
     def upload_transcript(
         self,
         transcript_path: str,
-        metadata: Optional[Dict] = None,
-        store_name: Optional[str] = None,
-        existing_files: Optional[Dict[str, str]] = None,
+        metadata: dict | None = None,
+        store_name: str | None = None,
+        existing_files: dict[str, str] | None = None,
         skip_existing: bool = True
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Upload a transcript file to the File Search store.
 
@@ -410,9 +412,6 @@ class GeminiFileSearchManager:
                 needs_temp_file = True
 
             if needs_temp_file:
-                import tempfile
-                import shutil
-
                 # Create temp file with ASCII-safe name
                 fd, tmp_path = tempfile.mkstemp(suffix='.txt', text=True)
                 fd_closed = False
@@ -483,8 +482,8 @@ class GeminiFileSearchManager:
         self,
         text: str,
         display_name: str,
-        metadata: Optional[Dict] = None,
-        store_name: Optional[str] = None
+        metadata: dict | None = None,
+        store_name: str | None = None
     ) -> str:
         """
         Upload transcript text directly (without file path).
@@ -517,7 +516,6 @@ class GeminiFileSearchManager:
 
         try:
             # Create temporary file with text content
-            import tempfile
             # Create temp file, write content, and close it before reopening
             fd, tmp_path = tempfile.mkstemp(suffix='.txt', text=True)
             try:
@@ -556,8 +554,8 @@ class GeminiFileSearchManager:
         self,
         podcast_name: str,
         description: str,
-        metadata: Optional[Dict] = None,
-        store_name: Optional[str] = None
+        metadata: dict | None = None,
+        store_name: str | None = None
     ) -> tuple[str, str]:
         """
         Upload a podcast description document to File Search.
@@ -593,7 +591,7 @@ class GeminiFileSearchManager:
 
         return resource_name, display_name
 
-    def get_store_info(self, store_name: Optional[str] = None) -> Dict:
+    def get_store_info(self, store_name: str | None = None) -> dict:
         """
         Get information about a File Search store.
 
@@ -626,7 +624,7 @@ class GeminiFileSearchManager:
             logging.error(f"Failed to get store info: {e}")
             raise
 
-    def list_files(self, store_name: Optional[str] = None) -> List[str]:
+    def list_files(self, store_name: str | None = None) -> list[str]:
         """
         List all documents in a File Search store.
 
@@ -652,9 +650,9 @@ class GeminiFileSearchManager:
 
     def get_existing_files(
         self,
-        store_name: Optional[str] = None,
+        store_name: str | None = None,
         show_progress: bool = False
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """
         Get a mapping of display names to document resource names for existing files.
 
@@ -678,7 +676,7 @@ class GeminiFileSearchManager:
             logging.error(f"Failed to list documents: {e}")
             raise
 
-    def _extract_doc_metadata(self, doc) -> Dict:
+    def _extract_doc_metadata(self, doc) -> dict:
         """Extract metadata from a document object."""
         metadata = {}
         if hasattr(doc, 'custom_metadata') and doc.custom_metadata:
@@ -691,7 +689,7 @@ class GeminiFileSearchManager:
         self,
         store_name: str,
         show_progress: bool = False
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """
         Fetch files from remote store using synchronous iteration.
 
@@ -744,7 +742,7 @@ class GeminiFileSearchManager:
         self,
         store_name: str,
         show_progress: bool = False
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """
         Fetch files from remote store using async API.
 
@@ -802,9 +800,9 @@ class GeminiFileSearchManager:
 
     def get_existing_files_async(
         self,
-        store_name: Optional[str] = None,
+        store_name: str | None = None,
         show_progress: bool = False
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """
         Get existing files using async API for faster fetching.
 
@@ -855,7 +853,7 @@ class GeminiFileSearchManager:
             logging.error(f"Failed to list documents: {e}")
             raise
 
-    def _prefetch_metadata_for_documents(self, display_names: List[str], store_name: Optional[str] = None) -> None:
+    def _prefetch_metadata_for_documents(self, display_names: list[str], store_name: str | None = None) -> None:
         """
         Pre-fetch and cache metadata for multiple documents in one API call.
 
@@ -872,7 +870,7 @@ class GeminiFileSearchManager:
         # Filter out already-cached documents
         cache_keys = [f"{store_name}:{name}" for name in display_names]
         uncached_names = [
-            name for name, key in zip(display_names, cache_keys)
+            name for name, key in zip(display_names, cache_keys, strict=False)
             if key not in self._document_metadata_cache
         ]
 
@@ -927,7 +925,7 @@ class GeminiFileSearchManager:
         except Exception as e:
             logging.error(f"Failed to pre-fetch document metadata: {e}")
 
-    def get_document_by_resource_name(self, resource_name: str) -> Optional[Dict]:
+    def get_document_by_resource_name(self, resource_name: str) -> dict | None:
         """
         Get document metadata by resource name (direct O(1) lookup).
 
@@ -977,7 +975,7 @@ class GeminiFileSearchManager:
             self._document_metadata_cache[cache_key] = None
             return None
 
-    def get_document_by_name(self, display_name: str, store_name: Optional[str] = None) -> Optional[Dict]:
+    def get_document_by_name(self, display_name: str, store_name: str | None = None) -> dict | None:
         """
         Get document metadata by display name.
 
@@ -1072,8 +1070,8 @@ class GeminiFileSearchManager:
         directory_path: str,
         pattern: str = "*_transcription.txt",
         metadata_pattern: str = "*_metadata.json",
-        progress_callback: Optional[Callable[[ProgressInfo], None]] = None
-    ) -> Dict[str, str]:
+        progress_callback: Callable[[ProgressInfo], None] | None = None
+    ) -> dict[str, str]:
         """
         Batch upload all transcripts from a directory.
 
@@ -1116,7 +1114,7 @@ class GeminiFileSearchManager:
 
             if os.path.exists(metadata_path):
                 try:
-                    with open(metadata_path, 'r') as f:
+                    with open(metadata_path) as f:
                         metadata = json.load(f)
                 except Exception as e:
                     logging.warning(f"Failed to load metadata from {metadata_path}: {e}")

@@ -6,7 +6,6 @@ Supports per-user timezone and delivery hour preferences.
 
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import List, Optional
 
 try:
     from zoneinfo import ZoneInfo
@@ -56,7 +55,7 @@ class EmailDigestWorker(WorkerInterface):
         self.config = config
         self.repository = repository
         self.lookback_hours = lookback_hours
-        self._email_service: Optional[EmailService] = None
+        self._email_service: EmailService | None = None
 
     @property
     def name(self) -> str:
@@ -83,7 +82,7 @@ class EmailDigestWorker(WorkerInterface):
         users_due_now = self._filter_users_by_delivery_time(all_eligible)
         return len(users_due_now)
 
-    def _filter_users_by_delivery_time(self, users: List[User]) -> List[User]:
+    def _filter_users_by_delivery_time(self, users: list[User]) -> list[User]:
         """Filter users to only those whose delivery time is now.
 
         Args:

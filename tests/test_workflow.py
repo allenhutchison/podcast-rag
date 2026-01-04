@@ -1,17 +1,17 @@
 """Tests for the unified workflow orchestrator and workers."""
 
-import pytest
 from datetime import UTC, datetime
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock, patch
+
+import pytest
 
 from src.db.factory import create_repository
-from src.db.models import Episode
 from src.workflow.config import PipelineConfig
 from src.workflow.orchestrator import (
     PipelineOrchestrator,
     PipelineStats,
 )
-from src.workflow.post_processor import PostProcessor, PostProcessingStats
+from src.workflow.post_processor import PostProcessingStats, PostProcessor
 from src.workflow.workers.base import WorkerInterface, WorkerResult
 
 

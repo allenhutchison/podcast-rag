@@ -4,7 +4,6 @@ Downloads pending episodes with concurrent downloading support.
 """
 
 import logging
-from typing import Optional
 
 from src.config import Config
 from src.db.repository import PodcastRepositoryInterface
@@ -49,7 +48,7 @@ class DownloadWorker(WorkerInterface):
         self.config = config
         self.repository = repository
         self._download_workers = download_workers
-        self._downloader: Optional[EpisodeDownloader] = None
+        self._downloader: EpisodeDownloader | None = None
 
     @property
     def name(self) -> str:

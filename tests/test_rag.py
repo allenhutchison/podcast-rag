@@ -4,10 +4,9 @@ Tests for RAG Manager with Gemini File Search.
 These tests use dry_run mode and mocking to avoid requiring API credentials.
 """
 
-import pytest
-import sys
 import os
-from unittest.mock import patch, MagicMock
+import sys
+from unittest.mock import MagicMock, patch
 
 # Add the src directory to sys.path
 sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
@@ -207,7 +206,7 @@ def test_add_inline_citations_invalid_position():
 
         # Should handle invalid position gracefully
         with patch('rag.logging.warning') as mock_warning:
-            result = manager._add_inline_citations(text)
+            manager._add_inline_citations(text)
 
             # Should log warning about invalid position
             mock_warning.assert_called_once()
@@ -240,7 +239,7 @@ def test_add_inline_citations_negative_position():
 
         # Should handle negative position gracefully
         with patch('rag.logging.warning') as mock_warning:
-            result = manager._add_inline_citations(text)
+            manager._add_inline_citations(text)
 
             # Should log warning
             mock_warning.assert_called_once()

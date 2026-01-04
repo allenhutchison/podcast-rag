@@ -7,7 +7,7 @@ All routes require admin authentication via the get_current_admin dependency.
 import asyncio
 import logging
 from enum import Enum
-from typing import Literal, Optional
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -81,7 +81,7 @@ async def get_admin_stats(
 @router.get("/users")
 async def list_users(
     request: Request,
-    is_admin: Optional[bool] = None,
+    is_admin: bool | None = None,
     limit: int = 50,
     offset: int = 0,
     current_admin: dict = Depends(get_current_admin)

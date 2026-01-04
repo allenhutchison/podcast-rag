@@ -1,8 +1,8 @@
 """Tests for podcast routes - add, search, and import endpoints."""
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
+from unittest.mock import Mock
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -10,11 +10,11 @@ from pydantic import ValidationError
 from src.web.models import (
     AddPodcastByUrlRequest,
     AddPodcastResponse,
-    PodcastSearchResult,
-    PodcastSearchResponse,
     OPMLImportRequest,
-    OPMLImportResult,
     OPMLImportResponse,
+    OPMLImportResult,
+    PodcastSearchResponse,
+    PodcastSearchResult,
 )
 from src.web.podcast_routes import router
 
@@ -248,30 +248,6 @@ class TestOPMLImportResponse:
 
 class TestPodcastRoutesEndpoints:
     """Integration tests for podcast routes endpoints."""
-
-    @pytest.fixture
-    def mock_auth(self):
-        """Mock authentication to return a test user."""
-        with patch("src.web.podcast_routes.get_current_user") as mock:
-            mock.return_value = {"sub": "test-user-id", "email": "test@example.com"}
-            yield mock
-
-    @pytest.fixture
-    def mock_repository(self):
-        """Mock repository for database operations."""
-        repo = Mock()
-        repo.get_podcast_by_feed_url.return_value = None
-        repo.is_user_subscribed.return_value = False
-        repo.subscribe_user_to_podcast.return_value = Mock()
-        repo.list_episodes.return_value = []
-        return repo
-
-    @pytest.fixture
-    def mock_config(self):
-        """Mock config."""
-        config = Mock()
-        config.PODCAST_DOWNLOAD_DIRECTORY = "/tmp/podcasts"
-        return config
 
     def test_add_podcast_url_normalization(self):
         """Test that feed:// URLs are normalized to https://."""

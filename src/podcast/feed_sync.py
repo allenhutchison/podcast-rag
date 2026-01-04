@@ -8,12 +8,12 @@ import logging
 import os
 import re
 from datetime import UTC, datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from sqlalchemy.exc import IntegrityError
 
 from ..db.repository import PodcastRepositoryInterface
-from .feed_parser import FeedParser, ParsedEpisode, ParsedPodcast
+from .feed_parser import FeedParser, ParsedPodcast
 
 logger = logging.getLogger(__name__)
 
@@ -32,11 +32,11 @@ class FeedSyncService:
     def __init__(
         self,
         repository: PodcastRepositoryInterface,
-        download_directory: Optional[str] = None,
+        download_directory: str | None = None,
     ):
         """
         Create a FeedSyncService that synchronizes podcast feeds with the given repository.
-        
+
         Parameters:
             download_directory (Optional[str]): Base directory for storing downloaded podcast files.
                 If `None`, local download directories are not created.
@@ -45,13 +45,13 @@ class FeedSyncService:
         self.download_directory = download_directory
         self.feed_parser = FeedParser()
 
-    def sync_podcast(self, podcast_id: str) -> Dict[str, Any]:
+    def sync_podcast(self, podcast_id: str) -> dict[str, Any]:
         """
         Sync a single podcast by fetching its feed, updating metadata, and adding new episodes.
-        
+
         Parameters:
             podcast_id (str): Identifier of the podcast to synchronize.
-        
+
         Returns:
             result (dict): Synchronization outcome containing:
                 - podcast_id (str): The podcast identifier.
@@ -110,13 +110,13 @@ class FeedSyncService:
     def sync_all_podcasts(
         self,
         subscribed_only: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Synchronize all podcasts from the repository.
-        
+
         Parameters:
             subscribed_only (bool): If True, limit synchronization to podcasts marked as subscribed.
-        
+
         Returns:
             overall_result (dict): Aggregated sync results with keys:
                 - synced (int): Number of podcasts successfully synced.
@@ -151,13 +151,13 @@ class FeedSyncService:
 
         return overall_result
 
-    def add_podcast_from_url(self, feed_url: str) -> Dict[str, Any]:
+    def add_podcast_from_url(self, feed_url: str) -> dict[str, Any]:
         """
         Add a podcast by parsing the RSS/Atom feed at the given URL and creating podcast and episode records.
-        
+
         Parameters:
             feed_url (str): URL of the podcast feed to import.
-        
+
         Returns:
             dict: Result dictionary containing:
                 - podcast_id: ID of the created or existing podcast, or `None` on failure.
@@ -319,13 +319,13 @@ class FeedSyncService:
 
         return new_count
 
-    def _get_podcast_directory(self, title: str) -> Optional[str]:
+    def _get_podcast_directory(self, title: str) -> str | None:
         """
         Return a filesystem path for storing a podcast's downloads based on its title.
-        
+
         Parameters:
             title (str): Podcast title used to generate a sanitized directory name.
-        
+
         Returns:
             str | None: The full directory path joined with the service's download directory, or `None` if no download directory is configured.
         """
@@ -339,10 +339,10 @@ class FeedSyncService:
     def _sanitize_filename(self, name: str) -> str:
         """
         Produce a filesystem-safe filename derived from the given name.
-        
+
         Parameters:
             name (str): Original string to sanitize.
-        
+
         Returns:
             str: A filename-safe string (max 100 characters); returns "podcast" if the result would be empty.
         """

@@ -1,5 +1,4 @@
-from datetime import date
-from typing import List, Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -28,17 +27,17 @@ class EmailContent(BaseModel):
         min_length=20,  # Lenient: Gemini doesn't always respect constraints
         max_length=300  # Lenient: allow slightly longer, we can truncate in display
     )
-    key_takeaways: List[str] = Field(
+    key_takeaways: list[str] = Field(
         description="3-5 bullet points of main insights",
         min_length=1,  # Lenient: at least 1 takeaway
         max_length=7   # Lenient: allow slightly more
     )
-    highlight_moment: Optional[str] = Field(
+    highlight_moment: str | None = Field(
         default=None,
         description="An interesting quote, surprising fact, or memorable moment (max 300 chars)",
         max_length=500  # Lenient: Gemini doesn't always respect constraints
     )
-    story_summaries: Optional[List[StoryItem]] = Field(
+    story_summaries: list[StoryItem] | None = Field(
         default=None,
         description="For news podcasts only: list of stories covered (3-7 items)"
     )
@@ -51,20 +50,20 @@ class PodcastMetadata(BaseModel):
     episode_title: str = Field(
         description="Title of this specific episode"
     )
-    episode_number: Optional[str] = Field(
+    episode_number: str | None = Field(
         description="Episode number if mentioned (e.g., '42', 'S2E15')"
     )
-    date: Optional[str] = Field(
+    date: str | None = Field(
         description="Recording or release date if mentioned. Will be None for historical dates or invalid formats. Valid formats: YYYY-MM-DD, YYYY-MM, YYYY, or YYYY-YYYY for date ranges. Must be year 2000 or later."
     )
-    hosts: List[str] = Field(
+    hosts: list[str] = Field(
         description="List of host names",
         min_length=1
     )
-    co_hosts: List[str] = Field(
+    co_hosts: list[str] = Field(
         description="List of co-host names"
     )
-    guests: List[str] = Field(
+    guests: list[str] = Field(
         description="List of guest names"
     )
     summary: str = Field(
@@ -72,12 +71,12 @@ class PodcastMetadata(BaseModel):
         min_length=50,   # Lenient: Gemini doesn't always respect constraints
         max_length=4000  # Lenient: allow longer summaries
     )
-    keywords: List[str] = Field(
+    keywords: list[str] = Field(
         description="List of 5-10 relevant keywords or topics discussed",
         min_length=3,   # Lenient: at least 3 keywords
         max_length=15   # Lenient: allow more keywords
     )
-    email_content: Optional[EmailContent] = Field(
+    email_content: EmailContent | None = Field(
         default=None,
         description="Email-optimized content for digest emails"
     )
@@ -89,10 +88,10 @@ class MP3Metadata(BaseModel):
     album: str = Field(default="")
     album_artist: str = Field(default="")
     release_date: str = Field(default="")
-    comments: List[str] = Field(default_factory=list)
+    comments: list[str] = Field(default_factory=list)
 
 
 class EpisodeMetadata(BaseModel):
     """Combined metadata from transcript analysis and MP3 file."""
     transcript_metadata: PodcastMetadata
-    mp3_metadata: MP3Metadata 
+    mp3_metadata: MP3Metadata

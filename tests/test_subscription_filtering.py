@@ -6,16 +6,15 @@ Tests the end-to-end flow of filtering chat queries to user's subscribed podcast
 
 import threading
 import time
-from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
 from src.agents.podcast_search import (
-    set_podcast_filter,
-    get_podcast_filter,
-    get_episode_filter,
-    get_podcast_filter_list,
     escape_filter_value,
+    get_episode_filter,
+    get_podcast_filter,
+    get_podcast_filter_list,
+    set_podcast_filter,
 )
 
 
@@ -24,7 +23,7 @@ class TestSubscriptionFilteringIntegration:
 
     def setup_method(self):
         """Clear filters before each test."""
-        from src.agents.podcast_search import _session_podcast_filter, _filter_lock
+        from src.agents.podcast_search import _filter_lock, _session_podcast_filter
         with _filter_lock:
             _session_podcast_filter.clear()
 

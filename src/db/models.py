@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from sqlalchemy import (
     Boolean,
@@ -39,47 +39,47 @@ class Podcast(Base):
 
     # Core identifiers
     feed_url: Mapped[str] = mapped_column(String(2048), unique=True, nullable=False)
-    website_url: Mapped[Optional[str]] = mapped_column(String(2048))
+    website_url: Mapped[str | None] = mapped_column(String(2048))
 
     # Metadata from RSS feed
     title: Mapped[str] = mapped_column(String(512), nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text)
-    author: Mapped[Optional[str]] = mapped_column(String(512))
-    language: Mapped[Optional[str]] = mapped_column(String(32))
+    description: Mapped[str | None] = mapped_column(Text)
+    author: Mapped[str | None] = mapped_column(String(512))
+    language: Mapped[str | None] = mapped_column(String(32))
 
     # iTunes/Apple Podcasts specific
-    itunes_id: Mapped[Optional[str]] = mapped_column(String(64))
-    itunes_author: Mapped[Optional[str]] = mapped_column(String(512))
-    itunes_category: Mapped[Optional[str]] = mapped_column(String(256))
-    itunes_subcategory: Mapped[Optional[str]] = mapped_column(String(256))
-    itunes_explicit: Mapped[Optional[bool]] = mapped_column(Boolean)
-    itunes_type: Mapped[Optional[str]] = mapped_column(String(32))  # episodic or serial
+    itunes_id: Mapped[str | None] = mapped_column(String(64))
+    itunes_author: Mapped[str | None] = mapped_column(String(512))
+    itunes_category: Mapped[str | None] = mapped_column(String(256))
+    itunes_subcategory: Mapped[str | None] = mapped_column(String(256))
+    itunes_explicit: Mapped[bool | None] = mapped_column(Boolean)
+    itunes_type: Mapped[str | None] = mapped_column(String(32))  # episodic or serial
 
     # Artwork
-    image_url: Mapped[Optional[str]] = mapped_column(String(2048))
-    image_local_path: Mapped[Optional[str]] = mapped_column(String(1024))
+    image_url: Mapped[str | None] = mapped_column(String(2048))
+    image_local_path: Mapped[str | None] = mapped_column(String(1024))
 
     # Subscription management
     is_subscribed: Mapped[bool] = mapped_column(Boolean, default=True)
-    last_checked: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    last_new_episode: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    last_checked: Mapped[datetime | None] = mapped_column(DateTime)
+    last_new_episode: Mapped[datetime | None] = mapped_column(DateTime)
     check_frequency_hours: Mapped[int] = mapped_column(Integer, default=24)
 
     # File organization
-    local_directory: Mapped[Optional[str]] = mapped_column(String(1024))
+    local_directory: Mapped[str | None] = mapped_column(String(1024))
 
     # Description document File Search integration
     description_file_search_status: Mapped[str] = mapped_column(
         String(32), default="pending"
     )  # pending, uploading, indexed, failed, skipped
-    description_file_search_error: Mapped[Optional[str]] = mapped_column(Text)
-    description_file_search_resource_name: Mapped[Optional[str]] = mapped_column(
+    description_file_search_error: Mapped[str | None] = mapped_column(Text)
+    description_file_search_resource_name: Mapped[str | None] = mapped_column(
         String(512)
     )
-    description_file_search_display_name: Mapped[Optional[str]] = mapped_column(
+    description_file_search_display_name: Mapped[str | None] = mapped_column(
         String(512)
     )
-    description_file_search_uploaded_at: Mapped[Optional[datetime]] = mapped_column(
+    description_file_search_uploaded_at: Mapped[datetime | None] = mapped_column(
         DateTime
     )
 
@@ -90,7 +90,7 @@ class Podcast(Base):
     )
 
     # Relationships
-    episodes: Mapped[List["Episode"]] = relationship(
+    episodes: Mapped[list["Episode"]] = relationship(
         "Episode", back_populates="podcast", cascade="all, delete-orphan"
     )
 
@@ -102,7 +102,7 @@ class Podcast(Base):
     def __repr__(self) -> str:
         """
         Provide a concise developer-facing string representation of the Podcast.
-        
+
         Returns:
             str: A string in the form "<Podcast(id=<id>, title='<title>')>".
         """
@@ -131,75 +131,75 @@ class Episode(Base):
 
     # Metadata from RSS feed
     title: Mapped[str] = mapped_column(String(512), nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text)
-    link: Mapped[Optional[str]] = mapped_column(String(2048))
-    published_date: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    duration_seconds: Mapped[Optional[int]] = mapped_column(Integer)
+    description: Mapped[str | None] = mapped_column(Text)
+    link: Mapped[str | None] = mapped_column(String(2048))
+    published_date: Mapped[datetime | None] = mapped_column(DateTime)
+    duration_seconds: Mapped[int | None] = mapped_column(Integer)
 
     # Episode numbering
-    episode_number: Mapped[Optional[str]] = mapped_column(String(32))
-    season_number: Mapped[Optional[int]] = mapped_column(Integer)
-    episode_type: Mapped[Optional[str]] = mapped_column(String(32))  # full, trailer, bonus
+    episode_number: Mapped[str | None] = mapped_column(String(32))
+    season_number: Mapped[int | None] = mapped_column(Integer)
+    episode_type: Mapped[str | None] = mapped_column(String(32))  # full, trailer, bonus
 
     # iTunes/Apple Podcasts specific
-    itunes_title: Mapped[Optional[str]] = mapped_column(String(512))
-    itunes_episode: Mapped[Optional[str]] = mapped_column(String(32))
-    itunes_season: Mapped[Optional[int]] = mapped_column(Integer)
-    itunes_explicit: Mapped[Optional[bool]] = mapped_column(Boolean)
-    itunes_duration: Mapped[Optional[str]] = mapped_column(String(32))
+    itunes_title: Mapped[str | None] = mapped_column(String(512))
+    itunes_episode: Mapped[str | None] = mapped_column(String(32))
+    itunes_season: Mapped[int | None] = mapped_column(Integer)
+    itunes_explicit: Mapped[bool | None] = mapped_column(Boolean)
+    itunes_duration: Mapped[str | None] = mapped_column(String(32))
 
     # Audio file info (from enclosure) - URL retained for re-download
     enclosure_url: Mapped[str] = mapped_column(String(2048), nullable=False)
     enclosure_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    enclosure_length: Mapped[Optional[int]] = mapped_column(Integer)
+    enclosure_length: Mapped[int | None] = mapped_column(Integer)
 
     # Download status
     download_status: Mapped[str] = mapped_column(
         String(32), default="pending"
     )  # pending, downloading, completed, failed, skipped
-    download_error: Mapped[Optional[str]] = mapped_column(Text)
-    downloaded_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    local_file_path: Mapped[Optional[str]] = mapped_column(
+    download_error: Mapped[str | None] = mapped_column(Text)
+    downloaded_at: Mapped[datetime | None] = mapped_column(DateTime)
+    local_file_path: Mapped[str | None] = mapped_column(
         String(1024)
     )  # Temporary, cleared after processing
-    file_size_bytes: Mapped[Optional[int]] = mapped_column(Integer)
-    file_hash: Mapped[Optional[str]] = mapped_column(String(64))  # SHA256
+    file_size_bytes: Mapped[int | None] = mapped_column(Integer)
+    file_hash: Mapped[str | None] = mapped_column(String(64))  # SHA256
 
     # Transcription status
     transcript_status: Mapped[str] = mapped_column(
         String(32), default="pending"
     )  # pending, processing, completed, failed, skipped
-    transcript_error: Mapped[Optional[str]] = mapped_column(Text)
-    transcript_path: Mapped[Optional[str]] = mapped_column(String(1024))
-    transcript_text: Mapped[Optional[str]] = mapped_column(Text)  # Full transcript content
-    transcribed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    transcript_error: Mapped[str | None] = mapped_column(Text)
+    transcript_path: Mapped[str | None] = mapped_column(String(1024))
+    transcript_text: Mapped[str | None] = mapped_column(Text)  # Full transcript content
+    transcribed_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     # MP3 ID3 tag metadata
-    mp3_artist: Mapped[Optional[str]] = mapped_column(String(512))
-    mp3_album: Mapped[Optional[str]] = mapped_column(String(512))
+    mp3_artist: Mapped[str | None] = mapped_column(String(512))
+    mp3_album: Mapped[str | None] = mapped_column(String(512))
 
     # AI metadata extraction status
     metadata_status: Mapped[str] = mapped_column(
         String(32), default="pending"
     )  # pending, processing, completed, failed, skipped
-    metadata_error: Mapped[Optional[str]] = mapped_column(Text)
-    metadata_path: Mapped[Optional[str]] = mapped_column(String(1024))
+    metadata_error: Mapped[str | None] = mapped_column(Text)
+    metadata_path: Mapped[str | None] = mapped_column(String(1024))
 
     # AI-extracted metadata (from transcription)
-    ai_summary: Mapped[Optional[str]] = mapped_column(Text)
-    ai_keywords: Mapped[Optional[List[str]]] = mapped_column(JSON)
-    ai_hosts: Mapped[Optional[List[str]]] = mapped_column(JSON)
-    ai_guests: Mapped[Optional[List[str]]] = mapped_column(JSON)
-    ai_email_content: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON)
+    ai_summary: Mapped[str | None] = mapped_column(Text)
+    ai_keywords: Mapped[list[str] | None] = mapped_column(JSON)
+    ai_hosts: Mapped[list[str] | None] = mapped_column(JSON)
+    ai_guests: Mapped[list[str] | None] = mapped_column(JSON)
+    ai_email_content: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
     # File Search integration
     file_search_status: Mapped[str] = mapped_column(
         String(32), default="pending"
     )  # pending, uploading, indexed, failed, skipped
-    file_search_error: Mapped[Optional[str]] = mapped_column(Text)
-    file_search_resource_name: Mapped[Optional[str]] = mapped_column(String(512))
-    file_search_display_name: Mapped[Optional[str]] = mapped_column(String(512))
-    file_search_uploaded_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    file_search_error: Mapped[str | None] = mapped_column(Text)
+    file_search_resource_name: Mapped[str | None] = mapped_column(String(512))
+    file_search_display_name: Mapped[str | None] = mapped_column(String(512))
+    file_search_uploaded_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     # Retry tracking for pipeline mode
     transcript_retry_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -227,7 +227,7 @@ class Episode(Base):
     def __repr__(self) -> str:
         """
         Return a concise debug-friendly representation of the Episode instance.
-        
+
         Returns:
             A string in the format "<Episode(id=<id>, title='<title>')>" representing the instance.
         """
@@ -237,7 +237,7 @@ class Episode(Base):
     def is_fully_processed(self) -> bool:
         """
         Determine whether the episode has completed transcription, metadata extraction, and file-search indexing.
-        
+
         Returns:
             `true` if `transcript_status` and `metadata_status` are "completed" and `file_search_status` is "indexed", `false` otherwise.
         """
@@ -277,8 +277,8 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(256), unique=True, nullable=False)
 
     # Profile information (from Google)
-    name: Mapped[Optional[str]] = mapped_column(String(256))
-    picture_url: Mapped[Optional[str]] = mapped_column(String(2048))
+    name: Mapped[str | None] = mapped_column(String(256))
+    picture_url: Mapped[str | None] = mapped_column(String(2048))
 
     # Account status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -288,8 +288,8 @@ class User(Base):
     email_digest_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="0"
     )
-    last_email_digest_sent: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    timezone: Mapped[Optional[str]] = mapped_column(String(64))  # IANA timezone
+    last_email_digest_sent: Mapped[datetime | None] = mapped_column(DateTime)
+    timezone: Mapped[str | None] = mapped_column(String(64))  # IANA timezone
     email_digest_hour: Mapped[int] = mapped_column(
         Integer, nullable=False, default=8, server_default="8"
     )  # 0-23, hour to send digest in user's timezone
@@ -299,10 +299,10 @@ class User(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
-    last_login: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    last_login: Mapped[datetime | None] = mapped_column(DateTime)
 
     # Relationships
-    subscriptions: Mapped[List["UserSubscription"]] = relationship(
+    subscriptions: Mapped[list["UserSubscription"]] = relationship(
         "UserSubscription", back_populates="user", cascade="all, delete-orphan"
     )
 
@@ -374,7 +374,7 @@ class Conversation(Base):
     )
 
     # Conversation metadata
-    title: Mapped[Optional[str]] = mapped_column(
+    title: Mapped[str | None] = mapped_column(
         String(256)
     )  # Auto-generated from first message
 
@@ -382,10 +382,10 @@ class Conversation(Base):
     scope: Mapped[str] = mapped_column(
         String(32), nullable=False
     )  # 'subscriptions', 'all', 'podcast', 'episode'
-    podcast_id: Mapped[Optional[str]] = mapped_column(
+    podcast_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("podcasts.id", ondelete="SET NULL")
     )
-    episode_id: Mapped[Optional[str]] = mapped_column(
+    episode_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("episodes.id", ondelete="SET NULL")
     )
 
@@ -402,7 +402,7 @@ class Conversation(Base):
     user: Mapped["User"] = relationship("User")
     podcast: Mapped[Optional["Podcast"]] = relationship("Podcast")
     episode: Mapped[Optional["Episode"]] = relationship("Episode")
-    messages: Mapped[List["ChatMessage"]] = relationship(
+    messages: Mapped[list["ChatMessage"]] = relationship(
         "ChatMessage", back_populates="conversation", cascade="all, delete-orphan"
     )
 
@@ -437,7 +437,7 @@ class ChatMessage(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
 
     # Citations for assistant messages (JSON array)
-    citations: Mapped[Optional[List[Dict[str, Any]]]] = mapped_column(JSON)
+    citations: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
