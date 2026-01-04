@@ -55,14 +55,17 @@ class PromptManager:
         for filename in os.listdir(self.prompts_dir):
             if filename.endswith(".txt"):
                 filepath = os.path.join(self.prompts_dir, filename)
-                with open(filepath, encoding="utf-8") as f:
-                    content = textwrap.dedent(f.read())
-                template_key = os.path.splitext(filename)[0]
-                self._templates[template_key] = Template(content)
-                self._template_placeholders[template_key] = _extract_placeholders(content)
-                placeholders = self._template_placeholders[template_key]
-                placeholder_info = f" with placeholders: {sorted(placeholders)}" if placeholders else ""
-                logging.info(f"Loaded prompt template: {filename}{placeholder_info}")
+                try:
+                    with open(filepath, encoding="utf-8") as f:
+                        content = textwrap.dedent(f.read())
+                    template_key = os.path.splitext(filename)[0]
+                    self._templates[template_key] = Template(content)
+                    self._template_placeholders[template_key] = _extract_placeholders(content)
+                    placeholders = self._template_placeholders[template_key]
+                    placeholder_info = f" with placeholders: {sorted(placeholders)}" if placeholders else ""
+                    logging.info(f"Loaded prompt template: {filename}{placeholder_info}")
+                except (OSError, UnicodeDecodeError) as err:
+                    logging.error(f"Failed to load prompt template {filename}: {err}", exc_info=True)
 
     def build_prompt(self, prompt_name: str, **kwargs) -> str:
         """
