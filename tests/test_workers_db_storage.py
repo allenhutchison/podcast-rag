@@ -209,7 +209,7 @@ class TestTranscriptionWorkerDatabaseStorage:
 
         # Mock transcription
         mock_model = MagicMock()
-        def mock_transcribe(audio_path, *args, **kwargs):
+        def mock_transcribe(audio_path, *_args, **_kwargs):
             idx = int(Path(audio_path).stem.split('_')[1])
             mock_segment = MagicMock()
             mock_segment.text = f"Transcript {idx}"
