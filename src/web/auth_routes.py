@@ -8,6 +8,7 @@ Provides endpoints for:
 - /auth/me - Get current user info
 """
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 
@@ -79,10 +80,11 @@ async def auth_callback(request: Request):
         raise HTTPException(status_code=400, detail="Missing required user info")
 
     # Get or create user in database
-    user = repository.get_user_by_google_id(google_id)
+    user = await asyncio.to_thread(repository.get_user_by_google_id, google_id)
     if user:
         # Update user info and last login
-        repository.update_user(
+        await asyncio.to_thread(
+            repository.update_user,
             user.id,
             name=name,
             picture_url=picture,
@@ -91,7 +93,8 @@ async def auth_callback(request: Request):
         logger.info(f"User logged in: user_id={user.id}")
     else:
         # Create new user
-        user = repository.create_user(
+        user = await asyncio.to_thread(
+            repository.create_user,
             google_id=google_id,
             email=email,
             name=name,
@@ -174,7 +177,7 @@ async def get_current_user_info(
     repository: PodcastRepositoryInterface = request.app.state.repository
 
     # Fetch user from database to get current admin status
-    user = repository.get_user(current_user["sub"])
+    user = await asyncio.to_thread(repository.get_user, current_user["sub"])
 
     return {
         "id": current_user["sub"],

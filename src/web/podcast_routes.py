@@ -6,6 +6,7 @@ Provides endpoints for:
 - Importing podcasts from OPML files
 """
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -68,18 +69,26 @@ async def add_podcast_by_url(
     if feed_url.startswith("feed://"):
         feed_url = "https://" + feed_url[7:]
 
-    # Check if podcast already exists
-    existing_podcast = repository.get_podcast_by_feed_url(feed_url)
+    # Check if podcast already exists (run in thread to avoid blocking)
+    existing_podcast = await asyncio.to_thread(
+        repository.get_podcast_by_feed_url, feed_url
+    )
 
     if existing_podcast:
         # Podcast exists - just subscribe the user
-        was_subscribed = repository.is_user_subscribed(user_id, existing_podcast.id)
+        was_subscribed = await asyncio.to_thread(
+            repository.is_user_subscribed, user_id, existing_podcast.id
+        )
 
         if not was_subscribed:
-            repository.subscribe_user_to_podcast(user_id, existing_podcast.id)
+            await asyncio.to_thread(
+                repository.subscribe_user_to_podcast, user_id, existing_podcast.id
+            )
 
         # Get episode count
-        episodes = repository.list_episodes(podcast_id=existing_podcast.id)
+        episodes = await asyncio.to_thread(
+            repository.list_episodes, podcast_id=existing_podcast.id
+        )
 
         return AddPodcastResponse(
             podcast_id=existing_podcast.id,
@@ -97,7 +106,11 @@ async def add_podcast_by_url(
             download_directory=config.PODCAST_DOWNLOAD_DIRECTORY,
         )
 
-        result = sync_service.add_podcast_from_url(feed_url)
+        # Run in thread pool to avoid blocking the event loop
+        # (add_podcast_from_url does blocking HTTP requests and DB writes)
+        result = await asyncio.to_thread(
+            sync_service.add_podcast_from_url, feed_url
+        )
 
         if result["error"]:
             raise HTTPException(
@@ -110,7 +123,9 @@ async def add_podcast_by_url(
         episode_count = result["episodes"]
 
         # Subscribe the user to the new podcast
-        repository.subscribe_user_to_podcast(user_id, podcast_id)
+        await asyncio.to_thread(
+            repository.subscribe_user_to_podcast, user_id, podcast_id
+        )
 
         logger.info(f"User {user_id} added and subscribed to new podcast: {title}")
 
@@ -184,10 +199,14 @@ async def search_podcasts(
             # Check if podcast exists in database and if user is subscribed
             is_subscribed = False
             podcast_id = None
-            existing_podcast = repository.get_podcast_by_feed_url(feed_url)
+            existing_podcast = await asyncio.to_thread(
+                repository.get_podcast_by_feed_url, feed_url
+            )
             if existing_podcast:
                 podcast_id = existing_podcast.id
-                is_subscribed = repository.is_user_subscribed(user_id, existing_podcast.id)
+                is_subscribed = await asyncio.to_thread(
+                    repository.is_user_subscribed, user_id, existing_podcast.id
+                )
 
             results.append(
                 PodcastSearchResult(
@@ -250,10 +269,10 @@ async def import_opml(
     config = request.app.state.config
     user_id = current_user["sub"]
 
-    # Parse OPML content
+    # Parse OPML content (run in thread to handle large files)
     parser = OPMLParser()
     try:
-        parsed = parser.parse_string(body.content)
+        parsed = await asyncio.to_thread(parser.parse_string, body.content)
     except Exception as e:
         logger.exception("OPML parse error")
         raise HTTPException(
@@ -286,14 +305,20 @@ async def import_opml(
         title = feed.title
 
         try:
-            # Check if podcast already exists
-            existing = repository.get_podcast_by_feed_url(feed_url)
+            # Check if podcast already exists (run in thread to avoid blocking)
+            existing = await asyncio.to_thread(
+                repository.get_podcast_by_feed_url, feed_url
+            )
 
             if existing:
                 # Subscribe user to existing podcast
-                was_subscribed = repository.is_user_subscribed(user_id, existing.id)
+                was_subscribed = await asyncio.to_thread(
+                    repository.is_user_subscribed, user_id, existing.id
+                )
                 if not was_subscribed:
-                    repository.subscribe_user_to_podcast(user_id, existing.id)
+                    await asyncio.to_thread(
+                        repository.subscribe_user_to_podcast, user_id, existing.id
+                    )
 
                 existing_count += 1
                 results.append(
@@ -306,7 +331,10 @@ async def import_opml(
                 )
             else:
                 # Add new podcast
-                add_result = sync_service.add_podcast_from_url(feed_url)
+                # Run in thread pool to avoid blocking the event loop
+                add_result = await asyncio.to_thread(
+                    sync_service.add_podcast_from_url, feed_url
+                )
 
                 if add_result["error"]:
                     failed_count += 1
@@ -320,7 +348,11 @@ async def import_opml(
                     )
                 else:
                     # Subscribe user to new podcast
-                    repository.subscribe_user_to_podcast(user_id, add_result["podcast_id"])
+                    await asyncio.to_thread(
+                        repository.subscribe_user_to_podcast,
+                        user_id,
+                        add_result["podcast_id"],
+                    )
 
                     added_count += 1
                     results.append(

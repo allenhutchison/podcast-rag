@@ -4,6 +4,7 @@ Provides API endpoints for users to view and update their account settings,
 including email digest preferences and email preview.
 """
 
+import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import Optional
@@ -98,7 +99,7 @@ async def get_user_settings(
     repository: PodcastRepositoryInterface = request.app.state.repository
     user_id = current_user["sub"]
 
-    user = repository.get_user(user_id)
+    user = await asyncio.to_thread(repository.get_user, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -135,7 +136,7 @@ async def update_user_settings(
     user_id = current_user["sub"]
 
     # Verify user exists
-    user = repository.get_user(user_id)
+    user = await asyncio.to_thread(repository.get_user, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -150,11 +151,11 @@ async def update_user_settings(
         updates["email_digest_hour"] = body.email_digest_hour
 
     if updates:
-        repository.update_user(user_id, **updates)
+        await asyncio.to_thread(repository.update_user, user_id, **updates)
         logger.debug("User %s updated settings: %s", user_id, list(updates.keys()))
 
     # Return updated settings
-    user = repository.get_user(user_id)
+    user = await asyncio.to_thread(repository.get_user, user_id)
     return {
         "message": "Settings updated",
         "email_digest_enabled": user.email_digest_enabled,
@@ -177,14 +178,15 @@ async def get_email_preview(
     repository: PodcastRepositoryInterface = request.app.state.repository
     user_id = current_user["sub"]
 
-    user = repository.get_user(user_id)
+    user = await asyncio.to_thread(repository.get_user, user_id)
     user_name = user.name if user else current_user.get("name")
 
     # Look back 24 hours for episodes
     since = datetime.now(UTC) - timedelta(hours=24)
 
     # Try to get episodes from user's subscriptions
-    episodes = repository.get_new_episodes_for_user_since(
+    episodes = await asyncio.to_thread(
+        repository.get_new_episodes_for_user_since,
         user_id=user_id,
         since=since,
         limit=20,
@@ -193,7 +195,9 @@ async def get_email_preview(
     preview_notice = None
     if not episodes:
         # Fall back to recent episodes from any podcast
-        episodes = repository.get_recent_processed_episodes(limit=5)
+        episodes = await asyncio.to_thread(
+            repository.get_recent_processed_episodes, limit=5
+        )
         if episodes:
             preview_notice = (
                 "You have no new episodes from subscribed podcasts in the last 24 hours. "
@@ -251,7 +255,7 @@ async def send_digest_now(
     user_id = current_user["sub"]
 
     # Get user from repository
-    user = repository.get_user(user_id)
+    user = await asyncio.to_thread(repository.get_user, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -265,7 +269,8 @@ async def send_digest_now(
 
     # Fetch episodes from last 24 hours
     since = datetime.now(UTC) - timedelta(hours=24)
-    episodes = repository.get_new_episodes_for_user_since(
+    episodes = await asyncio.to_thread(
+        repository.get_new_episodes_for_user_since,
         user_id=user_id,
         since=since,
         limit=20,
@@ -283,8 +288,9 @@ async def send_digest_now(
     html_content = render_digest_html(user_name=user_name, episodes=episodes)
     text_content = render_digest_text(user_name=user_name, episodes=episodes)
 
-    # Send email
-    success = email_service.send_email(
+    # Send email (run in thread to avoid blocking on external API call)
+    success = await asyncio.to_thread(
+        email_service.send_email,
         to_email=user.email,
         subject=subject,
         html_content=html_content,
@@ -299,7 +305,7 @@ async def send_digest_now(
         )
 
     # Update timestamp on success
-    repository.mark_email_digest_sent(user_id)
+    await asyncio.to_thread(repository.mark_email_digest_sent, user_id)
     logger.info("Sent digest with %d episodes to user %s", len(episodes), user_id)
 
     return {
