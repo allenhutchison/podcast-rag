@@ -4,6 +4,7 @@ Admin routes for dashboard, workflow stats, and user management.
 All routes require admin authentication via the get_current_admin dependency.
 """
 
+import asyncio
 import logging
 from enum import Enum
 from typing import Literal, Optional
@@ -62,11 +63,11 @@ async def get_admin_stats(
     repository: PodcastRepositoryInterface = request.app.state.repository
 
     # Get overall workflow stats (already implemented)
-    workflow_stats = repository.get_overall_stats()
+    workflow_stats = await asyncio.to_thread(repository.get_overall_stats)
 
     # Add user stats
-    user_count = repository.get_user_count()
-    admin_count = repository.get_user_count(is_admin=True)
+    user_count = await asyncio.to_thread(repository.get_user_count)
+    admin_count = await asyncio.to_thread(repository.get_user_count, is_admin=True)
 
     return {
         "workflow": workflow_stats,
@@ -97,11 +98,14 @@ async def list_users(
     """
     repository: PodcastRepositoryInterface = request.app.state.repository
 
-    users = repository.list_users(
+    users = await asyncio.to_thread(
+        repository.list_users,
         is_admin=is_admin,
         limit=limit,
         offset=offset
     )
+
+    total = await asyncio.to_thread(repository.get_user_count, is_admin=is_admin)
 
     return {
         "users": [
@@ -117,7 +121,7 @@ async def list_users(
             }
             for user in users
         ],
-        "total": repository.get_user_count(is_admin=is_admin)
+        "total": total
     }
 
 
@@ -143,7 +147,9 @@ async def set_user_admin_status(
             detail="Cannot remove your own admin status"
         )
 
-    user = repository.set_user_admin_status(user_id, body.is_admin)
+    user = await asyncio.to_thread(
+        repository.set_user_admin_status, user_id, body.is_admin
+    )
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -194,8 +200,10 @@ async def list_admin_episodes(
     filter_params = FILTER_MAP.get(filter_type, {})
 
     # Get episodes and count
-    episodes = repository.list_episodes(**filter_params, limit=limit, offset=offset)
-    total = repository.count_episodes(**filter_params)
+    episodes = await asyncio.to_thread(
+        repository.list_episodes, **filter_params, limit=limit, offset=offset
+    )
+    total = await asyncio.to_thread(repository.count_episodes, **filter_params)
 
     return {
         "episodes": [
@@ -239,12 +247,14 @@ async def retry_episode(
     repository: PodcastRepositoryInterface = request.app.state.repository
 
     # Check episode exists
-    episode = repository.get_episode(episode_id)
+    episode = await asyncio.to_thread(repository.get_episode, episode_id)
     if not episode:
         raise HTTPException(status_code=404, detail="Episode not found")
 
     # Reset the episode for retry (stage validated by Pydantic via StageType)
-    repository.reset_episode_for_retry(episode_id, body.stage)
+    await asyncio.to_thread(
+        repository.reset_episode_for_retry, episode_id, body.stage
+    )
 
     logger.info(
         f"Admin user_id={current_admin['sub']} reset episode_id={episode_id} "

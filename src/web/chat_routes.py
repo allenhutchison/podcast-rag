@@ -4,6 +4,7 @@ API routes for chat conversations and message history.
 Provides CRUD operations for conversations and message sending with SSE streaming.
 """
 
+import asyncio
 import json
 import logging
 import uuid
@@ -50,8 +51,10 @@ async def list_conversations(
     user_id = current_user["sub"]
     repository = _get_repository(request)
 
-    conversations = repository.list_conversations(user_id, limit=limit, offset=offset)
-    total = repository.count_conversations(user_id)
+    conversations = await asyncio.to_thread(
+        repository.list_conversations, user_id, limit=limit, offset=offset
+    )
+    total = await asyncio.to_thread(repository.count_conversations, user_id)
 
     return ConversationListResponse(
         conversations=[
@@ -102,7 +105,7 @@ async def create_conversation(
     # Validate podcast exists if specified
     podcast_title = None
     if body.podcast_id:
-        podcast = repository.get_podcast(body.podcast_id)
+        podcast = await asyncio.to_thread(repository.get_podcast, body.podcast_id)
         if not podcast:
             raise HTTPException(status_code=404, detail="Podcast not found")
         podcast_title = podcast.title
@@ -110,12 +113,13 @@ async def create_conversation(
     # Validate episode exists if specified
     episode_title = None
     if body.episode_id:
-        episode = repository.get_episode(body.episode_id)
+        episode = await asyncio.to_thread(repository.get_episode, body.episode_id)
         if not episode:
             raise HTTPException(status_code=404, detail="Episode not found")
         episode_title = episode.title
 
-    conversation = repository.create_conversation(
+    conversation = await asyncio.to_thread(
+        repository.create_conversation,
         user_id=user_id,
         scope=body.scope,
         podcast_id=body.podcast_id,
@@ -150,7 +154,9 @@ async def get_conversation(
     user_id = current_user["sub"]
     repository = _get_repository(request)
 
-    conversation = repository.get_conversation(conversation_id)
+    conversation = await asyncio.to_thread(
+        repository.get_conversation, conversation_id
+    )
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
@@ -210,14 +216,18 @@ async def update_conversation(
     repository = _get_repository(request)
 
     # Verify conversation exists and belongs to user
-    conversation = repository.get_conversation(conversation_id)
+    conversation = await asyncio.to_thread(
+        repository.get_conversation, conversation_id
+    )
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
     if conversation.user_id != user_id:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     # Update
-    updated = repository.update_conversation(conversation_id, title=body.title)
+    updated = await asyncio.to_thread(
+        repository.update_conversation, conversation_id, title=body.title
+    )
 
     # Use updated object for all fields for consistency
     return ConversationSummary(
@@ -247,13 +257,15 @@ async def delete_conversation(
     repository = _get_repository(request)
 
     # Verify conversation exists and belongs to user
-    conversation = repository.get_conversation(conversation_id)
+    conversation = await asyncio.to_thread(
+        repository.get_conversation, conversation_id
+    )
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
     if conversation.user_id != user_id:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    repository.delete_conversation(conversation_id)
+    await asyncio.to_thread(repository.delete_conversation, conversation_id)
     return {"deleted": True}
 
 
@@ -277,14 +289,17 @@ async def send_message(
     repository = _get_repository(request)
 
     # Verify conversation exists and belongs to user
-    conversation = repository.get_conversation(conversation_id)
+    conversation = await asyncio.to_thread(
+        repository.get_conversation, conversation_id
+    )
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
     if conversation.user_id != user_id:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     # Save user message
-    repository.add_message(
+    await asyncio.to_thread(
+        repository.add_message,
         conversation_id=conversation_id,
         role="user",
         content=body.content,
@@ -294,7 +309,9 @@ async def send_message(
     if not conversation.title:
         # Use first 50 chars of first message as title
         title = body.content[:50] + ("..." if len(body.content) > 50 else "")
-        repository.update_conversation(conversation_id, title=title)
+        await asyncio.to_thread(
+            repository.update_conversation, conversation_id, title=title
+        )
 
     # Build history from existing messages.
     # Note: conversation.messages was loaded before add_message() above, so it
@@ -360,7 +377,8 @@ async def send_message(
                 elif chunk.startswith("event: done"):
                     # Save assistant message with response and citations
                     if full_response:
-                        repository.add_message(
+                        await asyncio.to_thread(
+                            repository.add_message,
                             conversation_id=conversation_id,
                             role="assistant",
                             content=full_response,
@@ -373,7 +391,8 @@ async def send_message(
                 logger.warning(
                     f"Stream interrupted, saving partial response for conversation {conversation_id}"
                 )
-                repository.add_message(
+                await asyncio.to_thread(
+                    repository.add_message,
                     conversation_id=conversation_id,
                     role="assistant",
                     content=full_response,

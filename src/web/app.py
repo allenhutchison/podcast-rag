@@ -291,7 +291,7 @@ async def generate_agentic_response(
             ))
 
         # Build system prompt with scope context
-        scope_context = _build_scope_context(
+        scope_context = await _build_scope_context(
             repository=_repository,
             podcast_id=podcast_id,
             episode_id=episode_id,
@@ -502,7 +502,7 @@ def _summarize_tool_result(tool_name: str, result: dict) -> str:
     return 'Completed'
 
 
-def _build_scope_context(
+async def _build_scope_context(
     repository: PodcastRepositoryInterface,
     podcast_id: Optional[str] = None,
     episode_id: Optional[str] = None,
@@ -514,7 +514,7 @@ def _build_scope_context(
     what data is available and relevant.
     """
     if episode_id:
-        episode = repository.get_episode(episode_id)
+        episode = await asyncio.to_thread(repository.get_episode, episode_id)
         if episode:
             podcast = episode.podcast
             context_parts = [
@@ -529,7 +529,7 @@ def _build_scope_context(
             return "\n".join(context_parts)
 
     if podcast_id:
-        podcast = repository.get_podcast(podcast_id)
+        podcast = await asyncio.to_thread(repository.get_podcast, podcast_id)
         if podcast:
             context_parts = [
                 f"Currently viewing podcast: \"{podcast.title}\"",
@@ -541,7 +541,9 @@ def _build_scope_context(
                 if len(desc) > 300:
                     desc = desc[:300] + "..."
                 context_parts.append(f"Description: {desc}")
-            episodes = repository.list_episodes(podcast_id=podcast.id)
+            episodes = await asyncio.to_thread(
+                repository.list_episodes, podcast_id=podcast.id
+            )
             context_parts.append(f"Episodes available: {len(episodes)}")
             return "\n".join(context_parts)
 
@@ -623,7 +625,8 @@ async def list_podcasts(
         List of podcasts with id, title, and optionally more metadata
     """
     user_id = current_user["sub"]
-    podcasts = _repository.get_user_subscriptions(
+    podcasts = await asyncio.to_thread(
+        _repository.get_user_subscriptions,
         user_id,
         sort_by=sort_by,
         sort_order=sort_order
@@ -641,8 +644,12 @@ async def list_podcasts(
     # Extended response with stats for podcasts grid page
     # Use optimized batch counting instead of N separate queries
     podcast_ids = [p.id for p in podcasts]
-    episode_counts = _repository.get_podcast_episode_counts(podcast_ids)
-    subscriber_counts = _repository.get_podcast_subscriber_counts(podcast_ids)
+    episode_counts = await asyncio.to_thread(
+        _repository.get_podcast_episode_counts, podcast_ids
+    )
+    subscriber_counts = await asyncio.to_thread(
+        _repository.get_podcast_subscriber_counts, podcast_ids
+    )
 
     podcast_list = []
     for p in podcasts:
@@ -679,7 +686,8 @@ async def list_all_podcasts(
         List of all podcasts with subscription status for current user
     """
     user_id = current_user["sub"]
-    all_podcasts = _repository.list_podcasts(
+    all_podcasts = await asyncio.to_thread(
+        _repository.list_podcasts,
         subscribed_only=False,
         sort_by=sort_by,
         sort_order=sort_order
@@ -690,12 +698,18 @@ async def list_all_podcasts(
     subscriber_counts = {}
     if include_stats:
         podcast_ids = [p.id for p in all_podcasts]
-        episode_counts = _repository.get_podcast_episode_counts(podcast_ids)
-        subscriber_counts = _repository.get_podcast_subscriber_counts(podcast_ids)
+        episode_counts = await asyncio.to_thread(
+            _repository.get_podcast_episode_counts, podcast_ids
+        )
+        subscriber_counts = await asyncio.to_thread(
+            _repository.get_podcast_subscriber_counts, podcast_ids
+        )
 
     podcast_list = []
     for p in all_podcasts:
-        is_subscribed = _repository.is_user_subscribed(user_id, p.id)
+        is_subscribed = await asyncio.to_thread(
+            _repository.is_user_subscribed, user_id, p.id
+        )
         podcast_data = {
             "id": p.id,
             "title": p.title,
@@ -763,12 +777,15 @@ async def subscribe_to_podcast(
     user_id = current_user["sub"]
 
     # Verify podcast exists
-    podcast = _repository.get_podcast(podcast_id)
+    podcast = await asyncio.to_thread(_repository.get_podcast, podcast_id)
     if not podcast:
         raise HTTPException(status_code=404, detail="Podcast not found")
 
     # Check if already subscribed (idempotent - return success)
-    if _repository.is_user_subscribed(user_id, podcast_id):
+    already_subscribed = await asyncio.to_thread(
+        _repository.is_user_subscribed, user_id, podcast_id
+    )
+    if already_subscribed:
         return {
             "message": "Already subscribed",
             "podcast_id": podcast_id,
@@ -777,7 +794,9 @@ async def subscribe_to_podcast(
         }
 
     # Create subscription
-    subscription = _repository.subscribe_user_to_podcast(user_id, podcast_id)
+    subscription = await asyncio.to_thread(
+        _repository.subscribe_user_to_podcast, user_id, podcast_id
+    )
     if not subscription:
         raise HTTPException(status_code=500, detail="Failed to create subscription")
 
@@ -812,12 +831,14 @@ async def unsubscribe_from_podcast(
     user_id = current_user["sub"]
 
     # Verify podcast exists
-    podcast = _repository.get_podcast(podcast_id)
+    podcast = await asyncio.to_thread(_repository.get_podcast, podcast_id)
     if not podcast:
         raise HTTPException(status_code=404, detail="Podcast not found")
 
     # Remove subscription (idempotent - return success even if not subscribed)
-    was_subscribed = _repository.unsubscribe_user_from_podcast(user_id, podcast_id)
+    was_subscribed = await asyncio.to_thread(
+        _repository.unsubscribe_user_from_podcast, user_id, podcast_id
+    )
 
     return {
         "message": "Unsubscribed successfully" if was_subscribed else "Not subscribed",
@@ -844,12 +865,14 @@ async def get_podcast_detail(
         422 if podcast_id is not a valid UUID
     """
     podcast_id = _validate_podcast_id(podcast_id)
-    podcast = _repository.get_podcast(podcast_id)
+    podcast = await asyncio.to_thread(_repository.get_podcast, podcast_id)
     if not podcast:
         raise HTTPException(status_code=404, detail="Podcast not found")
 
     # Get all episodes for this podcast (already sorted by published_date desc)
-    episodes = _repository.list_episodes(podcast_id=podcast_id)
+    episodes = await asyncio.to_thread(
+        _repository.list_episodes, podcast_id=podcast_id
+    )
 
     # Format response
     return {
@@ -890,7 +913,7 @@ async def get_episode_detail(
     Returns:
         Episode details including summary, metadata, and audio URL
     """
-    episode = _repository.get_episode(episode_id)
+    episode = await asyncio.to_thread(_repository.get_episode, episode_id)
     if not episode:
         raise HTTPException(status_code=404, detail="Episode not found")
 
@@ -961,9 +984,13 @@ async def search_episodes(
     query = q.strip()
 
     if type == "keyword":
-        episodes = _repository.search_episodes_by_keyword(query)
+        episodes = await asyncio.to_thread(
+            _repository.search_episodes_by_keyword, query
+        )
     elif type == "person":
-        episodes = _repository.search_episodes_by_person(query)
+        episodes = await asyncio.to_thread(
+            _repository.search_episodes_by_person, query
+        )
     else:
         raise HTTPException(status_code=400, detail="Invalid search type. Use 'keyword' or 'person'")
 
