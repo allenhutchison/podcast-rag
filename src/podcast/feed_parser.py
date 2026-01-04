@@ -319,7 +319,7 @@ class FeedParser:
 
         return episode
 
-    def _extract_enclosure(self, entry: feedparser.FeedParserDict) -> tuple | None:
+    def _extract_enclosure(self, entry: feedparser.FeedParserDict) -> tuple[str, str, int | None] | None:
         """
         Extract the primary audio enclosure from a feed entry.
 

@@ -172,7 +172,7 @@ class CreateConversationRequest(BaseModel):
 
     @field_validator('podcast_id', 'episode_id')
     @classmethod
-    def validate_scope_ids(cls, v: str | None, info) -> str | None:
+    def validate_scope_ids(cls, v: str | None, _info) -> str | None:
         """Ensure IDs are not empty strings."""
         if v is not None and v.strip() == "":
             return None

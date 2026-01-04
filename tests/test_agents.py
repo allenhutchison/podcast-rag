@@ -4,6 +4,7 @@ Tests for the ADK agent modules.
 
 import threading
 import time
+import uuid
 
 import pytest
 
@@ -24,6 +25,7 @@ from src.agents.podcast_search import (
     set_podcast_citations,
     set_podcast_filter,
 )
+from src.web.app import _validate_session_id
 
 
 class TestSanitizeQuery:
@@ -245,38 +247,24 @@ class TestSessionIdValidation:
 
     def test_validate_empty_session_id(self):
         """Test that empty session ID generates new UUID."""
-        import uuid
-
-        from src.web.app import _validate_session_id
-
         result = _validate_session_id("")
         # Should be a valid UUID
         uuid.UUID(result)  # Raises if invalid
 
     def test_validate_valid_uuid(self):
         """Test that valid UUID passes through."""
-        import uuid
-
-        from src.web.app import _validate_session_id
-
         valid_uuid = str(uuid.uuid4())
         result = _validate_session_id(valid_uuid)
         assert result == valid_uuid
 
     def test_validate_alphanumeric_session_id(self):
         """Test that alphanumeric session IDs are accepted."""
-        from src.web.app import _validate_session_id
-
         session_id = "abc123-def456_ghi"
         result = _validate_session_id(session_id)
         assert result == session_id
 
     def test_validate_rejects_too_long(self):
         """Test that overly long session IDs are rejected."""
-        import uuid
-
-        from src.web.app import _validate_session_id
-
         long_id = "x" * 100
         result = _validate_session_id(long_id)
         # Should be a new UUID, not the original
@@ -285,10 +273,6 @@ class TestSessionIdValidation:
 
     def test_validate_rejects_invalid_characters(self):
         """Test that session IDs with invalid characters are rejected."""
-        import uuid
-
-        from src.web.app import _validate_session_id
-
         invalid_ids = [
             "session<script>",
             "session; DROP TABLE",
@@ -299,7 +283,6 @@ class TestSessionIdValidation:
             result = _validate_session_id(invalid_id)
             assert result != invalid_id
             uuid.UUID(result)  # Should be valid UUID
-
 
 
 class TestPodcastFilterList:

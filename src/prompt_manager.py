@@ -34,7 +34,7 @@ def _extract_placeholders(template_string: str) -> set[str]:
 
 
 class PromptManager:
-    def __init__(self, config: Config, print_results=True):
+    def __init__(self, config: Config, print_results: bool = True) -> None:
         # Directory containing .txt prompt files
         self.prompts_dir = config.PROMPTS_DIR
         self.print_results = print_results
@@ -64,7 +64,7 @@ class PromptManager:
                 placeholder_info = f" with placeholders: {sorted(placeholders)}" if placeholders else ""
                 logging.info(f"Loaded prompt template: {filename}{placeholder_info}")
 
-    def build_prompt(self, prompt_name, **kwargs):
+    def build_prompt(self, prompt_name: str, **kwargs) -> str:
         """
         Substitutes the given kwargs into the specified prompt template.
 

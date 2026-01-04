@@ -9,6 +9,8 @@ chunking, and citation support.
 import json
 import logging
 import os
+import shutil
+import tempfile
 import time
 from collections.abc import Callable
 from typing import Literal, TypedDict, TypeVar
@@ -410,9 +412,6 @@ class GeminiFileSearchManager:
                 needs_temp_file = True
 
             if needs_temp_file:
-                import shutil
-                import tempfile
-
                 # Create temp file with ASCII-safe name
                 fd, tmp_path = tempfile.mkstemp(suffix='.txt', text=True)
                 fd_closed = False
@@ -517,7 +516,6 @@ class GeminiFileSearchManager:
 
         try:
             # Create temporary file with text content
-            import tempfile
             # Create temp file, write content, and close it before reopening
             fd, tmp_path = tempfile.mkstemp(suffix='.txt', text=True)
             try:
