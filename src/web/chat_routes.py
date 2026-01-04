@@ -7,7 +7,6 @@ Provides CRUD operations for conversations and message sending with SSE streamin
 import json
 import logging
 import uuid
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse

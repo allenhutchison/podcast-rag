@@ -1,10 +1,13 @@
 import logging
-import sys
 import os
+import sys
+
 from mcp.server import FastMCP as MCP
+
+from src.argparse_shared import add_log_level_argument, get_base_parser
 from src.config import Config
 from src.gemini_search import GeminiSearchManager
-from src.argparse_shared import get_base_parser, add_log_level_argument
+
 
 def main():
     """Initializes and runs the MCP server."""

@@ -6,7 +6,6 @@ Defines the interface and common data structures used by all workers.
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +24,7 @@ class WorkerResult:
     processed: int = 0
     failed: int = 0
     skipped: int = 0
-    errors: List[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
     @property
     def total(self) -> int:

@@ -7,7 +7,6 @@ Provides endpoints for:
 """
 
 import logging
-from typing import Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request

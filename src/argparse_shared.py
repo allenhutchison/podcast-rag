@@ -1,5 +1,6 @@
 import argparse
 
+
 def get_base_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Transcribe podcasts using Whisper")
     parser.add_argument("-e", "--env-file", help="Path to a custom .env file", default=None)

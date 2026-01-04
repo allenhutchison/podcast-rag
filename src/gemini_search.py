@@ -7,7 +7,6 @@ VectorDbSearchManager, but uses Google's Gemini File Search under the hood.
 
 import json
 import logging
-from typing import Dict, List
 
 from google import genai
 from google.genai import types
@@ -46,7 +45,7 @@ class GeminiSearchManager:
         # Initialize file search manager for compatibility
         self.file_search_manager = GeminiFileSearchManager(config=config, dry_run=dry_run)
 
-        logging.debug(f"Initialized Gemini File Search Manager")
+        logging.debug("Initialized Gemini File Search Manager")
 
     def _ensure_store(self):
         """Ensure File Search store is available."""
@@ -75,7 +74,7 @@ class GeminiSearchManager:
 
         return self.store_name
 
-    def search_transcriptions(self, query: str, print_results=True) -> Dict:
+    def search_transcriptions(self, query: str, print_results=True) -> dict:
         """
         Search podcast transcriptions using Gemini File Search.
 
@@ -153,7 +152,7 @@ class GeminiSearchManager:
             logging.error(f"Search failed: {e}")
             raise
 
-    def pretty_print_results(self, results: Dict):
+    def pretty_print_results(self, results: dict):
         """
         Pretty print the search results.
 
@@ -162,8 +161,8 @@ class GeminiSearchManager:
         """
         logging.debug(json.dumps(results, indent=4, sort_keys=True))
 
-        for document_list, metadata_list in zip(results['documents'], results['metadatas']):
-            for document, metadata in zip(document_list, metadata_list):
+        for document_list, metadata_list in zip(results['documents'], results['metadatas'], strict=False):
+            for document, metadata in zip(document_list, metadata_list, strict=False):
                 file_id = metadata.get('file_id', 'Unknown')
                 chunk_idx = metadata.get('chunk_index', 'Unknown')
                 score = metadata.get('score', 0.0)

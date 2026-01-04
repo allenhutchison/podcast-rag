@@ -10,12 +10,11 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Dict, Optional
 
 from src.config import Config
 from src.db.repository import PodcastRepositoryInterface
 from src.workflow.config import PipelineConfig
-from src.workflow.post_processor import PostProcessor, PostProcessingStats
+from src.workflow.post_processor import PostProcessingStats, PostProcessor
 from src.workflow.workers.base import WorkerResult
 
 logger = logging.getLogger(__name__)
@@ -26,7 +25,7 @@ class PipelineStats:
     """Statistics for a pipeline run."""
 
     started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
-    stopped_at: Optional[datetime] = None
+    stopped_at: datetime | None = None
 
     # Counters
     sync_runs: int = 0
@@ -37,7 +36,7 @@ class PipelineStats:
     email_digests_sent: int = 0
 
     # Post-processing stats (populated on stop)
-    post_processing: Optional[PostProcessingStats] = None
+    post_processing: PostProcessingStats | None = None
 
     @property
     def duration_seconds(self) -> float:
@@ -89,8 +88,8 @@ class PipelineOrchestrator:
         self.repository = repository
 
         self._running = False
-        self._last_sync: Optional[datetime] = None
-        self._last_email_digest_check: Optional[datetime] = None
+        self._last_sync: datetime | None = None
+        self._last_email_digest_check: datetime | None = None
         self._stats = PipelineStats()
 
         # Workers (created lazily)
@@ -98,11 +97,11 @@ class PipelineOrchestrator:
         self._download_worker = None
         self._transcription_worker = None
         self._email_digest_worker = None
-        self._post_processor: Optional[PostProcessor] = None
+        self._post_processor: PostProcessor | None = None
 
         # Background executor for SMTP/network I/O (email digests)
-        self._background_executor: Optional[ThreadPoolExecutor] = None
-        self._email_digest_future: Optional[Future] = None
+        self._background_executor: ThreadPoolExecutor | None = None
+        self._email_digest_future: Future | None = None
 
     def _get_sync_worker(self):
         """Get or create the sync worker."""
@@ -488,7 +487,7 @@ class PipelineOrchestrator:
 
         return self._post_processor.process_one_sync()
 
-    def get_status(self) -> Dict:
+    def get_status(self) -> dict:
         """Get current pipeline status.
 
         Returns:

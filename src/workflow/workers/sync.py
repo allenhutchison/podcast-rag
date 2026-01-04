@@ -4,7 +4,6 @@ Syncs all subscribed podcast feeds to discover new episodes.
 """
 
 import logging
-from typing import Optional
 
 from src.config import Config
 from src.db.repository import PodcastRepositoryInterface
@@ -34,7 +33,7 @@ class SyncWorker(WorkerInterface):
         """
         self.config = config
         self.repository = repository
-        self._feed_sync_service: Optional[FeedSyncService] = None
+        self._feed_sync_service: FeedSyncService | None = None
 
     @property
     def name(self) -> str:

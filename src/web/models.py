@@ -2,7 +2,8 @@
 Pydantic models for web API request/response validation.
 """
 
-from typing import List, Literal, Optional
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -14,15 +15,15 @@ class Message(BaseModel):
 
 class ConversationHistory(BaseModel):
     """Conversation history for maintaining context."""
-    messages: List[Message] = Field(default_factory=list, description="List of messages")
+    messages: list[Message] = Field(default_factory=list, description="List of messages")
 
 
 class ChatRequest(BaseModel):
     """Request model for chat endpoint."""
     query: str = Field(..., min_length=1, max_length=1000, description="User's question")
-    history: Optional[List[Message]] = Field(default=None, description="Conversation history")
-    podcast_id: Optional[str] = Field(default=None, description="Filter to specific podcast (UUID)")
-    episode_id: Optional[str] = Field(default=None, description="Filter to specific episode")
+    history: list[Message] | None = Field(default=None, description="Conversation history")
+    podcast_id: str | None = Field(default=None, description="Filter to specific podcast (UUID)")
+    episode_id: str | None = Field(default=None, description="Filter to specific episode")
 
 
 class CitationMetadata(BaseModel):
@@ -41,7 +42,7 @@ class Citation(BaseModel):
 class ChatResponse(BaseModel):
     """Response model for chat endpoint (used for documentation)."""
     answer: str = Field(..., description="Generated answer with inline citations")
-    citations: List[Citation] = Field(..., description="List of source citations")
+    citations: list[Citation] = Field(..., description="List of source citations")
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -110,17 +111,17 @@ class PodcastSearchResult(BaseModel):
     title: str = Field(..., description="Podcast title")
     author: str = Field(default="", description="Podcast author/creator")
     feed_url: str = Field(..., description="RSS feed URL")
-    image_url: Optional[str] = Field(default=None, description="Podcast artwork URL")
-    description: Optional[str] = Field(default=None, description="Podcast description")
-    genre: Optional[str] = Field(default=None, description="Primary genre")
+    image_url: str | None = Field(default=None, description="Podcast artwork URL")
+    description: str | None = Field(default=None, description="Podcast description")
+    genre: str | None = Field(default=None, description="Primary genre")
     is_subscribed: bool = Field(default=False, description="Whether the user is subscribed to this podcast")
-    podcast_id: Optional[str] = Field(default=None, description="Podcast ID if it exists in the database")
+    podcast_id: str | None = Field(default=None, description="Podcast ID if it exists in the database")
 
 
 class PodcastSearchResponse(BaseModel):
     """Response model for podcast search."""
     query: str = Field(..., description="Search query used")
-    results: List[PodcastSearchResult] = Field(..., description="Search results")
+    results: list[PodcastSearchResult] = Field(..., description="Search results")
     count: int = Field(..., description="Number of results returned")
 
 
@@ -137,12 +138,12 @@ class OPMLImportRequest(BaseModel):
 class OPMLImportResult(BaseModel):
     """Result for a single podcast from OPML import."""
     feed_url: str = Field(..., description="Feed URL from OPML")
-    title: Optional[str] = Field(default=None, description="Podcast title")
+    title: str | None = Field(default=None, description="Podcast title")
     status: Literal["added", "existing", "failed"] = Field(
         ..., description="Import status"
     )
-    podcast_id: Optional[str] = Field(default=None, description="Podcast ID if added or existing")
-    error: Optional[str] = Field(default=None, description="Error message if failed")
+    podcast_id: str | None = Field(default=None, description="Podcast ID if added or existing")
+    error: str | None = Field(default=None, description="Error message if failed")
 
 
 class OPMLImportResponse(BaseModel):
@@ -151,7 +152,7 @@ class OPMLImportResponse(BaseModel):
     added: int = Field(..., description="Number of new podcasts added")
     existing: int = Field(..., description="Number of existing podcasts (subscribed)")
     failed: int = Field(..., description="Number of failed imports")
-    results: List[OPMLImportResult] = Field(..., description="Per-feed results")
+    results: list[OPMLImportResult] = Field(..., description="Per-feed results")
 
 
 # --- Conversation Models ---
@@ -162,16 +163,16 @@ class CreateConversationRequest(BaseModel):
     scope: Literal["all", "podcast", "episode"] = Field(
         ..., description="Chat scope type"
     )
-    podcast_id: Optional[str] = Field(
+    podcast_id: str | None = Field(
         default=None, description="Podcast ID for 'podcast' or 'episode' scope"
     )
-    episode_id: Optional[str] = Field(
+    episode_id: str | None = Field(
         default=None, description="Episode ID for 'episode' scope"
     )
 
     @field_validator('podcast_id', 'episode_id')
     @classmethod
-    def validate_scope_ids(cls, v: Optional[str], info) -> Optional[str]:
+    def validate_scope_ids(cls, v: str | None, info) -> str | None:
         """Ensure IDs are not empty strings."""
         if v is not None and v.strip() == "":
             return None
@@ -181,12 +182,12 @@ class CreateConversationRequest(BaseModel):
 class ConversationSummary(BaseModel):
     """Summary of a conversation for listing."""
     id: str = Field(..., description="Conversation UUID")
-    title: Optional[str] = Field(default=None, description="Conversation title")
+    title: str | None = Field(default=None, description="Conversation title")
     scope: str = Field(..., description="Chat scope")
-    podcast_id: Optional[str] = Field(default=None, description="Associated podcast ID")
-    podcast_title: Optional[str] = Field(default=None, description="Associated podcast title")
-    episode_id: Optional[str] = Field(default=None, description="Associated episode ID")
-    episode_title: Optional[str] = Field(default=None, description="Associated episode title")
+    podcast_id: str | None = Field(default=None, description="Associated podcast ID")
+    podcast_title: str | None = Field(default=None, description="Associated podcast title")
+    episode_id: str | None = Field(default=None, description="Associated episode ID")
+    episode_title: str | None = Field(default=None, description="Associated episode title")
     message_count: int = Field(default=0, description="Number of messages")
     created_at: str = Field(..., description="Creation timestamp (ISO format)")
     updated_at: str = Field(..., description="Last update timestamp (ISO format)")
@@ -194,7 +195,7 @@ class ConversationSummary(BaseModel):
 
 class ConversationListResponse(BaseModel):
     """List of user's conversations."""
-    conversations: List[ConversationSummary] = Field(..., description="Conversations")
+    conversations: list[ConversationSummary] = Field(..., description="Conversations")
     total: int = Field(..., description="Total number of conversations")
 
 
@@ -203,7 +204,7 @@ class ChatMessageResponse(BaseModel):
     id: str = Field(..., description="Message UUID")
     role: str = Field(..., description="Message role: 'user' or 'assistant'")
     content: str = Field(..., description="Message content")
-    citations: Optional[List[Citation]] = Field(
+    citations: list[Citation] | None = Field(
         default=None, description="Citations for assistant messages"
     )
     created_at: str = Field(..., description="Creation timestamp (ISO format)")
@@ -212,13 +213,13 @@ class ChatMessageResponse(BaseModel):
 class ConversationDetailResponse(BaseModel):
     """Full conversation with messages."""
     id: str = Field(..., description="Conversation UUID")
-    title: Optional[str] = Field(default=None, description="Conversation title")
+    title: str | None = Field(default=None, description="Conversation title")
     scope: str = Field(..., description="Chat scope")
-    podcast_id: Optional[str] = Field(default=None, description="Associated podcast ID")
-    podcast_title: Optional[str] = Field(default=None, description="Associated podcast title")
-    episode_id: Optional[str] = Field(default=None, description="Associated episode ID")
-    episode_title: Optional[str] = Field(default=None, description="Associated episode title")
-    messages: List[ChatMessageResponse] = Field(..., description="Conversation messages")
+    podcast_id: str | None = Field(default=None, description="Associated podcast ID")
+    podcast_title: str | None = Field(default=None, description="Associated podcast title")
+    episode_id: str | None = Field(default=None, description="Associated episode ID")
+    episode_title: str | None = Field(default=None, description="Associated episode title")
+    messages: list[ChatMessageResponse] = Field(..., description="Conversation messages")
     created_at: str = Field(..., description="Creation timestamp (ISO format)")
     updated_at: str = Field(..., description="Last update timestamp (ISO format)")
 
@@ -230,6 +231,6 @@ class SendMessageRequest(BaseModel):
 
 class UpdateConversationRequest(BaseModel):
     """Request to update a conversation."""
-    title: Optional[str] = Field(
+    title: str | None = Field(
         default=None, max_length=256, description="New conversation title"
     )

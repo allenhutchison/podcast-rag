@@ -9,7 +9,7 @@ Provides endpoints for:
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -86,7 +86,7 @@ async def auth_callback(request: Request):
             user.id,
             name=name,
             picture_url=picture,
-            last_login=datetime.now(timezone.utc)
+            last_login=datetime.now(UTC)
         )
         logger.info(f"User logged in: user_id={user.id}")
     else:

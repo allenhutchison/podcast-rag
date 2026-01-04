@@ -7,10 +7,10 @@ Provides functionality for:
 - Feed synchronization
 """
 
-from .opml_parser import OPMLParser, PodcastFeed
-from .feed_parser import FeedParser, ParsedPodcast, ParsedEpisode
-from .feed_sync import FeedSyncService
 from .downloader import EpisodeDownloader
+from .feed_parser import FeedParser, ParsedEpisode, ParsedPodcast
+from .feed_sync import FeedSyncService
+from .opml_parser import OPMLParser, PodcastFeed
 
 __all__ = [
     "OPMLParser",

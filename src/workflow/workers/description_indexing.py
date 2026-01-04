@@ -4,7 +4,6 @@ Uploads podcast descriptions to Gemini File Search for semantic search.
 """
 
 import logging
-from typing import Optional
 
 from src.config import Config
 from src.db.gemini_file_search import GeminiFileSearchManager
@@ -36,7 +35,7 @@ class DescriptionIndexingWorker(WorkerInterface):
         """
         self.config = config
         self.repository = repository
-        self._file_search_manager: Optional[GeminiFileSearchManager] = None
+        self._file_search_manager: GeminiFileSearchManager | None = None
 
     @property
     def name(self) -> str:

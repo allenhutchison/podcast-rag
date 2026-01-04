@@ -1,12 +1,9 @@
 """Tests for the podcast repository."""
 
-import os
 import pytest
-from datetime import datetime
 
 from src.db.factory import create_repository
-from src.db.models import Podcast, Episode
-from src.db.repository import SQLAlchemyPodcastRepository, _escape_like_pattern
+from src.db.repository import _escape_like_pattern
 
 
 @pytest.fixture
@@ -26,7 +23,7 @@ def repository(tmp_path):
 def sample_podcast(repository):
     """
     Create and persist a sample podcast used by tests.
-    
+
     Returns:
         podcast: The created podcast object with an assigned `id` and the provided fields (feed_url, title, description, author, language).
     """
@@ -226,7 +223,7 @@ class TestEpisodeOperations:
             enclosure_url="https://example.com/episode1.mp3",
             enclosure_type="audio/mpeg",
         )
-        episode2 = repository.create_episode(
+        repository.create_episode(
             podcast_id=sample_podcast.id,
             guid="episode-2",
             title="Episode 2",

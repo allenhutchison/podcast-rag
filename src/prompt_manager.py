@@ -55,7 +55,7 @@ class PromptManager:
         for filename in os.listdir(self.prompts_dir):
             if filename.endswith(".txt"):
                 filepath = os.path.join(self.prompts_dir, filename)
-                with open(filepath, "r", encoding="utf-8") as f:
+                with open(filepath, encoding="utf-8") as f:
                     content = textwrap.dedent(f.read())
                 template_key = os.path.splitext(filename)[0]
                 self._templates[template_key] = Template(content)

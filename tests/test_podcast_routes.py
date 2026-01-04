@@ -1,8 +1,8 @@
 """Tests for podcast routes - add, search, and import endpoints."""
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
+from unittest.mock import Mock, patch
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -10,11 +10,11 @@ from pydantic import ValidationError
 from src.web.models import (
     AddPodcastByUrlRequest,
     AddPodcastResponse,
-    PodcastSearchResult,
-    PodcastSearchResponse,
     OPMLImportRequest,
-    OPMLImportResult,
     OPMLImportResponse,
+    OPMLImportResult,
+    PodcastSearchResponse,
+    PodcastSearchResult,
 )
 from src.web.podcast_routes import router
 

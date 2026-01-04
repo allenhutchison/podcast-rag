@@ -6,7 +6,6 @@ including email digest preferences and email preview.
 
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
@@ -67,20 +66,20 @@ def validate_timezone(tz: str) -> bool:
 class UpdateSettingsRequest(BaseModel):
     """Request body for updating user settings."""
 
-    email_digest_enabled: Optional[bool] = None
-    timezone: Optional[str] = None
-    email_digest_hour: Optional[int] = None
+    email_digest_enabled: bool | None = None
+    timezone: str | None = None
+    email_digest_hour: int | None = None
 
     @field_validator("timezone")
     @classmethod
-    def validate_tz(cls, v: Optional[str]) -> Optional[str]:
+    def validate_tz(cls, v: str | None) -> str | None:
         if v is not None and not validate_timezone(v):
             raise ValueError(f"Invalid timezone: {v}")
         return v
 
     @field_validator("email_digest_hour")
     @classmethod
-    def validate_hour(cls, v: Optional[int]) -> Optional[int]:
+    def validate_hour(cls, v: int | None) -> int | None:
         if v is not None and (v < 0 or v > 23):
             raise ValueError("email_digest_hour must be between 0 and 23")
         return v

@@ -12,30 +12,30 @@ import logging
 import os
 import re
 import uuid
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, RedirectResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from starlette.middleware.sessions import SessionMiddleware
 
+from src.config import Config
+from src.db.factory import create_repository
 from src.db.gemini_file_search import GeminiFileSearchManager
 from src.db.repository import PodcastRepositoryInterface
-from src.config import Config
 from src.prompt_manager import PromptManager
-from src.db.factory import create_repository
 from src.web.admin_routes import router as admin_router
 from src.web.auth import get_current_user
 from src.web.auth_routes import router as auth_router
 from src.web.chat_routes import router as chat_router
+from src.web.models import ChatRequest
 from src.web.podcast_routes import router as podcast_router
 from src.web.user_routes import router as user_router
-from src.web.models import ChatRequest
 
 # Configure logging
 log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
@@ -184,9 +184,9 @@ async def generate_agentic_response(
     query: str,
     session_id: str,
     user_id: str,
-    _history: Optional[List[dict]] = None,
-    podcast_id: Optional[str] = None,
-    episode_id: Optional[str] = None,
+    _history: list[dict] | None = None,
+    podcast_id: str | None = None,
+    episode_id: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Stream SSE events from agentic chat using function calling.
@@ -213,6 +213,7 @@ async def generate_agentic_response(
     """
     from google import genai
     from google.genai import types
+
     from src.agents.chat_tools import create_chat_tools
 
     try:
@@ -504,8 +505,8 @@ def _summarize_tool_result(tool_name: str, result: dict) -> str:
 
 def _build_scope_context(
     repository: PodcastRepositoryInterface,
-    podcast_id: Optional[str] = None,
-    episode_id: Optional[str] = None,
+    podcast_id: str | None = None,
+    episode_id: str | None = None,
 ) -> str:
     """
     Build a scope context string for the agent's system prompt.
@@ -737,7 +738,7 @@ def _validate_podcast_id(podcast_id: str) -> str:
         raise HTTPException(
             status_code=422,
             detail="Invalid podcast_id: must be a valid UUID"
-        )
+        ) from None
 
 
 @app.post("/api/podcasts/{podcast_id}/subscribe")
@@ -929,11 +930,11 @@ async def search_episodes(
 ):
     """
     Search episodes by keyword or person and return matching episode records with podcast metadata.
-    
+
     Parameters:
         type (str): Search mode, either "keyword" to match episode content/keywords or "person" to match hosts/guests.
         q (str): Search query string; must be non-empty after trimming.
-    
+
     Returns:
         dict: {
             "query": str,        # trimmed query string
@@ -993,7 +994,7 @@ async def search_episodes(
 async def root():
     """
     Redirect the root URL to the podcasts library page.
-    
+
     Returns:
         RedirectResponse: HTTP redirect to "/podcasts.html" (status code 302).
     """

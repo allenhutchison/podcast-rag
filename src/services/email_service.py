@@ -4,7 +4,6 @@ Provides a simple interface for sending HTML emails using Resend's API.
 """
 
 import logging
-from typing import Optional
 
 import resend
 
@@ -62,7 +61,7 @@ class EmailService:
         to_email: str,
         subject: str,
         html_content: str,
-        text_content: Optional[str] = None,
+        text_content: str | None = None,
     ) -> bool:
         """Send an email using Resend.
 

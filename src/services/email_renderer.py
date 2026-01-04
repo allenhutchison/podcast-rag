@@ -4,7 +4,6 @@ Provides functions to render HTML and plain text email content for podcast diges
 Used by both the EmailDigestWorker and the preview API endpoint.
 """
 
-from typing import List, Optional
 from urllib.parse import urlparse
 
 from src.config import Config
@@ -13,7 +12,7 @@ from src.config import Config
 SAFE_URL_SCHEMES = {"http", "https"}
 
 # Module-level config instance to avoid repeated instantiation
-_config: Optional[Config] = None
+_config: Config | None = None
 
 
 def _get_config() -> Config:
@@ -24,7 +23,7 @@ def _get_config() -> Config:
     return _config
 
 
-def build_episode_url(episode_id: str, fallback: Optional[str] = None) -> str:
+def build_episode_url(episode_id: str, fallback: str | None = None) -> str:
     """Build the episode page URL for use in emails.
 
     Uses WEB_BASE_URL to ensure email links match the sending domain,
@@ -47,7 +46,7 @@ def build_episode_url(episode_id: str, fallback: Optional[str] = None) -> str:
     return fallback or "#"
 
 
-def sanitize_url(url: Optional[str], fallback: str = "#") -> str:
+def sanitize_url(url: str | None, fallback: str = "#") -> str:
     """Validate and sanitize a URL for safe embedding in HTML.
 
     Only allows http and https schemes to prevent XSS via javascript:,
@@ -97,9 +96,9 @@ def escape_html(text: str) -> str:
 
 
 def render_digest_html(
-    user_name: Optional[str],
-    episodes: List,
-    preview_notice: Optional[str] = None,
+    user_name: str | None,
+    episodes: list,
+    preview_notice: str | None = None,
 ) -> str:
     """Render HTML email content for the digest.
 
@@ -251,9 +250,9 @@ def render_digest_html(
 
 
 def render_digest_text(
-    user_name: Optional[str],
-    episodes: List,
-    preview_notice: Optional[str] = None,
+    user_name: str | None,
+    episodes: list,
+    preview_notice: str | None = None,
 ) -> str:
     """Render plain text email content for the digest.
 

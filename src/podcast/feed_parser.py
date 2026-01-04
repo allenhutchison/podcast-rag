@@ -6,11 +6,9 @@ podcast metadata including iTunes namespace extensions.
 
 import logging
 import re
-import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from email.utils import parsedate_to_datetime
-from typing import List, Optional
 from urllib.parse import urlparse
 
 import feedparser
@@ -32,25 +30,25 @@ class ParsedEpisode:
     enclosure_type: str
 
     # Optional metadata
-    description: Optional[str] = None
-    link: Optional[str] = None
-    published_date: Optional[datetime] = None
-    duration_seconds: Optional[int] = None
+    description: str | None = None
+    link: str | None = None
+    published_date: datetime | None = None
+    duration_seconds: int | None = None
 
     # Episode numbering
-    episode_number: Optional[str] = None
-    season_number: Optional[int] = None
-    episode_type: Optional[str] = None
+    episode_number: str | None = None
+    season_number: int | None = None
+    episode_type: str | None = None
 
     # iTunes specific
-    itunes_title: Optional[str] = None
-    itunes_episode: Optional[str] = None
-    itunes_season: Optional[int] = None
-    itunes_explicit: Optional[bool] = None
-    itunes_duration: Optional[str] = None
+    itunes_title: str | None = None
+    itunes_episode: str | None = None
+    itunes_season: int | None = None
+    itunes_explicit: bool | None = None
+    itunes_duration: str | None = None
 
     # Enclosure details
-    enclosure_length: Optional[int] = None
+    enclosure_length: int | None = None
 
 
 @dataclass
@@ -62,28 +60,28 @@ class ParsedPodcast:
     title: str
 
     # Optional metadata
-    description: Optional[str] = None
-    website_url: Optional[str] = None
-    author: Optional[str] = None
-    language: Optional[str] = None
+    description: str | None = None
+    website_url: str | None = None
+    author: str | None = None
+    language: str | None = None
 
     # iTunes specific
-    itunes_id: Optional[str] = None
-    itunes_author: Optional[str] = None
-    itunes_category: Optional[str] = None
-    itunes_subcategory: Optional[str] = None
-    itunes_explicit: Optional[bool] = None
-    itunes_type: Optional[str] = None
+    itunes_id: str | None = None
+    itunes_author: str | None = None
+    itunes_category: str | None = None
+    itunes_subcategory: str | None = None
+    itunes_explicit: bool | None = None
+    itunes_type: str | None = None
 
     # Artwork
-    image_url: Optional[str] = None
+    image_url: str | None = None
 
     # Episodes
-    episodes: List[ParsedEpisode] = field(default_factory=list)
+    episodes: list[ParsedEpisode] = field(default_factory=list)
 
     # Feed metadata
-    last_build_date: Optional[datetime] = None
-    ttl: Optional[int] = None  # Time to live in minutes
+    last_build_date: datetime | None = None
+    ttl: int | None = None  # Time to live in minutes
 
 
 class FeedParser:
@@ -105,7 +103,7 @@ class FeedParser:
 
     def __init__(
         self,
-        user_agent: Optional[str] = None,
+        user_agent: str | None = None,
         retry_attempts: int = 3,
         timeout: int = 30,
     ):
@@ -189,11 +187,11 @@ class FeedParser:
     def _parse_feed(self, feed: feedparser.FeedParserDict, feed_url: str) -> ParsedPodcast:
         """
         Convert a feedparser result into a ParsedPodcast containing podcast-level metadata and its parsed episodes.
-        
+
         Parameters:
             feed (feedparser.FeedParserDict): The parsed feed object returned by feedparser.parse().
             feed_url (str): Original URL of the feed (used as the ParsedPodcast.feed_url).
-        
+
         Returns:
             ParsedPodcast: A ParsedPodcast populated with metadata (title, description, author, iTunes fields, image, dates, TTL) and a list of parsed ParsedEpisode objects.
         """
@@ -249,13 +247,13 @@ class FeedParser:
         logger.info(f"Parsed podcast '{podcast.title}' with {len(podcast.episodes)} episodes")
         return podcast
 
-    def _parse_episode(self, entry: feedparser.FeedParserDict) -> Optional[ParsedEpisode]:
+    def _parse_episode(self, entry: feedparser.FeedParserDict) -> ParsedEpisode | None:
         """
         Convert a feedparser entry into a ParsedEpisode, or skip it when no audio enclosure is present.
-        
+
         Parameters:
             entry (feedparser.FeedParserDict): A single feed entry as returned by feedparser.
-        
+
         Returns:
             ParsedEpisode if the entry contains a valid audio enclosure, `None` otherwise.
         """
@@ -321,13 +319,13 @@ class FeedParser:
 
         return episode
 
-    def _extract_enclosure(self, entry: feedparser.FeedParserDict) -> Optional[tuple]:
+    def _extract_enclosure(self, entry: feedparser.FeedParserDict) -> tuple | None:
         """
         Extract the primary audio enclosure from a feed entry.
-        
+
         Parameters:
             entry (feedparser.FeedParserDict): Feed entry to inspect for audio enclosures.
-        
+
         Returns:
             tuple: (url, mime_type, length) where `url` is the enclosure URL (str), `mime_type` is the MIME type (str, defaults to "audio/mpeg" when absent), and `length` is the enclosure size in bytes (int) or `None` if unknown; returns `None` if no audio enclosure is found.
         """
@@ -379,13 +377,13 @@ class FeedParser:
     def _is_audio_type(self, mime_type: str, url: str) -> bool:
         """
         Determine whether the provided MIME type or URL likely refers to audio content.
-        
+
         This uses the MIME type when available (recognizing MIME types that start with "audio/" and treating ambiguous types like "application/octet-stream" as undecided) and falls back to common audio file extensions from the URL path when the MIME type is absent or ambiguous.
-        
+
         Parameters:
             mime_type (str): The content MIME type reported by the feed or HTTP headers.
             url (str): The resource URL used to inspect the path/extension when MIME type is absent or inconclusive.
-        
+
         Returns:
             bool: `True` if the MIME type or URL indicates audio content, `False` otherwise.
         """
@@ -404,15 +402,15 @@ class FeedParser:
         audio_extensions = (".mp3", ".m4a", ".mp4", ".ogg", ".opus", ".wav", ".aac")
         return any(path.endswith(ext) for ext in audio_extensions)
 
-    def _extract_image_url(self, feed: feedparser.FeedParserDict) -> Optional[str]:
+    def _extract_image_url(self, feed: feedparser.FeedParserDict) -> str | None:
         """
         Extract the podcast artwork URL from a feedparser feed dictionary.
-        
+
         Checks common feed locations in this order: the iTunes image, the top-level image element, and media thumbnails, returning the first valid URL found.
-        
+
         Parameters:
             feed (feedparser.FeedParserDict): Parsed feed object to inspect for image fields.
-        
+
         Returns:
             Optional[str]: The image URL if found, otherwise `None`.
         """
@@ -436,15 +434,15 @@ class FeedParser:
 
         return None
 
-    def _parse_explicit(self, value) -> Optional[bool]:
+    def _parse_explicit(self, value) -> bool | None:
         """
         Normalize an iTunes explicit flag value from a feed.
-        
+
         Accepts boolean values or string-like indicators (e.g., "yes", "no", "true", "false", "explicit", "clean") and handles None.
-        
+
         Parameters:
             value: The explicit flag value extracted from a feed entry or channel.
-        
+
         Returns:
             `True` if the value indicates explicit content, `False` if it indicates clean content, `None` if the value is missing or unrecognized.
         """
@@ -462,15 +460,15 @@ class FeedParser:
 
         return None
 
-    def _parse_duration(self, value) -> Optional[int]:
+    def _parse_duration(self, value) -> int | None:
         """
         Convert a duration value to a total number of seconds.
-        
+
         Supports a plain integer number of seconds (e.g., "3600" or 3600), "MM:SS" (e.g., "05:30"), and "HH:MM:SS" (e.g., "1:05:30"). Unrecognized or empty inputs yield None.
-        
+
         Parameters:
             value: Duration expressed as an int-like value or a time string.
-        
+
         Returns:
             Total duration in seconds as an int, or None if the input cannot be parsed.
         """
@@ -499,13 +497,13 @@ class FeedParser:
 
         return None
 
-    def _clean_html(self, text: Optional[str]) -> Optional[str]:
+    def _clean_html(self, text: str | None) -> str | None:
         """
         Clean a string by removing HTML tags, decoding common HTML entities, and normalizing whitespace.
-        
+
         Parameters:
             text (Optional[str]): Input text that may contain HTML and HTML entities.
-        
+
         Returns:
             Optional[str]: The cleaned string with HTML removed and entities decoded, or `None` if the input is empty or the result is an empty string.
         """

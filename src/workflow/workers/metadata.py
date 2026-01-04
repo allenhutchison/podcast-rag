@@ -12,7 +12,7 @@ import os
 import time
 from dataclasses import dataclass
 from threading import Lock
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from src.config import Config
 from src.db.models import Episode
@@ -60,22 +60,22 @@ class MergedMetadata:
 
     # From feed (most trustworthy)
     title: str
-    description: Optional[str] = None
-    published_date: Optional[str] = None
-    duration_seconds: Optional[int] = None
-    episode_number: Optional[str] = None
-    season_number: Optional[int] = None
+    description: str | None = None
+    published_date: str | None = None
+    duration_seconds: int | None = None
+    episode_number: str | None = None
+    season_number: int | None = None
 
     # From MP3 tags
-    mp3_artist: Optional[str] = None
-    mp3_album: Optional[str] = None
+    mp3_artist: str | None = None
+    mp3_album: str | None = None
 
     # From AI
-    summary: Optional[str] = None
-    keywords: Optional[List[str]] = None
-    hosts: Optional[List[str]] = None
-    guests: Optional[List[str]] = None
-    email_content: Optional[Dict[str, Any]] = None
+    summary: str | None = None
+    keywords: list[str] | None = None
+    hosts: list[str] | None = None
+    guests: list[str] | None = None
+    email_content: dict[str, Any] | None = None
 
 
 class MetadataWorker(WorkerInterface):
@@ -129,7 +129,7 @@ class MetadataWorker(WorkerInterface):
             base_path = base_path[:-14]
         return base_path + "_metadata.json"
 
-    def _read_mp3_tags(self, file_path: str) -> Dict[str, Any]:
+    def _read_mp3_tags(self, file_path: str) -> dict[str, Any]:
         """Read ID3 tags from MP3 file.
 
         Args:
@@ -155,7 +155,7 @@ class MetadataWorker(WorkerInterface):
 
     def _extract_ai_metadata(
         self, transcript: str, filename: str
-    ) -> Optional[PodcastMetadata]:
+    ) -> PodcastMetadata | None:
         """Extract metadata from transcript using AI.
 
         Args:
@@ -210,8 +210,8 @@ class MetadataWorker(WorkerInterface):
     def _merge_metadata(
         self,
         episode: Episode,
-        mp3_tags: Dict[str, Any],
-        ai_metadata: Optional[PodcastMetadata],
+        mp3_tags: dict[str, Any],
+        ai_metadata: PodcastMetadata | None,
     ) -> MergedMetadata:
         """Merge metadata from all sources.
 

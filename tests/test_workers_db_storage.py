@@ -4,15 +4,13 @@ Tests the changes to transcription, metadata, and indexing workers
 to use database storage instead of file-based storage.
 """
 
-import os
-import pytest
-from unittest.mock import Mock, MagicMock, patch, call
 from pathlib import Path
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
 
 from src.db.factory import create_repository
-from src.db.models import Episode
 from src.schemas import PodcastMetadata
-from src.workflow.workers.base import WorkerResult
 
 
 @pytest.fixture
@@ -81,7 +79,7 @@ class TestTranscriptionWorkerDatabaseStorage:
         from src.workflow.workers.transcription import TranscriptionWorker
 
         worker = TranscriptionWorker(config=mock_config, repository=repository)
-        
+
         # Mock the Whisper model
         mock_model = MagicMock()
         mock_segment = MagicMock()
@@ -103,7 +101,7 @@ class TestTranscriptionWorkerDatabaseStorage:
         from src.workflow.workers.transcription import TranscriptionWorker
 
         worker = TranscriptionWorker(config=mock_config, repository=repository)
-        
+
         # Mock the transcription
         mock_model = MagicMock()
         mock_segment = MagicMock()
@@ -116,7 +114,7 @@ class TestTranscriptionWorkerDatabaseStorage:
 
         # Verify result is text
         assert result == "Full transcript text."
-        
+
         # Verify database was updated
         episode = repository.get_episode(sample_episode_with_audio.id)
         assert episode.transcript_status == "completed"
@@ -194,7 +192,7 @@ class TestTranscriptionWorkerDatabaseStorage:
         for i in range(3):
             audio_file = tmp_path / f"episode_{i}.mp3"
             audio_file.write_bytes(b"fake audio")
-            
+
             episode = repository.create_episode(
                 podcast_id=sample_podcast.id,
                 guid=f"episode-{i}",
@@ -208,7 +206,7 @@ class TestTranscriptionWorkerDatabaseStorage:
             episodes.append(episode)
 
         worker = TranscriptionWorker(config=mock_config, repository=repository)
-        
+
         # Mock transcription
         mock_model = MagicMock()
         def mock_transcribe(audio_path, *args, **kwargs):
@@ -216,7 +214,7 @@ class TestTranscriptionWorkerDatabaseStorage:
             mock_segment = MagicMock()
             mock_segment.text = f"Transcript {idx}"
             return ([mock_segment], None)
-        
+
         mock_model.transcribe.side_effect = mock_transcribe
         worker._model = mock_model
 
@@ -239,7 +237,7 @@ class TestTranscriptionWorkerDatabaseStorage:
         from src.workflow.workers.transcription import TranscriptionWorker
 
         worker = TranscriptionWorker(config=mock_config, repository=repository)
-        
+
         # Mock with Unicode content
         mock_model = MagicMock()
         mock_segment = MagicMock()
@@ -252,7 +250,7 @@ class TestTranscriptionWorkerDatabaseStorage:
 
         # Verify Unicode preserved
         assert "émojis 🎙️" in result
-        
+
         episode = repository.get_episode(sample_episode_with_audio.id)
         assert "émojis 🎙️" in episode.transcript_text
 
@@ -273,7 +271,7 @@ class TestMetadataWorkerDatabaseStorage:
             enclosure_url="https://example.com/episode.mp3",
             enclosure_type="audio/mpeg",
         )
-        
+
         # Store transcript in database
         transcript_text = "This is the transcript for metadata extraction."
         repository.mark_transcript_complete(
@@ -282,7 +280,7 @@ class TestMetadataWorkerDatabaseStorage:
         )
 
         worker = MetadataWorker(config=mock_config, repository=repository)
-        
+
         # Mock AI extraction
         with patch.object(worker, '_extract_ai_metadata') as mock_extract:
             mock_extract.return_value = PodcastMetadata(
@@ -321,12 +319,12 @@ class TestMetadataWorkerDatabaseStorage:
             enclosure_url="https://example.com/episode.mp3",
             enclosure_type="audio/mpeg",
         )
-        
+
         # Create legacy transcript file
         transcript_file = tmp_path / "transcript.txt"
         legacy_text = "Legacy transcript from file."
         transcript_file.write_text(legacy_text, encoding="utf-8")
-        
+
         repository.update_episode(
             episode.id,
             transcript_path=str(transcript_file),
@@ -334,7 +332,7 @@ class TestMetadataWorkerDatabaseStorage:
         )
 
         worker = MetadataWorker(config=mock_config, repository=repository)
-        
+
         # Mock AI extraction
         with patch.object(worker, '_extract_ai_metadata') as mock_extract:
             mock_extract.return_value = PodcastMetadata(
@@ -350,7 +348,7 @@ class TestMetadataWorkerDatabaseStorage:
             )
 
             # Process episode
-            merged = worker._process_episode(episode)
+            worker._process_episode(episode)
 
         # Verify legacy file content was used
         call_args = mock_extract.call_args[0]
@@ -365,7 +363,7 @@ class TestMetadataWorkerDatabaseStorage:
         # Create episode with audio file
         audio_file = tmp_path / "episode.mp3"
         audio_file.write_bytes(b"fake audio")
-        
+
         episode = repository.create_episode(
             podcast_id=sample_podcast.id,
             guid="episode-1",
@@ -425,11 +423,11 @@ class TestMetadataWorkerDatabaseStorage:
             enclosure_url="https://example.com/episode.mp3",
             enclosure_type="audio/mpeg",
         )
-        
+
         # No transcript set
 
         worker = MetadataWorker(config=mock_config, repository=repository)
-        
+
         # Should raise ValueError
         with pytest.raises(ValueError, match="no transcript content"):
             worker._process_episode(episode)
@@ -455,7 +453,7 @@ class TestMetadataWorkerDatabaseStorage:
             )
 
         worker = MetadataWorker(config=mock_config, repository=repository)
-        
+
         # Mock AI extraction
         with patch.object(worker, '_extract_ai_metadata') as mock_extract:
             def side_effect(transcript, filename):
@@ -603,7 +601,7 @@ class TestIndexingWorkerDatabaseStorage:
         )
 
         worker = IndexingWorker(config=mock_config, repository=repository)
-        
+
         # Should raise ValueError
         with pytest.raises(ValueError, match="no transcript content"):
             worker._index_episode(episode)

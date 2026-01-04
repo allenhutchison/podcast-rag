@@ -2,7 +2,6 @@
 Tests for the web application endpoints and functionality.
 """
 
-from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -193,6 +192,7 @@ class TestDopplerEnvLoading:
         """Test that _load_doppler_env parses JSON and sets env vars."""
         import json
         import os
+
         from src.config import _load_doppler_env
 
         # Set up test data
@@ -213,6 +213,7 @@ class TestDopplerEnvLoading:
         """Test that existing env vars are not overwritten."""
         import json
         import os
+
         from src.config import _load_doppler_env
 
         # Set existing var
@@ -229,6 +230,7 @@ class TestDopplerEnvLoading:
     def test_load_doppler_env_ignores_invalid_json(self):
         """Test that invalid JSON is silently ignored."""
         import os
+
         from src.config import _load_doppler_env
 
         os.environ["ENV"] = "not valid json {"
@@ -242,6 +244,7 @@ class TestDopplerEnvLoading:
     def test_load_doppler_env_handles_missing_env(self):
         """Test that missing ENV variable is handled gracefully."""
         import os
+
         from src.config import _load_doppler_env
 
         os.environ.pop("ENV", None)
@@ -276,16 +279,18 @@ class TestChatRequestModel:
 
     def test_chat_request_validation_empty_query(self):
         """Test that empty query is rejected."""
-        from src.web.models import ChatRequest
         from pydantic import ValidationError
+
+        from src.web.models import ChatRequest
 
         with pytest.raises(ValidationError):
             ChatRequest(query="")
 
     def test_chat_request_validation_query_too_long(self):
         """Test that overly long queries are rejected."""
-        from src.web.models import ChatRequest
         from pydantic import ValidationError
+
+        from src.web.models import ChatRequest
 
         long_query = "x" * 1001
         with pytest.raises(ValidationError):
@@ -308,8 +313,9 @@ class TestGenerateAgenticResponseSignature:
 
     def test_generate_agentic_response_has_user_id_parameter(self):
         """Test that generate_agentic_response requires user_id."""
-        from src.web.app import generate_agentic_response
         import inspect
+
+        from src.web.app import generate_agentic_response
 
         sig = inspect.signature(generate_agentic_response)
         params = list(sig.parameters.keys())
@@ -320,8 +326,9 @@ class TestGenerateAgenticResponseSignature:
 
     def test_generate_agentic_response_parameter_order(self):
         """Test parameter order in generate_agentic_response."""
-        from src.web.app import generate_agentic_response
         import inspect
+
+        from src.web.app import generate_agentic_response
 
         sig = inspect.signature(generate_agentic_response)
         params = list(sig.parameters.keys())
@@ -333,8 +340,9 @@ class TestGenerateAgenticResponseSignature:
 
     def test_generate_agentic_response_is_async(self):
         """Test that generate_agentic_response is an async generator."""
-        from src.web.app import generate_agentic_response
         import inspect
+
+        from src.web.app import generate_agentic_response
 
         assert inspect.isasyncgenfunction(generate_agentic_response)
 
@@ -385,8 +393,9 @@ class TestValidatePodcastId:
 
     def test_validate_podcast_id_valid_uuid(self):
         """Test that valid UUID passes validation."""
-        from src.web.app import _validate_podcast_id
         import uuid
+
+        from src.web.app import _validate_podcast_id
 
         valid_uuid = str(uuid.uuid4())
         result = _validate_podcast_id(valid_uuid)
@@ -394,8 +403,9 @@ class TestValidatePodcastId:
 
     def test_validate_podcast_id_invalid_uuid_raises(self):
         """Test that invalid UUID raises HTTPException."""
-        from src.web.app import _validate_podcast_id
         from fastapi import HTTPException
+
+        from src.web.app import _validate_podcast_id
 
         with pytest.raises(HTTPException) as exc_info:
             _validate_podcast_id("not-a-uuid")
@@ -405,8 +415,9 @@ class TestValidatePodcastId:
 
     def test_validate_podcast_id_empty_string_raises(self):
         """Test that empty string raises HTTPException."""
-        from src.web.app import _validate_podcast_id
         from fastapi import HTTPException
+
+        from src.web.app import _validate_podcast_id
 
         with pytest.raises(HTTPException) as exc_info:
             _validate_podcast_id("")
@@ -415,8 +426,9 @@ class TestValidatePodcastId:
 
     def test_validate_podcast_id_sql_injection_attempt(self):
         """Test that SQL injection attempts are rejected."""
-        from src.web.app import _validate_podcast_id
         from fastapi import HTTPException
+
+        from src.web.app import _validate_podcast_id
 
         malicious_ids = [
             "1' OR '1'='1",
@@ -538,11 +550,11 @@ class TestAgentsModuleExports:
     def test_agents_module_imports_work(self):
         """Test that expected imports from agents module work."""
         from src.agents import (
-            get_podcast_citations,
-            set_podcast_citations,
             clear_podcast_citations,
-            get_podcast_filter,
             get_episode_filter,
+            get_podcast_citations,
+            get_podcast_filter,
+            set_podcast_citations,
             set_podcast_filter,
         )
 

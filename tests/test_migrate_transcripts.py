@@ -1,22 +1,21 @@
 """Tests for transcript migration script."""
 
 import json
-import os
-import pytest
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
-
-from src.db.factory import create_repository
-from src.db.models import Episode
 
 # Import migration functions
 import sys
+from pathlib import Path
+
+import pytest
+
+from src.db.factory import create_repository
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from scripts.migrate_transcripts_to_db import (
     get_metadata_path,
-    read_transcript_file,
-    read_metadata_file,
     migrate_transcripts,
+    read_metadata_file,
+    read_transcript_file,
 )
 
 

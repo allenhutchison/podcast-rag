@@ -5,7 +5,6 @@ Uploads transcripts to Gemini File Search for semantic search.
 
 import logging
 import os
-from typing import Dict, Optional
 
 from src.config import Config
 from src.db.gemini_file_search import GeminiFileSearchManager
@@ -36,7 +35,7 @@ class IndexingWorker(WorkerInterface):
         """
         self.config = config
         self.repository = repository
-        self._file_search_manager: Optional[GeminiFileSearchManager] = None
+        self._file_search_manager: GeminiFileSearchManager | None = None
 
     @property
     def name(self) -> str:
@@ -50,7 +49,7 @@ class IndexingWorker(WorkerInterface):
             self._file_search_manager = GeminiFileSearchManager(config=self.config)
         return self._file_search_manager
 
-    def _build_metadata(self, episode: Episode) -> Dict:
+    def _build_metadata(self, episode: Episode) -> dict:
         """Build metadata dict for File Search upload.
 
         Args:
