@@ -269,10 +269,10 @@ async def import_opml(
     config = request.app.state.config
     user_id = current_user["sub"]
 
-    # Parse OPML content
+    # Parse OPML content (run in thread to handle large files)
     parser = OPMLParser()
     try:
-        parsed = parser.parse_string(body.content)
+        parsed = await asyncio.to_thread(parser.parse_string, body.content)
     except Exception as e:
         logger.exception("OPML parse error")
         raise HTTPException(

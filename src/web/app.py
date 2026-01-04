@@ -693,6 +693,12 @@ async def list_all_podcasts(
         sort_order=sort_order
     )
 
+    # Batch fetch user's subscribed podcast IDs to avoid N+1 queries
+    user_subs = await asyncio.to_thread(
+        _repository.get_user_subscriptions, user_id
+    )
+    subscribed_ids = {p.id for p in user_subs}
+
     # Batch get episode counts and subscriber counts if needed
     episode_counts = {}
     subscriber_counts = {}
@@ -707,13 +713,10 @@ async def list_all_podcasts(
 
     podcast_list = []
     for p in all_podcasts:
-        is_subscribed = await asyncio.to_thread(
-            _repository.is_user_subscribed, user_id, p.id
-        )
         podcast_data = {
             "id": p.id,
             "title": p.title,
-            "is_subscribed": is_subscribed
+            "is_subscribed": p.id in subscribed_ids
         }
 
         if include_stats:
