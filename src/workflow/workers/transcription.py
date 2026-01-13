@@ -11,7 +11,6 @@ for detailed benchmark results.
 import gc
 import logging
 import os
-from typing import Optional
 
 from src.config import Config
 from src.db.models import Episode
@@ -181,7 +180,7 @@ class TranscriptionWorker(WorkerInterface):
                 f"reading from file"
             )
             try:
-                with open(transcript_path, "r", encoding="utf-8") as f:
+                with open(transcript_path, encoding="utf-8") as f:
                     return f.read()
             except (OSError, UnicodeDecodeError) as e:
                 logger.warning(f"Failed to read legacy transcript {transcript_path}: {e}")
@@ -205,7 +204,7 @@ class TranscriptionWorker(WorkerInterface):
         logger.info(f"Transcription complete for episode {episode.id}")
         return transcript_text
 
-    def transcribe_single(self, episode: Episode) -> Optional[str]:
+    def transcribe_single(self, episode: Episode) -> str | None:
         """Transcribe a single episode without releasing the model.
 
         Unlike process_batch, this method:

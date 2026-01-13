@@ -4,8 +4,6 @@ Tests for frontend files: HTML, CSS, and JavaScript validation.
 These tests validate structure, syntax, and critical patterns in static files.
 """
 
-import json
-import os
 import re
 from pathlib import Path
 

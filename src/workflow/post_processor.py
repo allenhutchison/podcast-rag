@@ -8,7 +8,6 @@ import logging
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
-from typing import Callable, Dict, Optional
 
 from src.config import Config
 from src.db.models import Episode
@@ -23,7 +22,7 @@ class PostProcessingJob:
     """Represents a post-processing job for an episode."""
 
     episode_id: str
-    future: Optional[Future] = None
+    future: Future | None = None
 
 
 @dataclass
@@ -102,9 +101,9 @@ class PostProcessor:
         self.pipeline_config = pipeline_config
         self.repository = repository
 
-        self._executor: Optional[ThreadPoolExecutor] = None
+        self._executor: ThreadPoolExecutor | None = None
         self._started = False
-        self._pending_jobs: Dict[str, PostProcessingJob] = {}
+        self._pending_jobs: dict[str, PostProcessingJob] = {}
         self._lock = threading.Lock()
         self._stats = PostProcessingStats()
 
@@ -390,7 +389,7 @@ class PostProcessor:
             logger.info(f"Cleanup complete for episode {episode.id}")
             return True
 
-        except Exception as e:
+        except Exception:
             logger.exception(f"Cleanup failed for episode {episode.id}")
             self._stats.increment_cleanup_failed()
             return False

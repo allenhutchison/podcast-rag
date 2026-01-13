@@ -7,15 +7,15 @@ and retrieve podcast information. Tools are scope-aware and capture context
 """
 
 import logging
-from typing import Callable, Dict, List, Optional
+from collections.abc import Callable
 
 from google import genai
 from google.genai import types
 
+from src.agents.podcast_search import escape_filter_value, sanitize_query
 from src.config import Config
 from src.db.gemini_file_search import GeminiFileSearchManager
 from src.db.repository import PodcastRepositoryInterface
-from src.agents.podcast_search import escape_filter_value, sanitize_query
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ def _extract_citations_from_response(
     response,
     repository: PodcastRepositoryInterface,
     source_type: str = "transcript"
-) -> List[Dict]:
+) -> list[dict]:
     """
     Extract citations from Gemini grounding chunks.
 
@@ -134,9 +134,9 @@ def create_chat_tools(
     repository: PodcastRepositoryInterface,
     file_search_manager: GeminiFileSearchManager,
     user_id: str,
-    podcast_id: Optional[str] = None,
-    episode_id: Optional[str] = None,
-) -> List[Callable]:
+    podcast_id: str | None = None,
+    episode_id: str | None = None,
+) -> list[Callable]:
     """
     Create scope-aware tools for the chat agent.
 
@@ -189,7 +189,7 @@ def create_chat_tools(
         )
     )
 
-    def search_transcripts(query: str) -> Dict:
+    def search_transcripts(query: str) -> dict:
         """
         Search podcast transcripts for content matching the query.
 
@@ -286,7 +286,7 @@ def create_chat_tools(
                 'error': f"{e!s}"
             }
 
-    def search_podcast_descriptions(query: str) -> Dict:
+    def search_podcast_descriptions(query: str) -> dict:
         """
         Search podcast descriptions to find podcasts covering specific topics.
 
@@ -369,7 +369,7 @@ def create_chat_tools(
                 'error': f"{e!s}"
             }
 
-    def get_user_subscriptions() -> Dict:
+    def get_user_subscriptions() -> dict:
         """
         Get the current user's subscribed podcasts.
 
@@ -409,7 +409,7 @@ def create_chat_tools(
                 'error': f"{e!s}"
             }
 
-    def get_podcast_info(podcast_id_param: str) -> Dict:
+    def get_podcast_info(podcast_id_param: str) -> dict:
         """
         Get detailed information about a specific podcast.
 
@@ -470,7 +470,7 @@ def create_chat_tools(
                 'error': f"{e!s}"
             }
 
-    def get_episode_info(episode_id_param: str) -> Dict:
+    def get_episode_info(episode_id_param: str) -> dict:
         """
         Get detailed information about a specific episode.
 

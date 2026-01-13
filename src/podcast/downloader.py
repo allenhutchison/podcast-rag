@@ -12,11 +12,11 @@ import hashlib
 import logging
 import os
 import re
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 from urllib.parse import unquote, urlparse
 
 import aiohttp
@@ -36,11 +36,11 @@ class DownloadResult:
 
     episode_id: str
     success: bool
-    local_path: Optional[str] = None
-    file_size: Optional[int] = None
-    file_hash: Optional[str] = None
-    error: Optional[str] = None
-    duration_seconds: Optional[float] = None
+    local_path: str | None = None
+    file_size: int | None = None
+    file_hash: str | None = None
+    error: str | None = None
+    duration_seconds: float | None = None
 
 
 class EpisodeDownloader:
@@ -70,12 +70,12 @@ class EpisodeDownloader:
         retry_attempts: int = 3,
         timeout: int = DEFAULT_TIMEOUT,
         chunk_size: int = DEFAULT_CHUNK_SIZE,
-        user_agent: Optional[str] = None,
-        progress_callback: Optional[Callable[[str, int, int], None]] = None,
+        user_agent: str | None = None,
+        progress_callback: Callable[[str, int, int], None] | None = None,
     ):
         """
         Create an EpisodeDownloader configured for concurrent, retrying downloads and optional progress reporting.
-        
+
         Parameters:
             repository: Repository used to lookup and update episode/podcast state during download.
             download_directory: Base filesystem directory where downloaded episode files will be written.
@@ -104,9 +104,9 @@ class EpisodeDownloader:
     def _create_session(self) -> requests.Session:
         """
         Create and return an HTTP session configured for resilient downloads.
-        
+
         The returned requests.Session is configured to automatically retry transient HTTP errors (including rate limiting and server errors) for idempotent methods and includes the downloader's User-Agent header.
-        
+
         Returns:
             session (requests.Session): A configured HTTP session with mounted retry-capable adapters for both HTTP and HTTPS.
         """
@@ -129,10 +129,10 @@ class EpisodeDownloader:
     def download_episode(self, episode: Episode) -> DownloadResult:
         """
         Download a single Episode, save it to disk, and update repository state.
-        
+
         Parameters:
             episode (Episode): Episode to download; used to determine source URL, expected size, and identifiers for repository updates.
-        
+
         Returns:
             DownloadResult: Outcome of the download. On success, `success` is `True` and `local_path`, `file_size`, `file_hash`, and `duration_seconds` are populated. On failure, `success` is `False` and `error` contains the failure message.
         """
@@ -219,17 +219,17 @@ class EpisodeDownloader:
         url: str,
         output_path: str,
         episode_id: str,
-        expected_size: Optional[int] = None,
+        expected_size: int | None = None,
     ) -> tuple[int, str]:
         """
         Download a URL to disk while computing its SHA-256 hash and reporting per-chunk progress.
-        
+
         Parameters:
             url (str): Source URL to download.
             output_path (str): Filesystem path where the downloaded bytes will be written.
             episode_id (str): Identifier passed to the progress callback to associate progress updates with an episode.
             expected_size (Optional[int]): Optional expected total size in bytes used when the response lacks a valid Content-Length.
-        
+
         Returns:
             tuple[int, str]: (downloaded_bytes, sha256_hex) where `downloaded_bytes` is the number of bytes written to disk and `sha256_hex` is the SHA-256 hex digest of the written data.
         """
@@ -264,10 +264,10 @@ class EpisodeDownloader:
 
         return downloaded, hasher.hexdigest()
 
-    def download_pending(self, limit: int = 50) -> Dict[str, Any]:
+    def download_pending(self, limit: int = 50) -> dict[str, Any]:
         """
         Download pending episodes up to the given limit using a thread pool and collect per-episode results.
-        
+
         Returns:
             dict: Summary with keys:
                 - downloaded (int): number of successful downloads.
@@ -316,13 +316,13 @@ class EpisodeDownloader:
             "results": results,
         }
 
-    async def download_pending_async(self, limit: int = 50) -> Dict[str, Any]:
+    async def download_pending_async(self, limit: int = 50) -> dict[str, Any]:
         """
         Download pending episodes up to the given limit using bounded concurrency and return per-episode results.
-        
+
         Parameters:
             limit (int): Maximum number of pending episodes to process.
-        
+
         Returns:
             dict: Summary of the batch with keys:
                 - "downloaded" (int): Number of successfully downloaded episodes.
@@ -352,10 +352,10 @@ class EpisodeDownloader:
         async def download_with_semaphore(episode: Episode) -> DownloadResult:
             """
             Run the episode download coroutine while limited by the concurrency semaphore.
-            
+
             Parameters:
                 episode (Episode): Episode record to download.
-            
+
             Returns:
                 DownloadResult: Result object describing success, path, size, hash, error, and duration for the episode.
             """
@@ -381,12 +381,12 @@ class EpisodeDownloader:
     async def _download_episode_async(self, episode: Episode) -> DownloadResult:
         """
         Download an episode and save it to the podcast's local directory, updating repository state.
-        
+
         The method marks the episode as started, downloads the episode media to a file under the podcast's local directory (creating the directory if necessary), and on success marks the episode complete with the local path, file size, and file hash. On failure it removes any partial file and marks the episode as failed.
-        
+
         Parameters:
             episode (Episode): Episode to download; must include `id`, `podcast_id`, `enclosure_url`, and optionally `enclosure_length`.
-        
+
         Returns:
             DownloadResult: Contains `episode_id` and `success`. On success includes `local_path`, `file_size` (bytes), `file_hash` (SHA-256 hex), and `duration_seconds`. On failure includes `error` with the failure message.
         """
@@ -479,7 +479,7 @@ class EpisodeDownloader:
         url: str,
         output_path: str,
         episode_id: str,
-        expected_size: Optional[int] = None,
+        expected_size: int | None = None,
     ) -> tuple[int, str]:
         """
         Download the resource at `url` to `output_path` with retry logic, updating an SHA-256 hash and invoking the progress callback as data is received.
@@ -555,12 +555,12 @@ class EpisodeDownloader:
     def _generate_filename(self, episode: Episode) -> str:
         """
         Create a filesystem-safe filename for an episode, preserving an extension when possible and enforcing a length limit.
-        
+
         Builds a filename that includes an episode prefix ("E{number}" using episode_number or itunes_episode when available) followed by a sanitized episode title. The file extension is taken from the enclosure URL when present, otherwise inferred from the episode's MIME type with a fallback to ".mp3". The final filename is trimmed to a maximum of 200 characters.
-        
+
         Parameters:
             episode (Episode): Episode object containing title, enclosure URL/type, and optional episode numbering.
-        
+
         Returns:
             str: Sanitized filename including extension, truncated to at most 200 characters.
         """
@@ -606,10 +606,10 @@ class EpisodeDownloader:
     def _sanitize_filename(self, name: str) -> str:
         """
         Sanitize a string for use as a filesystem-safe filename.
-        
+
         Parameters:
             name (str): Input string to sanitize.
-        
+
         Returns:
             str: Filename-safe string with invalid characters removed, consecutive whitespace/underscores collapsed to a single underscore, and leading/trailing spaces or dots trimmed. Returns "episode" if the result is empty.
         """
@@ -624,10 +624,10 @@ class EpisodeDownloader:
     def cleanup_processed_episodes(self, limit: int = 100) -> int:
         """
         Remove local audio files for episodes marked ready for cleanup and update repository state.
-        
+
         Parameters:
             limit (int): Maximum number of episodes to process for cleanup.
-        
+
         Returns:
             int: Number of audio files successfully deleted.
         """

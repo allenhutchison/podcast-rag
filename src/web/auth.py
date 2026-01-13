@@ -8,8 +8,7 @@ This module provides:
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from authlib.integrations.starlette_client import OAuth
 from fastapi import Cookie, HTTPException, Request
@@ -20,7 +19,7 @@ from src.config import Config
 logger = logging.getLogger(__name__)
 
 # OAuth client singleton
-_oauth: Optional[OAuth] = None
+_oauth: OAuth | None = None
 
 
 def get_oauth(config: Config) -> OAuth:
@@ -71,16 +70,16 @@ def create_access_token(user_data: dict, config: Config) -> str:
     if config.JWT_ALGORITHM.lower() == "none":
         raise ValueError("JWT algorithm 'none' is not allowed")
 
-    expire = datetime.now(timezone.utc) + timedelta(days=config.JWT_EXPIRATION_DAYS)
+    expire = datetime.now(UTC) + timedelta(days=config.JWT_EXPIRATION_DAYS)
     to_encode = {
         **user_data,
         "exp": expire,
-        "iat": datetime.now(timezone.utc)
+        "iat": datetime.now(UTC)
     }
     return jwt.encode(to_encode, config.JWT_SECRET_KEY, algorithm=config.JWT_ALGORITHM)
 
 
-def verify_token(token: str, config: Config) -> Optional[dict]:
+def verify_token(token: str, config: Config) -> dict | None:
     """
     Verify a JWT token and return its payload.
 
@@ -105,7 +104,7 @@ def verify_token(token: str, config: Config) -> Optional[dict]:
 
 async def get_current_user(
     request: Request,
-    podcast_rag_session: Optional[str] = Cookie(default=None)
+    podcast_rag_session: str | None = Cookie(default=None)
 ) -> dict:
     """
     FastAPI dependency to get the current authenticated user.
@@ -137,8 +136,8 @@ async def get_current_user(
 
 async def get_optional_user(
     request: Request,
-    podcast_rag_session: Optional[str] = Cookie(default=None)
-) -> Optional[dict]:
+    podcast_rag_session: str | None = Cookie(default=None)
+) -> dict | None:
     """
     FastAPI dependency to optionally get the current user.
 
@@ -161,7 +160,7 @@ async def get_optional_user(
 
 async def get_current_admin(
     request: Request,
-    podcast_rag_session: Optional[str] = Cookie(default=None)
+    podcast_rag_session: str | None = Cookie(default=None)
 ) -> dict:
     """
     FastAPI dependency to require admin access.

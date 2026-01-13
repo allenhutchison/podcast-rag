@@ -1,17 +1,18 @@
 """Tests for the RSS feed parser."""
 
+
 import pytest
-from datetime import datetime
-from src.podcast.feed_parser import FeedParser, ParsedPodcast, ParsedEpisode
+
+from src.podcast.feed_parser import FeedParser
 
 
 @pytest.fixture
 def parser():
     """
     Provide a new FeedParser instance for tests.
-    
+
     This function is used as a pytest fixture to supply tests with a fresh FeedParser.
-    
+
     Returns:
         FeedParser: A new FeedParser instance.
     """

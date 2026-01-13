@@ -12,7 +12,6 @@ import argparse
 import asyncio
 import logging
 import sys
-from typing import Optional
 
 from ..config import Config
 from ..db.factory import create_repository
@@ -33,9 +32,9 @@ logger = logging.getLogger(__name__)
 def import_opml(args, config: Config):
     """
     Import podcasts defined in an OPML file into the repository.
-    
+
     Parses the OPML file specified by args.file, shows the discovered feeds, and imports them into the database unless args.dry_run is true. When importing, existing feed handling is controlled by args.update_existing (if false, existing feeds are skipped). Prints import statistics and ensures the repository is closed on completion.
-    
+
     Parameters:
         args: CLI arguments with at least the attributes:
             - file (str): Path to the OPML file to import.
@@ -74,7 +73,7 @@ def import_opml(args, config: Config):
             skip_existing=not args.update_existing,
         )
 
-        print(f"\nImport complete:")
+        print("\nImport complete:")
         print(f"  Added: {stats['added']}")
         print(f"  Skipped: {stats['skipped']}")
         print(f"  Failed: {stats['failed']}")
@@ -86,9 +85,9 @@ def import_opml(args, config: Config):
 def add_podcast(args, config: Config):
     """
     Add a podcast to the repository using the feed URL provided in args.
-    
+
     If the feed cannot be added the function prints the error and exits the process with status 1. On success it prints the podcast title, ID, and number of episodes. The repository is closed before returning.
-    
+
     Parameters:
         args: Parsed CLI arguments; expects `args.url` to contain the feed URL to add.
         config (Config): Application configuration used to construct the repository and determine the download directory.
@@ -145,14 +144,14 @@ def sync_feeds(args, config: Config):
                 print(f"Error: {result['error']}")
                 sys.exit(1)
 
-            print(f"\nSync complete:")
+            print("\nSync complete:")
             print(f"  New episodes: {result['new_episodes']}")
             print(f"  Updated: {result['updated']}")
         else:
             logger.info("Syncing all podcasts")
             result = sync_service.sync_all_podcasts()
 
-            print(f"\nSync complete:")
+            print("\nSync complete:")
             print(f"  Podcasts synced: {result['synced']}")
             print(f"  Podcasts failed: {result['failed']}")
             print(f"  New episodes: {result['new_episodes']}")
@@ -164,9 +163,9 @@ def sync_feeds(args, config: Config):
 def download_episodes(args, config: Config):
     """
     Download pending podcast episodes according to CLI options and configuration.
-    
+
     Performs episode downloads using the repository and EpisodeDownloader, prints a summary of downloaded and failed items, and lists up to the first 10 failures.
-    
+
     Parameters:
         args: Parsed command-line arguments with relevant attributes:
             - limit (int | None): maximum number of episodes to download (defaults to 50 when not set).
@@ -201,14 +200,14 @@ def download_episodes(args, config: Config):
             logger.info(f"Downloading up to {limit} episodes")
             result = downloader.download_pending(limit=limit)
 
-        print(f"\nDownload complete:")
+        print("\nDownload complete:")
         print(f"  Downloaded: {result['downloaded']}")
         print(f"  Failed: {result['failed']}")
 
         # Show failures
         failures = [r for r in result["results"] if not r.success]
         if failures:
-            print(f"\nFailed downloads:")
+            print("\nFailed downloads:")
             for f in failures[:10]:  # Show first 10
                 print(f"  - {f.episode_id}: {f.error}")
 
@@ -221,9 +220,9 @@ def download_episodes(args, config: Config):
 def list_podcasts(args, config: Config):
     """
     Prints a table of podcasts to stdout.
-    
+
     Displays podcasts from the repository as rows containing ID, title (truncated to 40 characters), episode count, and subscription status. Honors the following fields on `args`: `all` (when true, include unsubscribed podcasts) and `limit` (maximum number of podcasts to list).
-    
+
     Parameters:
         args: argparse.Namespace with at least:
             - all (bool): If true, include unsubscribed podcasts; otherwise only subscribed podcasts.
@@ -267,11 +266,11 @@ def list_podcasts(args, config: Config):
 def show_status(args, config: Config):
     """
     Display overall statistics or detailed status for a specific podcast to stdout.
-    
+
     Parameters:
         args: Parsed command-line arguments. If `args.podcast_id` is provided, the command prints detailed stats for that podcast; otherwise it prints aggregated overall statistics.
         config (Config): Application configuration used to create the repository and read database connection settings.
-    
+
     Notes:
         Exits with status code 1 if a specified `podcast_id` is not found.
     """
@@ -291,12 +290,12 @@ def show_status(args, config: Config):
 
             print(f"\nPodcast: {stats['title']}")
             print(f"  Total episodes: {stats['total_episodes']}")
-            print(f"\n  Download Status:")
+            print("\n  Download Status:")
             print(f"    Pending: {stats['pending_download']}")
             print(f"    Downloading: {stats['downloading']}")
             print(f"    Completed: {stats['downloaded']}")
             print(f"    Failed: {stats['download_failed']}")
-            print(f"\n  Processing Status:")
+            print("\n  Processing Status:")
             print(f"    Pending transcription: {stats['pending_transcription']}")
             print(f"    Transcribed: {stats['transcribed']}")
             print(f"    Indexed: {stats['indexed']}")
@@ -304,21 +303,21 @@ def show_status(args, config: Config):
         else:
             stats = repository.get_overall_stats()
 
-            print(f"\nOverall Statistics:")
+            print("\nOverall Statistics:")
             print(f"  Total podcasts: {stats['total_podcasts']}")
             print(f"  Subscribed: {stats['subscribed_podcasts']}")
             print(f"  Total episodes: {stats['total_episodes']}")
-            print(f"\n  Download Status:")
+            print("\n  Download Status:")
             print(f"    Pending: {stats['pending_download']}")
             print(f"    Downloading: {stats['downloading']}")
             print(f"    Completed: {stats['downloaded']}")
             print(f"    Failed: {stats['download_failed']}")
-            print(f"\n  Transcription Status:")
+            print("\n  Transcription Status:")
             print(f"    Pending: {stats['pending_transcription']}")
             print(f"    Processing: {stats['transcribing']}")
             print(f"    Completed: {stats['transcribed']}")
             print(f"    Failed: {stats['transcript_failed']}")
-            print(f"\n  Indexing Status:")
+            print("\n  Indexing Status:")
             print(f"    Pending: {stats['pending_indexing']}")
             print(f"    Indexed: {stats['indexed']}")
             print(f"\n  Fully processed: {stats['fully_processed']}")
@@ -330,7 +329,7 @@ def show_status(args, config: Config):
 def cleanup_audio(args, config: Config):
     """
     Remove downloaded audio files for episodes that are fully processed.
-    
+
     If `args.dry_run` is true, print a summary and list up to 20 episodes (from the queried limit) that would be deleted without modifying files. Otherwise, delete up to `args.limit` processed-episode audio files (default 100) and print the number of files cleaned.
     """
     repository = create_repository(
@@ -389,7 +388,7 @@ def run_pipeline(args, config: Config):
             repository=repository,
         )
 
-        print(f"Starting pipeline orchestrator...")
+        print("Starting pipeline orchestrator...")
         print(f"  Sync interval: {pipeline_config.sync_interval_seconds}s")
         print(f"  Download buffer: {pipeline_config.download_buffer_size} episodes")
         print(f"  Post-processing workers: {pipeline_config.post_processing_workers}")
@@ -398,13 +397,13 @@ def run_pipeline(args, config: Config):
 
         stats = orchestrator.run()
 
-        print(f"\nPipeline stopped.")
+        print("\nPipeline stopped.")
         print(f"  Transcribed: {stats.episodes_transcribed}")
         print(f"  Transcription failures: {stats.transcription_failures}")
         print(f"  Duration: {stats.duration_seconds:.1f}s")
 
         if stats.post_processing:
-            print(f"\n  Post-processing:")
+            print("\n  Post-processing:")
             print(
                 f"    Metadata: {stats.post_processing.metadata_processed} processed, "
                 f"{stats.post_processing.metadata_failed} failed"
@@ -536,7 +535,7 @@ def create_parser() -> argparse.ArgumentParser:
     )
 
     # pipeline command (optimized for continuous GPU utilization)
-    pipeline_parser = subparsers.add_parser(
+    subparsers.add_parser(
         "pipeline",
         help="Run the pipeline orchestrator (optimized for continuous GPU utilization)",
     )

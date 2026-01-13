@@ -4,11 +4,12 @@ Tests for Gemini File Search functionality.
 These tests run in dry_run mode to avoid requiring API credentials.
 """
 
-import pytest
-import sys
-import os
 import json
-from unittest.mock import patch, MagicMock
+import os
+import sys
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 # Add the src directory to sys.path
 sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
@@ -140,7 +141,7 @@ def test_batch_upload_with_progress_callback(tmpdir):
         progress_events.append(info.copy())
 
     manager = GeminiFileSearchManager(config=config, dry_run=True)
-    uploaded = manager.batch_upload_directory(
+    manager.batch_upload_directory(
         directory_path=str(tmpdir),
         pattern="*_transcription.txt",
         progress_callback=progress_callback

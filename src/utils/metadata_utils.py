@@ -7,10 +7,9 @@ different formats used throughout the application.
 import json
 import logging
 import os
-from typing import Dict, List, Optional
 
 
-def deduplicate_preserving_order(items: List) -> List:
+def deduplicate_preserving_order(items: list) -> list:
     """
     Deduplicate a list while preserving the original order.
 
@@ -41,7 +40,7 @@ def deduplicate_preserving_order(items: List) -> List:
     return result
 
 
-def load_metadata_from_file(metadata_path: str) -> Optional[Dict]:
+def load_metadata_from_file(metadata_path: str) -> dict | None:
     """
     Load metadata from a JSON file.
 
@@ -55,14 +54,14 @@ def load_metadata_from_file(metadata_path: str) -> Optional[Dict]:
         return None
 
     try:
-        with open(metadata_path, 'r') as f:
+        with open(metadata_path) as f:
             return json.load(f)
-    except (json.JSONDecodeError, IOError, OSError) as e:
+    except (json.JSONDecodeError, OSError) as e:
         logging.warning(f"Failed to load metadata from {metadata_path}: {e}")
         return None
 
 
-def flatten_episode_metadata(metadata: Dict) -> Dict:
+def flatten_episode_metadata(metadata: dict) -> dict:
     """
     Flatten nested EpisodeMetadata structure to a flat dictionary.
 
@@ -183,7 +182,7 @@ def flatten_episode_metadata(metadata: Dict) -> Dict:
     return flattened
 
 
-def load_and_flatten_metadata(transcript_path: str, transcription_suffix: str = '_transcription.txt') -> Optional[Dict]:
+def load_and_flatten_metadata(transcript_path: str, transcription_suffix: str = '_transcription.txt') -> dict | None:
     """
     Load metadata file corresponding to a transcript and flatten it.
 

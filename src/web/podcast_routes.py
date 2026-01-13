@@ -8,7 +8,6 @@ Provides endpoints for:
 
 import asyncio
 import logging
-from typing import Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request

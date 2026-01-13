@@ -29,7 +29,7 @@ class Config:
     def __init__(self, env_file=None):
         """
         Initialize configuration by loading environment variables and setting default attributes.
-        
+
         Loads environment variables from the provided .env file path when `env_file` is given; otherwise loads from the default environment. After loading, sets configuration attributes (paths, transcription constants, model and file-search settings, prompts location, web app settings, ADK timeout, database connection parameters, and podcast download options) using environment values with sensible defaults.
         Parameters:
             env_file (str | None): Optional path to a .env file to load environment variables from. If omitted, the default environment or default .env discovery is used.
@@ -46,7 +46,7 @@ class Config:
         self.PODCAST_DOWNLOAD_DIRECTORY = os.getenv(
             "PODCAST_DOWNLOAD_DIRECTORY", "/opt/podcasts"
         )
-        
+
         # Transcription-related constants
         self.TRANSCRIPTION_OUTPUT_SUFFIX = "_transcription.txt"
         self.TRANSCRIPTION_TEMP_FILE_SUFFIX = ".transcription_in_progress"

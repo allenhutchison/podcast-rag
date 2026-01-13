@@ -2,11 +2,9 @@
 Tests for metadata utility functions.
 """
 
-import pytest
-import sys
-import os
 import json
-import tempfile
+import os
+import sys
 
 # Add the src directory to sys.path
 sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
@@ -14,8 +12,8 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
 from utils.metadata_utils import (
     deduplicate_preserving_order,
     flatten_episode_metadata,
+    load_and_flatten_metadata,
     load_metadata_from_file,
-    load_and_flatten_metadata
 )
 
 

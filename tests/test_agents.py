@@ -4,27 +4,28 @@ Tests for the ADK agent modules.
 
 import threading
 import time
-from unittest.mock import MagicMock, patch
+import uuid
 
 import pytest
 
 from src.agents.podcast_search import (
-    sanitize_query,
-    escape_filter_value,
-    get_podcast_citations,
-    set_podcast_citations,
-    clear_podcast_citations,
-    get_podcast_filter,
-    get_episode_filter,
-    get_podcast_filter_list,
-    set_podcast_filter,
-    get_latest_podcast_citations,
-    _session_citations,
-    _citations_lock,
-    _session_podcast_filter,
-    _filter_lock,
     _CITATION_TTL_SECONDS,
+    _citations_lock,
+    _filter_lock,
+    _session_citations,
+    _session_podcast_filter,
+    clear_podcast_citations,
+    escape_filter_value,
+    get_episode_filter,
+    get_latest_podcast_citations,
+    get_podcast_citations,
+    get_podcast_filter,
+    get_podcast_filter_list,
+    sanitize_query,
+    set_podcast_citations,
+    set_podcast_filter,
 )
+from src.web.app import _validate_session_id
 
 
 class TestSanitizeQuery:
@@ -246,35 +247,24 @@ class TestSessionIdValidation:
 
     def test_validate_empty_session_id(self):
         """Test that empty session ID generates new UUID."""
-        from src.web.app import _validate_session_id
-        import uuid
-
         result = _validate_session_id("")
         # Should be a valid UUID
         uuid.UUID(result)  # Raises if invalid
 
     def test_validate_valid_uuid(self):
         """Test that valid UUID passes through."""
-        from src.web.app import _validate_session_id
-        import uuid
-
         valid_uuid = str(uuid.uuid4())
         result = _validate_session_id(valid_uuid)
         assert result == valid_uuid
 
     def test_validate_alphanumeric_session_id(self):
         """Test that alphanumeric session IDs are accepted."""
-        from src.web.app import _validate_session_id
-
         session_id = "abc123-def456_ghi"
         result = _validate_session_id(session_id)
         assert result == session_id
 
     def test_validate_rejects_too_long(self):
         """Test that overly long session IDs are rejected."""
-        from src.web.app import _validate_session_id
-        import uuid
-
         long_id = "x" * 100
         result = _validate_session_id(long_id)
         # Should be a new UUID, not the original
@@ -283,9 +273,6 @@ class TestSessionIdValidation:
 
     def test_validate_rejects_invalid_characters(self):
         """Test that session IDs with invalid characters are rejected."""
-        from src.web.app import _validate_session_id
-        import uuid
-
         invalid_ids = [
             "session<script>",
             "session; DROP TABLE",
@@ -296,7 +283,6 @@ class TestSessionIdValidation:
             result = _validate_session_id(invalid_id)
             assert result != invalid_id
             uuid.UUID(result)  # Should be valid UUID
-
 
 
 class TestPodcastFilterList:
@@ -311,10 +297,10 @@ class TestPodcastFilterList:
         """Test setting and getting podcast filter list."""
         session_id = "test-session-list"
         podcast_list = ["Podcast A", "Podcast B", "Podcast C"]
-        
+
         set_podcast_filter(session_id, podcast_list=podcast_list)
         result = get_podcast_filter_list(session_id)
-        
+
         assert result == podcast_list
         assert len(result) == 3
 
@@ -323,7 +309,7 @@ class TestPodcastFilterList:
         session_id = "test-session-empty-list"
         set_podcast_filter(session_id, podcast_list=[])
         result = get_podcast_filter_list(session_id)
-        
+
         assert result == []
 
     def test_podcast_filter_list_returns_none_for_missing_session(self):
@@ -339,17 +325,17 @@ class TestPodcastFilterList:
             'Tech & Science',
             'Health Care, Flooding, DOJ'
         ]
-        
+
         set_podcast_filter(session_id, podcast_list=podcast_list)
         result = get_podcast_filter_list(session_id)
-        
+
         assert result == podcast_list
         assert len(result) == 3
 
     def test_podcast_filter_list_thread_safety(self):
         """Test thread-safe access to podcast filter list."""
         errors = []
-        
+
         def writer(session_id, podcast_list):
             try:
                 for _ in range(50):
@@ -357,7 +343,7 @@ class TestPodcastFilterList:
                     time.sleep(0.001)
             except Exception as e:
                 errors.append(e)
-        
+
         def reader(session_id, expected_list):
             try:
                 for _ in range(50):
@@ -367,24 +353,24 @@ class TestPodcastFilterList:
                     time.sleep(0.001)
             except Exception as e:
                 errors.append(e)
-        
+
         sessions = [
             ("session-1", ["A1", "A2"]),
             ("session-2", ["B1", "B2", "B3"]),
             ("session-3", ["C1"])
         ]
-        
+
         threads = []
         for session_id, podcast_list in sessions:
             t1 = threading.Thread(target=writer, args=(session_id, podcast_list))
             t2 = threading.Thread(target=reader, args=(session_id, podcast_list))
             threads.extend([t1, t2])
-        
+
         for t in threads:
             t.start()
         for t in threads:
             t.join()
-        
+
         assert len(errors) == 0, f"Thread safety errors: {errors}"
 
 
@@ -395,15 +381,15 @@ class TestPodcastFilterMetadataGeneration:
         """Test that metadata filter is correctly built with podcast list."""
         podcast_list = ["Podcast A", "Podcast B", "Podcast C"]
         podcast_or_conditions = []
-        
+
         for podcast_name in podcast_list:
             escaped_podcast = escape_filter_value(podcast_name)
             if escaped_podcast:
                 podcast_or_conditions.append(f'podcast="{escaped_podcast}"')
-        
+
         if podcast_or_conditions:
             filter_expr = f"({' OR '.join(podcast_or_conditions)})"
-        
+
         expected = '(podcast="Podcast A" OR podcast="Podcast B" OR podcast="Podcast C")'
         assert filter_expr == expected
 
@@ -419,11 +405,11 @@ class TestSetPodcastFilterDefaultParameters:
     def test_set_podcast_filter_with_no_parameters_clears_filter(self):
         """Test that calling with only session_id clears the filter."""
         session_id = "test-clear"
-        
+
         set_podcast_filter(session_id, podcast_name="Test Podcast", episode_name="Episode 1")
         assert get_podcast_filter(session_id) == "Test Podcast"
         assert get_episode_filter(session_id) == "Episode 1"
-        
+
         set_podcast_filter(session_id)
         assert get_podcast_filter(session_id) is None
         assert get_episode_filter(session_id) is None
@@ -432,7 +418,7 @@ class TestSetPodcastFilterDefaultParameters:
     def test_set_podcast_filter_podcast_name_optional(self):
         """Test that podcast_name is now optional."""
         session_id = "test-optional"
-        
+
         set_podcast_filter(session_id, episode_name="Episode Only")
         assert get_episode_filter(session_id) == "Episode Only"
 
@@ -444,7 +430,7 @@ class TestBackwardsCompatibility:
         """Test that deprecated function uses default session."""
         citations = [{"index": 1, "title": "Test"}]
         set_podcast_citations("_default", citations)
-        
+
         result = get_latest_podcast_citations()
         assert result == citations
         assert result == get_podcast_citations("_default")
@@ -457,7 +443,7 @@ class TestEscapeFilterValueEdgeCases:
         """Test that unicode characters are preserved."""
         value = "Tech 技術 Podcast"
         result = escape_filter_value(value)
-        
+
         assert result == value
         assert "技術" in result
 
@@ -467,7 +453,7 @@ class TestEscapeFilterValueEdgeCases:
         result = escape_filter_value(value)
         assert result == value
         assert len(result) == 500
-        
+
         value = "x" * 501
         result = escape_filter_value(value)
         assert result is not None
@@ -488,7 +474,7 @@ class TestSanitizeQueryAdditionalCases:
         query = "x" * 2000
         result = sanitize_query(query)
         assert len(result) == 2000
-        
+
         query = "x" * 2001
         result = sanitize_query(query)
         assert len(result) == 2000
@@ -505,16 +491,16 @@ class TestCitationStorageTTL:
         """Test that expired citations are cleaned up."""
         session_id = "test-expire-citations"
         citations = [{"index": 1, "title": "Test"}]
-        
+
         set_podcast_citations(session_id, citations)
         assert len(get_podcast_citations(session_id)) == 1
-        
+
         with _citations_lock:
             if session_id in _session_citations:
                 _session_citations[session_id]['timestamp'] = time.time() - _CITATION_TTL_SECONDS - 10
-        
+
         set_podcast_citations("new-session", [{"index": 1, "title": "New"}])
-        
+
         result = get_podcast_citations(session_id)
         assert len(result) == 0
 

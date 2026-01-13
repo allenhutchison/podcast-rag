@@ -6,14 +6,13 @@ and other workflow-related settings.
 
 import os
 from dataclasses import dataclass
-from typing import Optional
 
 
 def _get_int_env(
     name: str,
     default: int,
-    min_val: Optional[int] = None,
-    max_val: Optional[int] = None,
+    min_val: int | None = None,
+    max_val: int | None = None,
 ) -> int:
     """Parse an integer from an environment variable with validation.
 
@@ -35,10 +34,10 @@ def _get_int_env(
 
     try:
         value = int(raw)
-    except ValueError:
+    except ValueError as err:
         raise ValueError(
             f"Invalid value for {name}: '{raw}' is not a valid integer"
-        )
+        ) from err
 
     if min_val is not None and value < min_val:
         raise ValueError(
