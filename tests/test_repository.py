@@ -1025,3 +1025,833 @@ class TestEscapeLikePattern:
 # - TestTranscriptTextStorage: Tests for storing transcript text directly in database
 # - TestMP3Metadata: Tests for MP3 ID3 tag metadata storage
 # - TestPendingEpisodesWithTranscriptText: Tests for pending episode queries with new storage
+
+
+class TestPipelineModeMethods:
+    """Tests for pipeline mode processing methods."""
+
+    def test_get_download_buffer_count(self, repository, sample_podcast):
+        """Test counting episodes ready for transcription."""
+        # Create episodes with different statuses
+        for i in range(3):
+            episode = repository.create_episode(
+                podcast_id=sample_podcast.id,
+                guid=f"episode-{i}",
+                title=f"Episode {i}",
+                enclosure_url=f"https://example.com/episode{i}.mp3",
+                enclosure_type="audio/mpeg",
+            )
+            repository.mark_download_complete(episode.id, f"/path/ep{i}.mp3", 1000, "hash")
+
+        count = repository.get_download_buffer_count()
+        assert count == 3
+
+    def test_get_next_for_transcription(self, repository, sample_podcast):
+        """Test getting next episode for transcription."""
+        from datetime import datetime, UTC
+
+        # Create episodes with different dates
+        ep1 = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Older Episode",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+            published_date=datetime(2024, 1, 1, tzinfo=UTC),
+        )
+        repository.mark_download_complete(ep1.id, "/path/ep1.mp3", 1000, "hash1")
+
+        ep2 = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-2",
+            title="Newer Episode",
+            enclosure_url="https://example.com/episode2.mp3",
+            enclosure_type="audio/mpeg",
+            published_date=datetime(2024, 6, 1, tzinfo=UTC),
+        )
+        repository.mark_download_complete(ep2.id, "/path/ep2.mp3", 1000, "hash2")
+
+        # Should get newer episode first
+        next_ep = repository.get_next_for_transcription()
+        assert next_ep is not None
+        assert next_ep.id == ep2.id
+
+    def test_get_next_for_transcription_none_available(self, repository):
+        """Test getting next episode when none available."""
+        next_ep = repository.get_next_for_transcription()
+        assert next_ep is None
+
+    def test_get_next_pending_post_processing_metadata(self, repository, sample_podcast):
+        """Test getting next episode for metadata extraction."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+        repository.mark_transcript_complete(episode.id, transcript_text="Transcript")
+
+        next_ep = repository.get_next_pending_post_processing()
+        assert next_ep is not None
+        assert next_ep.id == episode.id
+
+    def test_get_next_pending_post_processing_indexing(self, repository, sample_podcast):
+        """Test getting next episode for indexing."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+        repository.mark_transcript_complete(episode.id, transcript_text="Transcript")
+        repository.mark_metadata_complete(episode.id, summary="Summary")
+
+        next_ep = repository.get_next_pending_post_processing()
+        assert next_ep is not None
+        assert next_ep.id == episode.id
+
+    def test_get_next_pending_post_processing_none(self, repository):
+        """Test getting next episode when none need post-processing."""
+        next_ep = repository.get_next_pending_post_processing()
+        assert next_ep is None
+
+    def test_increment_retry_count(self, repository, sample_podcast):
+        """Test incrementing retry counts for different stages."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        # Test transcript retry
+        count = repository.increment_retry_count(episode.id, "transcript")
+        assert count == 1
+        count = repository.increment_retry_count(episode.id, "transcript")
+        assert count == 2
+
+        # Test metadata retry
+        count = repository.increment_retry_count(episode.id, "metadata")
+        assert count == 1
+
+        # Test indexing retry
+        count = repository.increment_retry_count(episode.id, "indexing")
+        assert count == 1
+
+    def test_increment_retry_count_invalid_stage(self, repository, sample_podcast):
+        """Test increment_retry_count with invalid stage."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        with pytest.raises(ValueError, match="Invalid stage"):
+            repository.increment_retry_count(episode.id, "invalid")
+
+    def test_increment_retry_count_nonexistent_episode(self, repository):
+        """Test increment_retry_count for nonexistent episode."""
+        with pytest.raises(ValueError, match="Episode not found"):
+            repository.increment_retry_count("nonexistent", "transcript")
+
+    def test_mark_permanently_failed(self, repository, sample_podcast):
+        """Test marking episode as permanently failed."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        repository.mark_permanently_failed(episode.id, "transcript", "Max retries exceeded")
+        episode = repository.get_episode(episode.id)
+        assert episode.transcript_status == "permanently_failed"
+        assert episode.transcript_error == "Max retries exceeded"
+
+    def test_mark_permanently_failed_metadata(self, repository, sample_podcast):
+        """Test marking episode as permanently failed for metadata."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        repository.mark_permanently_failed(episode.id, "metadata", "API error")
+        episode = repository.get_episode(episode.id)
+        assert episode.metadata_status == "permanently_failed"
+
+    def test_mark_permanently_failed_indexing(self, repository, sample_podcast):
+        """Test marking episode as permanently failed for indexing."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        repository.mark_permanently_failed(episode.id, "indexing", "Upload failed")
+        episode = repository.get_episode(episode.id)
+        assert episode.file_search_status == "permanently_failed"
+
+    def test_mark_permanently_failed_invalid_stage(self, repository, sample_podcast):
+        """Test mark_permanently_failed with invalid stage."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        with pytest.raises(ValueError, match="Invalid stage"):
+            repository.mark_permanently_failed(episode.id, "invalid", "Error")
+
+    def test_reset_episode_for_retry(self, repository, sample_podcast):
+        """Test resetting episode status for retry."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        # Mark as failed first
+        repository.mark_transcript_failed(episode.id, "Some error")
+        episode = repository.get_episode(episode.id)
+        assert episode.transcript_status == "failed"
+
+        # Reset for retry
+        repository.reset_episode_for_retry(episode.id, "transcript")
+        episode = repository.get_episode(episode.id)
+        assert episode.transcript_status == "pending"
+        assert episode.transcript_error is None
+
+    def test_reset_episode_for_retry_download(self, repository, sample_podcast):
+        """Test resetting download status for retry."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        repository.mark_download_failed(episode.id, "Download error")
+        repository.reset_episode_for_retry(episode.id, "download")
+        episode = repository.get_episode(episode.id)
+        assert episode.download_status == "pending"
+
+    def test_reset_episode_for_retry_invalid_stage(self, repository, sample_podcast):
+        """Test reset_episode_for_retry with invalid stage."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        with pytest.raises(ValueError, match="Invalid stage"):
+            repository.reset_episode_for_retry(episode.id, "invalid")
+
+
+class TestUserOperations:
+    """Tests for user CRUD operations."""
+
+    def test_create_user(self, repository):
+        """Test creating a user."""
+        user = repository.create_user(
+            google_id="google123",
+            email="test@example.com",
+            name="Test User",
+            picture_url="https://example.com/pic.jpg",
+        )
+
+        assert user.id is not None
+        assert user.google_id == "google123"
+        assert user.email == "test@example.com"
+        assert user.name == "Test User"
+        assert user.picture_url == "https://example.com/pic.jpg"
+
+    def test_create_user_duplicate_returns_existing(self, repository):
+        """Test creating duplicate user returns existing."""
+        user1 = repository.create_user(
+            google_id="google123",
+            email="test@example.com",
+        )
+        user2 = repository.create_user(
+            google_id="google123",
+            email="test@example.com",
+        )
+
+        assert user1.id == user2.id
+
+    def test_get_user(self, repository):
+        """Test getting a user by ID."""
+        user = repository.create_user(
+            google_id="google123",
+            email="test@example.com",
+        )
+
+        retrieved = repository.get_user(user.id)
+        assert retrieved is not None
+        assert retrieved.id == user.id
+
+    def test_get_user_nonexistent(self, repository):
+        """Test getting nonexistent user returns None."""
+        retrieved = repository.get_user("nonexistent")
+        assert retrieved is None
+
+    def test_get_user_by_google_id(self, repository):
+        """Test getting user by Google ID."""
+        user = repository.create_user(
+            google_id="google123",
+            email="test@example.com",
+        )
+
+        retrieved = repository.get_user_by_google_id("google123")
+        assert retrieved is not None
+        assert retrieved.id == user.id
+
+    def test_get_user_by_google_id_not_found(self, repository):
+        """Test getting user by nonexistent Google ID."""
+        retrieved = repository.get_user_by_google_id("nonexistent")
+        assert retrieved is None
+
+    def test_get_user_by_email(self, repository):
+        """Test getting user by email."""
+        user = repository.create_user(
+            google_id="google123",
+            email="test@example.com",
+        )
+
+        retrieved = repository.get_user_by_email("test@example.com")
+        assert retrieved is not None
+        assert retrieved.id == user.id
+
+    def test_get_user_by_email_not_found(self, repository):
+        """Test getting user by nonexistent email."""
+        retrieved = repository.get_user_by_email("nonexistent@example.com")
+        assert retrieved is None
+
+    def test_update_user(self, repository):
+        """Test updating a user."""
+        user = repository.create_user(
+            google_id="google123",
+            email="test@example.com",
+            name="Original Name",
+        )
+
+        updated = repository.update_user(user.id, name="Updated Name")
+        assert updated is not None
+        assert updated.name == "Updated Name"
+
+    def test_update_user_nonexistent(self, repository):
+        """Test updating nonexistent user returns None."""
+        updated = repository.update_user("nonexistent", name="New Name")
+        assert updated is None
+
+    def test_list_users(self, repository):
+        """Test listing users."""
+        repository.create_user(google_id="google1", email="user1@example.com")
+        repository.create_user(google_id="google2", email="user2@example.com")
+        repository.create_user(google_id="google3", email="user3@example.com")
+
+        users = repository.list_users()
+        assert len(users) == 3
+
+    def test_list_users_with_limit(self, repository):
+        """Test listing users with limit."""
+        for i in range(5):
+            repository.create_user(google_id=f"google{i}", email=f"user{i}@example.com")
+
+        users = repository.list_users(limit=3)
+        assert len(users) == 3
+
+    def test_list_users_filter_admin(self, repository):
+        """Test listing only admin users."""
+        user1 = repository.create_user(google_id="google1", email="user1@example.com")
+        repository.create_user(google_id="google2", email="user2@example.com")
+
+        repository.set_user_admin_status(user1.id, True)
+
+        admins = repository.list_users(is_admin=True)
+        assert len(admins) == 1
+        assert admins[0].id == user1.id
+
+    def test_list_users_filter_active(self, repository):
+        """Test listing active users."""
+        user1 = repository.create_user(google_id="google1", email="user1@example.com")
+        user2 = repository.create_user(google_id="google2", email="user2@example.com")
+
+        repository.update_user(user2.id, is_active=False)
+
+        active_users = repository.list_users(is_active=True)
+        assert len(active_users) == 1
+        assert active_users[0].id == user1.id
+
+    def test_list_users_with_offset(self, repository):
+        """Test listing users with offset."""
+        for i in range(5):
+            repository.create_user(google_id=f"google{i}", email=f"user{i}@example.com")
+
+        users = repository.list_users(offset=2, limit=2)
+        assert len(users) == 2
+
+    def test_set_user_admin_status(self, repository):
+        """Test setting user admin status."""
+        user = repository.create_user(google_id="google1", email="user@example.com")
+        assert user.is_admin is False
+
+        updated = repository.set_user_admin_status(user.id, True)
+        assert updated.is_admin is True
+
+        updated = repository.set_user_admin_status(user.id, False)
+        assert updated.is_admin is False
+
+    def test_get_user_count(self, repository):
+        """Test getting user count."""
+        for i in range(3):
+            repository.create_user(google_id=f"google{i}", email=f"user{i}@example.com")
+
+        count = repository.get_user_count()
+        assert count == 3
+
+    def test_get_user_count_admin_filter(self, repository):
+        """Test getting admin user count."""
+        user1 = repository.create_user(google_id="google1", email="user1@example.com")
+        repository.create_user(google_id="google2", email="user2@example.com")
+
+        repository.set_user_admin_status(user1.id, True)
+
+        admin_count = repository.get_user_count(is_admin=True)
+        assert admin_count == 1
+
+        non_admin_count = repository.get_user_count(is_admin=False)
+        assert non_admin_count == 1
+
+
+class TestSubscriptionOperations:
+    """Tests for user subscription operations."""
+
+    @pytest.fixture
+    def user(self, repository):
+        """Create a test user."""
+        return repository.create_user(
+            google_id="google123",
+            email="test@example.com",
+        )
+
+    def test_subscribe_user_to_podcast(self, repository, sample_podcast, user):
+        """Test subscribing user to podcast."""
+        subscription = repository.subscribe_user_to_podcast(user.id, sample_podcast.id)
+
+        assert subscription is not None
+        assert subscription.user_id == user.id
+        assert subscription.podcast_id == sample_podcast.id
+
+    def test_subscribe_user_already_subscribed(self, repository, sample_podcast, user):
+        """Test subscribing when already subscribed returns existing."""
+        sub1 = repository.subscribe_user_to_podcast(user.id, sample_podcast.id)
+        sub2 = repository.subscribe_user_to_podcast(user.id, sample_podcast.id)
+
+        assert sub1.id == sub2.id
+
+    def test_unsubscribe_user_from_podcast(self, repository, sample_podcast, user):
+        """Test unsubscribing user from podcast."""
+        repository.subscribe_user_to_podcast(user.id, sample_podcast.id)
+
+        result = repository.unsubscribe_user_from_podcast(user.id, sample_podcast.id)
+        assert result is True
+
+        # Verify unsubscribed
+        is_subscribed = repository.is_user_subscribed(user.id, sample_podcast.id)
+        assert is_subscribed is False
+
+    def test_unsubscribe_user_not_subscribed(self, repository, sample_podcast, user):
+        """Test unsubscribing when not subscribed returns False."""
+        result = repository.unsubscribe_user_from_podcast(user.id, sample_podcast.id)
+        assert result is False
+
+    def test_is_user_subscribed(self, repository, sample_podcast, user):
+        """Test checking if user is subscribed."""
+        assert repository.is_user_subscribed(user.id, sample_podcast.id) is False
+
+        repository.subscribe_user_to_podcast(user.id, sample_podcast.id)
+
+        assert repository.is_user_subscribed(user.id, sample_podcast.id) is True
+
+    def test_get_user_subscriptions(self, repository, user):
+        """Test getting user subscriptions."""
+        podcast1 = repository.create_podcast(
+            feed_url="https://example.com/feed1.xml",
+            title="Podcast 1",
+        )
+        podcast2 = repository.create_podcast(
+            feed_url="https://example.com/feed2.xml",
+            title="Podcast 2",
+        )
+
+        repository.subscribe_user_to_podcast(user.id, podcast1.id)
+        repository.subscribe_user_to_podcast(user.id, podcast2.id)
+
+        subscriptions = repository.get_user_subscriptions(user.id)
+        assert len(subscriptions) == 2
+
+    def test_get_user_subscriptions_sorted_alphabetical(self, repository, user):
+        """Test getting user subscriptions sorted alphabetically."""
+        podcast1 = repository.create_podcast(
+            feed_url="https://example.com/feed1.xml",
+            title="Zebra Podcast",
+        )
+        podcast2 = repository.create_podcast(
+            feed_url="https://example.com/feed2.xml",
+            title="Alpha Podcast",
+        )
+
+        repository.subscribe_user_to_podcast(user.id, podcast1.id)
+        repository.subscribe_user_to_podcast(user.id, podcast2.id)
+
+        subscriptions = repository.get_user_subscriptions(user.id, sort_by="alphabetical", sort_order="asc")
+        assert len(subscriptions) == 2
+        assert subscriptions[0].title == "Alpha Podcast"
+        assert subscriptions[1].title == "Zebra Podcast"
+
+    def test_list_podcasts_for_user(self, repository, user):
+        """Test listing podcasts for user."""
+        podcast1 = repository.create_podcast(
+            feed_url="https://example.com/feed1.xml",
+            title="Podcast 1",
+        )
+        podcast2 = repository.create_podcast(
+            feed_url="https://example.com/feed2.xml",
+            title="Podcast 2",
+        )
+
+        repository.subscribe_user_to_podcast(user.id, podcast1.id)
+        repository.subscribe_user_to_podcast(user.id, podcast2.id)
+
+        podcasts = repository.list_podcasts_for_user(user.id)
+        assert len(podcasts) == 2
+
+    def test_list_podcasts_for_user_with_limit(self, repository, user):
+        """Test listing podcasts for user with limit."""
+        for i in range(5):
+            podcast = repository.create_podcast(
+                feed_url=f"https://example.com/feed{i}.xml",
+                title=f"Podcast {i}",
+            )
+            repository.subscribe_user_to_podcast(user.id, podcast.id)
+
+        podcasts = repository.list_podcasts_for_user(user.id, limit=3)
+        assert len(podcasts) == 3
+
+
+class TestEmailDigestOperations:
+    """Tests for email digest operations."""
+
+    @pytest.fixture
+    def user_with_digest(self, repository):
+        """Create a user with email digest enabled."""
+        user = repository.create_user(
+            google_id="google123",
+            email="test@example.com",
+        )
+        return repository.update_user(user.id, email_digest_enabled=True)
+
+    def test_get_users_for_email_digest(self, repository, user_with_digest):
+        """Test getting users eligible for email digest."""
+        users = repository.get_users_for_email_digest()
+        assert len(users) == 1
+        assert users[0].id == user_with_digest.id
+
+    def test_get_users_for_email_digest_inactive_excluded(self, repository):
+        """Test that inactive users are excluded."""
+        user = repository.create_user(
+            google_id="google123",
+            email="test@example.com",
+        )
+        repository.update_user(user.id, email_digest_enabled=True, is_active=False)
+
+        users = repository.get_users_for_email_digest()
+        assert len(users) == 0
+
+    def test_get_users_for_email_digest_disabled_excluded(self, repository):
+        """Test that users with digest disabled are excluded."""
+        repository.create_user(
+            google_id="google123",
+            email="test@example.com",
+        )
+        # email_digest_enabled defaults to False
+
+        users = repository.get_users_for_email_digest()
+        assert len(users) == 0
+
+    def test_mark_email_digest_sent(self, repository, user_with_digest):
+        """Test marking email digest as sent."""
+        repository.mark_email_digest_sent(user_with_digest.id)
+
+        user = repository.get_user(user_with_digest.id)
+        assert user.last_email_digest_sent is not None
+
+    def test_get_new_episodes_for_user_since(self, repository, sample_podcast):
+        """Test getting new episodes for user since a date."""
+        from datetime import datetime, timedelta, UTC
+
+        user = repository.create_user(google_id="google123", email="test@example.com")
+        repository.subscribe_user_to_podcast(user.id, sample_podcast.id)
+
+        # Create an episode with metadata
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+            published_date=datetime.now(UTC),
+        )
+        repository.mark_metadata_complete(episode.id, summary="Episode summary")
+
+        since = datetime.now(UTC) - timedelta(hours=1)
+        episodes = repository.get_new_episodes_for_user_since(user.id, since)
+        assert len(episodes) == 1
+
+    def test_get_recent_processed_episodes(self, repository, sample_podcast):
+        """Test getting recent processed episodes."""
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="episode-1",
+            title="Episode 1",
+            enclosure_url="https://example.com/episode1.mp3",
+            enclosure_type="audio/mpeg",
+        )
+        repository.mark_metadata_complete(episode.id, summary="Episode summary")
+
+        episodes = repository.get_recent_processed_episodes(limit=5)
+        assert len(episodes) == 1
+        assert episodes[0].id == episode.id
+
+
+class TestConversationOperations:
+    """Tests for conversation and chat message operations."""
+
+    @pytest.fixture
+    def user(self, repository):
+        """Create a test user."""
+        return repository.create_user(
+            google_id="google123",
+            email="test@example.com",
+        )
+
+    def test_create_conversation(self, repository, user):
+        """Test creating a conversation."""
+        conversation = repository.create_conversation(
+            user_id=user.id,
+            scope="global",
+            title="Test Conversation",
+        )
+
+        assert conversation.id is not None
+        assert conversation.user_id == user.id
+        assert conversation.scope == "global"
+        assert conversation.title == "Test Conversation"
+
+    def test_create_conversation_with_podcast(self, repository, user, sample_podcast):
+        """Test creating a conversation scoped to a podcast."""
+        conversation = repository.create_conversation(
+            user_id=user.id,
+            scope="podcast",
+            podcast_id=sample_podcast.id,
+        )
+
+        assert conversation.podcast_id == sample_podcast.id
+
+    def test_get_conversation(self, repository, user):
+        """Test getting a conversation by ID."""
+        conversation = repository.create_conversation(
+            user_id=user.id,
+            scope="global",
+        )
+
+        retrieved = repository.get_conversation(conversation.id)
+        assert retrieved is not None
+        assert retrieved.id == conversation.id
+
+    def test_get_conversation_nonexistent(self, repository):
+        """Test getting nonexistent conversation returns None."""
+        retrieved = repository.get_conversation("nonexistent")
+        assert retrieved is None
+
+    def test_list_conversations(self, repository, user):
+        """Test listing conversations for a user."""
+        for i in range(3):
+            repository.create_conversation(
+                user_id=user.id,
+                scope="global",
+                title=f"Conversation {i}",
+            )
+
+        conversations = repository.list_conversations(user.id)
+        assert len(conversations) == 3
+
+    def test_list_conversations_with_limit(self, repository, user):
+        """Test listing conversations with limit and offset."""
+        for i in range(5):
+            repository.create_conversation(
+                user_id=user.id,
+                scope="global",
+                title=f"Conversation {i}",
+            )
+
+        conversations = repository.list_conversations(user.id, limit=2, offset=1)
+        assert len(conversations) == 2
+
+    def test_update_conversation(self, repository, user):
+        """Test updating a conversation."""
+        conversation = repository.create_conversation(
+            user_id=user.id,
+            scope="global",
+            title="Original Title",
+        )
+
+        updated = repository.update_conversation(conversation.id, title="Updated Title")
+        assert updated is not None
+        assert updated.title == "Updated Title"
+
+    def test_update_conversation_nonexistent(self, repository):
+        """Test updating nonexistent conversation returns None."""
+        updated = repository.update_conversation("nonexistent", title="New Title")
+        assert updated is None
+
+    def test_delete_conversation(self, repository, user):
+        """Test deleting a conversation."""
+        conversation = repository.create_conversation(
+            user_id=user.id,
+            scope="global",
+        )
+
+        result = repository.delete_conversation(conversation.id)
+        assert result is True
+
+        retrieved = repository.get_conversation(conversation.id)
+        assert retrieved is None
+
+    def test_delete_conversation_nonexistent(self, repository):
+        """Test deleting nonexistent conversation returns False."""
+        result = repository.delete_conversation("nonexistent")
+        assert result is False
+
+    def test_add_message(self, repository, user):
+        """Test adding a message to a conversation."""
+        conversation = repository.create_conversation(
+            user_id=user.id,
+            scope="global",
+        )
+
+        message = repository.add_message(
+            conversation_id=conversation.id,
+            role="user",
+            content="Hello, world!",
+        )
+
+        assert message.id is not None
+        assert message.role == "user"
+        assert message.content == "Hello, world!"
+
+    def test_add_message_with_citations(self, repository, user):
+        """Test adding a message with citations."""
+        conversation = repository.create_conversation(
+            user_id=user.id,
+            scope="global",
+        )
+
+        citations = [{"source": "Episode 1", "text": "Quote"}]
+        message = repository.add_message(
+            conversation_id=conversation.id,
+            role="assistant",
+            content="Response with citation",
+            citations=citations,
+        )
+
+        assert message.citations == citations
+
+    def test_add_message_updates_conversation(self, repository, user):
+        """Test that adding a message updates conversation timestamp and count."""
+        conversation = repository.create_conversation(
+            user_id=user.id,
+            scope="global",
+        )
+        original_updated_at = conversation.updated_at
+
+        import time
+        time.sleep(0.1)
+
+        repository.add_message(
+            conversation_id=conversation.id,
+            role="user",
+            content="Test message",
+        )
+
+        updated_conversation = repository.get_conversation(conversation.id)
+        assert updated_conversation.message_count == 1
+        assert updated_conversation.updated_at > original_updated_at
+
+    def test_get_messages(self, repository, user):
+        """Test getting messages for a conversation."""
+        conversation = repository.create_conversation(
+            user_id=user.id,
+            scope="global",
+        )
+
+        for i in range(3):
+            repository.add_message(
+                conversation_id=conversation.id,
+                role="user" if i % 2 == 0 else "assistant",
+                content=f"Message {i}",
+            )
+
+        messages = repository.get_messages(conversation.id)
+        assert len(messages) == 3
+
+    def test_get_messages_with_limit(self, repository, user):
+        """Test getting messages with limit and offset."""
+        conversation = repository.create_conversation(
+            user_id=user.id,
+            scope="global",
+        )
+
+        for i in range(5):
+            repository.add_message(
+                conversation_id=conversation.id,
+                role="user",
+                content=f"Message {i}",
+            )
+
+        messages = repository.get_messages(conversation.id, limit=2, offset=1)
+        assert len(messages) == 2
+
+    def test_count_conversations(self, repository, user):
+        """Test counting conversations for a user."""
+        for i in range(3):
+            repository.create_conversation(
+                user_id=user.id,
+                scope="global",
+            )
+
+        count = repository.count_conversations(user.id)
+        assert count == 3
+
+    def test_count_conversations_empty(self, repository, user):
+        """Test counting conversations when user has none."""
+        count = repository.count_conversations(user.id)
+        assert count == 0
