@@ -487,7 +487,7 @@ class TestPodcastRoutesIntegration:
     @patch("src.web.podcast_routes.FeedSyncService")
     def test_add_new_podcast_success(self, mock_sync_class, authenticated_client):
         """Test successfully adding a new podcast."""
-        client, mock_repo = authenticated_client
+        client, _ = authenticated_client
 
         mock_sync = Mock()
         mock_sync.add_podcast_from_url.return_value = {
@@ -512,7 +512,7 @@ class TestPodcastRoutesIntegration:
     @patch("src.web.podcast_routes.FeedSyncService")
     def test_add_new_podcast_sync_error(self, mock_sync_class, authenticated_client):
         """Test adding a new podcast when sync fails."""
-        client, mock_repo = authenticated_client
+        client, _ = authenticated_client
 
         mock_sync = Mock()
         mock_sync.add_podcast_from_url.return_value = {
@@ -534,7 +534,7 @@ class TestPodcastRoutesIntegration:
     @patch("src.web.podcast_routes.FeedSyncService")
     def test_add_new_podcast_exception(self, mock_sync_class, authenticated_client):
         """Test adding a new podcast when an exception occurs."""
-        client, mock_repo = authenticated_client
+        client, _ = authenticated_client
 
         mock_sync = Mock()
         mock_sync.add_podcast_from_url.side_effect = Exception("Network error")
