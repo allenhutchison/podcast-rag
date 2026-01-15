@@ -330,54 +330,79 @@ class TestCleanupFunctions:
 
     def test_cleanup_old_citations(self):
         """Test that old citations are cleaned up."""
+        import src.agents.podcast_search as podcast_search_module
         from src.agents.podcast_search import (
             set_podcast_citations,
             get_podcast_citations,
-            _session_citations,
+            clear_podcast_citations,
             _CITATION_TTL_SECONDS,
         )
 
         session_id = "test-cleanup-citations"
         citations = [{"index": 1}]
+        current_time = time.time()
 
-        # Set citations with old timestamp
-        with patch.object(
-            time,
-            'time',
-            return_value=time.time() - _CITATION_TTL_SECONDS - 100
-        ):
-            set_podcast_citations(session_id, citations)
+        try:
+            # Set citations with old timestamp by patching time in the target module
+            with patch.object(
+                podcast_search_module.time,
+                'time',
+                return_value=current_time - _CITATION_TTL_SECONDS - 100
+            ):
+                set_podcast_citations(session_id, citations)
 
-        # Next set_podcast_citations should trigger cleanup
-        set_podcast_citations("another-session", [])
+            # Next set_podcast_citations should trigger cleanup with current time
+            with patch.object(
+                podcast_search_module.time,
+                'time',
+                return_value=current_time
+            ):
+                set_podcast_citations("another-session-cleanup", [])
 
-        # Original session should be cleaned up
-        result = get_podcast_citations(session_id)
-        # May or may not be cleaned up depending on timing
+            # Original session should be cleaned up because it's older than TTL
+            result = get_podcast_citations(session_id)
+            assert result == [], f"Expected empty citations after cleanup, got {result}"
+        finally:
+            # Cleanup test sessions
+            clear_podcast_citations(session_id)
+            clear_podcast_citations("another-session-cleanup")
 
     def test_cleanup_old_filters(self):
         """Test that old filters are cleaned up."""
+        import src.agents.podcast_search as podcast_search_module
         from src.agents.podcast_search import (
             set_podcast_filter,
             get_podcast_filter,
-            _session_podcast_filter,
             _CITATION_TTL_SECONDS,
         )
 
         session_id = "test-cleanup-filter"
+        current_time = time.time()
 
-        # Set filter with old timestamp
-        with patch.object(
-            time,
-            'time',
-            return_value=time.time() - _CITATION_TTL_SECONDS - 100
-        ):
-            set_podcast_filter(session_id, podcast_name="Test")
+        try:
+            # Set filter with old timestamp by patching time in the target module
+            with patch.object(
+                podcast_search_module.time,
+                'time',
+                return_value=current_time - _CITATION_TTL_SECONDS - 100
+            ):
+                set_podcast_filter(session_id, podcast_name="Test")
 
-        # Next set_podcast_filter should trigger cleanup
-        set_podcast_filter("another-filter-session", podcast_name="New")
+            # Next set_podcast_filter should trigger cleanup with current time
+            with patch.object(
+                podcast_search_module.time,
+                'time',
+                return_value=current_time
+            ):
+                set_podcast_filter("another-filter-session-cleanup", podcast_name="New")
 
-        # Original session may be cleaned up
+            # Original session should be cleaned up because it's older than TTL
+            result = get_podcast_filter(session_id)
+            assert result is None, f"Expected None after cleanup, got {result}"
+        finally:
+            # Cleanup test sessions
+            set_podcast_filter(session_id)
+            set_podcast_filter("another-filter-session-cleanup")
 
 
 class TestThreadSafety:
