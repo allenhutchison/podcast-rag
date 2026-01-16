@@ -36,6 +36,16 @@ def sample_podcast(repository):
     )
 
 
+@pytest.fixture
+def sample_user(repository):
+    """Create and persist a sample user for tests."""
+    return repository.create_user(
+        google_id="test_google_id",
+        email="test@example.com",
+        name="Test User",
+    )
+
+
 class TestPodcastOperations:
     """Tests for podcast CRUD operations."""
 
@@ -50,7 +60,6 @@ class TestPodcastOperations:
         assert podcast.id is not None
         assert podcast.feed_url == "https://example.com/feed.xml"
         assert podcast.title == "Test Podcast"
-        assert podcast.is_subscribed is True
 
     def test_get_podcast(self, repository, sample_podcast):
         """Test getting a podcast by ID."""
@@ -86,23 +95,26 @@ class TestPodcastOperations:
         podcasts = repository.list_podcasts()
         assert len(podcasts) == 2
 
-    def test_list_podcasts_subscribed_only(self, repository):
-        """Test listing only subscribed podcasts."""
-        repository.create_podcast(
+    def test_list_podcasts_with_subscribers(self, repository, sample_user):
+        """Test listing only podcasts with subscribers."""
+        podcast1 = repository.create_podcast(
             feed_url="https://example.com/feed1.xml",
             title="Podcast 1",
-            is_subscribed=True,
         )
-        repository.create_podcast(
+        podcast2 = repository.create_podcast(
             feed_url="https://example.com/feed2.xml",
             title="Podcast 2",
-            is_subscribed=False,
         )
 
-        subscribed = repository.list_podcasts(subscribed_only=True)
-        all_podcasts = repository.list_podcasts(subscribed_only=False)
+        # Subscribe user to podcast1 only
+        repository.subscribe_user_to_podcast(sample_user.id, podcast1.id)
 
-        assert len(subscribed) == 1
+        # list_podcasts_with_subscribers should only return podcast1
+        with_subscribers = repository.list_podcasts_with_subscribers()
+        all_podcasts = repository.list_podcasts()
+
+        assert len(with_subscribers) == 1
+        assert with_subscribers[0].id == podcast1.id
         assert len(all_podcasts) == 2
 
     def test_update_podcast(self, repository, sample_podcast):

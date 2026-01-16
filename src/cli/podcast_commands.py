@@ -221,12 +221,13 @@ def list_podcasts(args, config: Config):
     """
     Prints a table of podcasts to stdout.
 
-    Displays podcasts from the repository as rows containing ID, title (truncated to 40 characters), episode count, and subscription status. Honors the following fields on `args`: `all` (when true, include unsubscribed podcasts) and `limit` (maximum number of podcasts to list).
+    Displays podcasts from the repository as rows containing ID, title (truncated to 40 characters),
+    episode count, and subscriber count. When `args.all` is false, only shows podcasts with subscribers.
 
     Parameters:
         args: argparse.Namespace with at least:
-            - all (bool): If true, include unsubscribed podcasts; otherwise only subscribed podcasts.
-            - limit (int | None): Maximum number of podcasts to retrieve; when None, the repository default is used.
+            - all (bool): If true, include all podcasts; otherwise only podcasts with subscribers.
+            - limit (int | None): Maximum number of podcasts to retrieve; when None, no limit is applied.
     """
     repository = create_repository(
         database_url=config.DATABASE_URL,
@@ -236,27 +237,31 @@ def list_podcasts(args, config: Config):
     )
 
     try:
-        podcasts = repository.list_podcasts(
-            subscribed_only=not args.all,
-            limit=args.limit,
-        )
+        if args.all:
+            podcasts = repository.list_podcasts(limit=args.limit)
+        else:
+            podcasts = repository.list_podcasts_with_subscribers(limit=args.limit)
 
         if not podcasts:
             print("No podcasts found")
             return
 
-        print(f"\n{'ID':<36}  {'Title':<40}  {'Episodes':<10}  {'Status'}")
-        print("-" * 100)
+        # Get subscriber counts for all podcasts in one query
+        podcast_ids = [p.id for p in podcasts]
+        subscriber_counts = repository.get_podcast_subscriber_counts(podcast_ids)
+
+        print(f"\n{'ID':<36}  {'Title':<40}  {'Episodes':<10}  {'Subscribers'}")
+        print("-" * 105)
 
         for podcast in podcasts:
             # Get episode count
             episodes = repository.list_episodes(podcast_id=podcast.id)
-            status = "Subscribed" if podcast.is_subscribed else "Unsubscribed"
+            sub_count = subscriber_counts.get(podcast.id, 0)
             print(
                 f"{podcast.id:<36}  "
                 f"{podcast.title[:40]:<40}  "
                 f"{len(episodes):<10}  "
-                f"{status}"
+                f"{sub_count}"
             )
 
     finally:
@@ -500,7 +505,7 @@ def create_parser() -> argparse.ArgumentParser:
     list_parser.add_argument(
         "--all",
         action="store_true",
-        help="Include unsubscribed podcasts",
+        help="Include all podcasts (default: only podcasts with subscribers)",
     )
     list_parser.add_argument(
         "--limit",

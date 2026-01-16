@@ -64,6 +64,23 @@ def sample_podcast(repository):
 
 
 @pytest.fixture
+def sample_user(repository):
+    """Create a sample user for testing."""
+    return repository.create_user(
+        google_id="test_google_id",
+        email="test@example.com",
+        name="Test User",
+    )
+
+
+@pytest.fixture
+def subscribed_podcast(repository, sample_podcast, sample_user):
+    """Create a sample podcast with a user subscription."""
+    repository.subscribe_user_to_podcast(sample_user.id, sample_podcast.id)
+    return sample_podcast
+
+
+@pytest.fixture
 def sample_episode(repository, sample_podcast):
     """Create a sample episode for testing."""
     return repository.create_episode(
@@ -139,14 +156,14 @@ class TestSyncWorker:
         worker = SyncWorker(config=mock_config, repository=repository)
         assert worker.name == "Sync"
 
-    def test_get_pending_count(self, mock_config, repository, sample_podcast):
+    def test_get_pending_count(self, mock_config, repository, subscribed_podcast):
         """Test getting pending count for sync."""
         from src.workflow.workers.sync import SyncWorker
 
         worker = SyncWorker(config=mock_config, repository=repository)
         count = worker.get_pending_count()
 
-        assert count == 1  # One subscribed podcast
+        assert count == 1  # One podcast with a subscriber
 
 
 class TestDownloadWorker:
