@@ -101,7 +101,7 @@ class TestPodcastOperations:
             feed_url="https://example.com/feed1.xml",
             title="Podcast 1",
         )
-        podcast2 = repository.create_podcast(
+        repository.create_podcast(
             feed_url="https://example.com/feed2.xml",
             title="Podcast 2",
         )
