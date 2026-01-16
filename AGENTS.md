@@ -113,13 +113,11 @@ uv sync
 # 3. Activate virtual environment (optional if using 'uv run')
 source .venv/bin/activate
 
-# 4. Configure environment (see docs/configuration.md for all options)
-# Set required variables in .env or your secrets manager:
-#   GEMINI_API_KEY=your_key_here
-#   PODCAST_DOWNLOAD_DIRECTORY=/path/to/podcasts
+# 4. Configure Doppler for secrets management
+# Ensure you have access to the project's Doppler config
 
-# 5. Initialize the database
-alembic upgrade head
+# 5. Initialize/migrate the database (use doppler for env vars)
+doppler run -- alembic upgrade head
 
 # 6. System dependencies
 # Requires: ffmpeg
@@ -127,38 +125,47 @@ alembic upgrade head
 
 ### Common Tasks
 
-This project uses [poethepoet](https://poethepoet.naez.io/) for task running. Available tasks:
+This project uses [poethepoet](https://poethepoet.naez.io/) for task running. **Use `doppler run --` prefix** for commands that need environment variables.
 
 | Command | Description |
 |---------|-------------|
-| `uv run poe test` | Run pytest |
-| `uv run poe cov` | Run tests with coverage |
-| `uv run poe serve` | Start web server on port 8080 |
-| `uv run poe pipeline` | Run the processing pipeline |
-| `uv run poe query` | Run a RAG query |
+| `uv run poe test` | Run pytest (no doppler needed) |
+| `uv run poe cov` | Run tests with coverage (no doppler needed) |
+| `doppler run -- uv run poe serve` | Start web server on port 8080 |
+| `doppler run -- uv run poe pipeline` | Run the processing pipeline |
+| `doppler run -- uv run poe query` | Run a RAG query |
 
 **Process Podcasts:**
 ```bash
 # Run the processing pipeline (continuous, GPU-optimized)
-uv run poe pipeline
+doppler run -- uv run poe pipeline
 
 # Or using the CLI directly
-python -m src.cli podcast pipeline
+doppler run -- python -m src.cli podcast pipeline
 
 # Check processing status
-python -m src.cli podcast status
+doppler run -- python -m src.cli podcast status
 ```
 
 **Query & Search:**
 ```bash
 # RAG query with Gemini File Search (CLI)
-uv run poe query --query "your question"
+doppler run -- uv run poe query --query "your question"
 
 # Web application (ADK multi-agent with web search)
-uv run poe serve
+doppler run -- uv run poe serve
 
 # Manage File Search store (list, find duplicates, delete)
-python scripts/file_search_utils.py --action list
+doppler run -- python scripts/file_search_utils.py --action list
+```
+
+**Database Migrations:**
+```bash
+# Apply all pending migrations
+doppler run -- alembic upgrade head
+
+# Create a new migration
+doppler run -- alembic revision --autogenerate -m "description"
 ```
 
 **Testing:**
@@ -215,10 +222,13 @@ pytest tests/test_workflow.py -v
 
 ### Environment Variables
 
+This project uses [Doppler](https://www.doppler.com/) for secrets management. **Always use `doppler run --` prefix** when running commands that require environment variables (database operations, API calls, pipeline, etc.).
+
 **Required:**
 - `PODCAST_DOWNLOAD_DIRECTORY` - Base path for podcast audio files
 - `GEMINI_API_KEY` - For metadata extraction and RAG queries
 - `GEMINI_MODEL` - Gemini model to use (e.g., gemini-2.5-flash)
+- `DATABASE_URL` - PostgreSQL connection string
 
 **Optional:**
 - `GEMINI_FILE_SEARCH_STORE_NAME` - Name of File Search store (default: podcast-transcripts)
@@ -346,7 +356,7 @@ Check current branch with: `git branch --show-current`
 
 ---
 
-**Last Updated:** 2025-12-20
+**Last Updated:** 2026-01-16
 **Project Version:** See `git log -1` for latest commit
 **Python Version:** 3.11+
 **License:** Apache 2.0
