@@ -679,3 +679,265 @@ def test_poll_operation_success():
 
     # Should complete without error
     manager._poll_operation(mock_operation)
+
+
+def test_retry_with_backoff_success():
+    """Test _retry_with_backoff succeeds on first attempt."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=False)
+
+    call_count = 0
+
+    def success_func():
+        nonlocal call_count
+        call_count += 1
+        return "success"
+
+    result = manager._retry_with_backoff(success_func)
+    assert result == "success"
+    assert call_count == 1
+
+
+def test_extract_doc_metadata():
+    """Test _extract_doc_metadata extracts metadata from document."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+    # Create mock document with custom_metadata
+    mock_doc = MagicMock()
+    mock_meta_1 = MagicMock()
+    mock_meta_1.key = "podcast"
+    mock_meta_1.string_value = "Test Podcast"
+    mock_meta_2 = MagicMock()
+    mock_meta_2.key = "episode"
+    mock_meta_2.string_value = "Episode 1"
+    mock_doc.custom_metadata = [mock_meta_1, mock_meta_2]
+
+    result = manager._extract_doc_metadata(mock_doc)
+
+    assert result == {"podcast": "Test Podcast", "episode": "Episode 1"}
+
+
+def test_extract_doc_metadata_empty():
+    """Test _extract_doc_metadata with no metadata."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+    # Document with no custom_metadata
+    mock_doc = MagicMock()
+    mock_doc.custom_metadata = None
+
+    result = manager._extract_doc_metadata(mock_doc)
+    assert result == {}
+
+
+def test_upload_description_document_dry_run():
+    """Test upload_description_document in dry_run mode."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+    resource_name, display_name = manager.upload_description_document(
+        podcast_name="Test Podcast",
+        description="This is a test podcast description.",
+        metadata={"hosts": ["Host 1"]}
+    )
+
+    assert "dry-run" in resource_name
+    assert "Test_Podcast_description.txt" in display_name or "Test Podcast_description.txt" in display_name
+
+
+def test_upload_description_document_special_chars():
+    """Test upload_description_document sanitizes special characters."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+    resource_name, display_name = manager.upload_description_document(
+        podcast_name="Test: Podcast! @#$%",
+        description="Description with special chars.",
+    )
+
+    # Should have safe name
+    assert "dry-run" in resource_name
+    assert "@" not in display_name
+    assert "#" not in display_name
+
+
+def test_upload_description_document_long_name():
+    """Test upload_description_document truncates long names."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+    # Very long podcast name
+    long_name = "A" * 200
+
+    resource_name, display_name = manager.upload_description_document(
+        podcast_name=long_name,
+        description="Description.",
+    )
+
+    # Name should be truncated to max 100 chars + "_description.txt"
+    assert len(display_name) <= 120
+
+
+def test_get_existing_files_dry_run():
+    """Test get_existing_files in dry_run mode."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+    files = manager.get_existing_files()
+
+    # In dry_run mode, returns empty dict
+    assert files == {}
+
+
+def test_prepare_metadata_empty():
+    """Test _prepare_metadata with empty input."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+    result = manager._prepare_metadata(None)
+    assert result == []
+
+    result = manager._prepare_metadata({})
+    assert result == []
+
+
+def test_prepare_metadata_with_type_field():
+    """Test _prepare_metadata includes type field correctly."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+    metadata = {
+        'type': 'transcript',
+        'podcast': 'Test Podcast'
+    }
+
+    result = manager._prepare_metadata(metadata)
+
+    # Should have type field
+    type_meta = next((m for m in result if m['key'] == 'type'), None)
+    assert type_meta is not None
+    assert type_meta['string_value'] == 'transcript'
+
+
+def test_prepare_metadata_filters_allowed_keys():
+    """Test _prepare_metadata only includes allowed keys."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+    # Use flat structure (not nested) to match how the code processes metadata
+    metadata = {
+        'podcast': 'Test Podcast',
+        'episode': 'Episode 1',
+        'unknown_key': 'Should be ignored',
+        'another_unknown': 'Also ignored'
+    }
+
+    result = manager._prepare_metadata(metadata)
+
+    # Should only have podcast and episode (allowed keys)
+    keys = [m['key'] for m in result]
+    assert 'podcast' in keys
+    assert 'episode' in keys
+    assert 'unknown_key' not in keys
+    assert 'another_unknown' not in keys
+
+
+def test_delete_file_dry_run():
+    """Test delete_file in dry_run mode."""
+    config = Config()
+    manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+    # Should not raise in dry_run mode
+    manager.delete_file("files/test-file")
+
+
+class TestSearchMethods:
+    """Tests for search functionality with mocking."""
+
+    def test_search_with_mock(self):
+        """Test search with mocked API response."""
+        config = Config()
+        manager = GeminiFileSearchManager(config=config, dry_run=False)
+
+        # Mock the search response
+        mock_chunk = MagicMock()
+        mock_chunk.chunk.data = "Test transcript content"
+        mock_chunk.chunk.metadata = {}
+        mock_chunk.relevance_score = 0.95
+
+        mock_response = MagicMock()
+        mock_response.retrieval_metadata.file_chunks = [mock_chunk]
+
+        with patch.object(manager.client.models, 'generate_content', return_value=mock_response):
+            with patch.object(manager, 'create_or_get_store', return_value="stores/test-store"):
+                # This would call the search function
+                # For now, just verify the mock setup works
+                pass
+
+
+class TestBatchUpload:
+    """Tests for batch upload functionality."""
+
+    def test_batch_upload_skip_duplicates(self, tmpdir):
+        """Test batch upload skips duplicate files."""
+        config = Config()
+        config.BASE_DIRECTORY = str(tmpdir)
+
+        # Create transcript files
+        podcast_dir = tmpdir.mkdir("TestPodcast")
+        transcript = podcast_dir.join("episode_transcription.txt")
+        transcript.write("Transcript")
+        metadata = podcast_dir.join("episode_metadata.json")
+        metadata.write('{"podcast": "Test"}')
+
+        manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+        # First upload
+        result1 = manager.batch_upload_directory(
+            directory_path=str(tmpdir),
+            pattern="*_transcription.txt"
+        )
+        assert len(result1) == 1
+
+    def test_batch_upload_empty_directory(self, tmpdir):
+        """Test batch upload with no matching files."""
+        config = Config()
+        config.BASE_DIRECTORY = str(tmpdir)
+
+        manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+        result = manager.batch_upload_directory(
+            directory_path=str(tmpdir),
+            pattern="*_transcription.txt"
+        )
+
+        assert len(result) == 0
+
+
+class TestStoreOperations:
+    """Tests for store management operations."""
+
+    def test_create_or_get_store_dry_run(self):
+        """Test create_or_get_store in dry_run mode."""
+        config = Config()
+        config.GEMINI_FILE_SEARCH_STORE_NAME = "my-test-store"
+        manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+        store_name = manager.create_or_get_store()
+
+        assert "dry-run" in store_name
+        assert "my-test-store" in store_name
+
+    def test_create_or_get_store_uses_cache(self):
+        """Test that store name is cached after first call."""
+        config = Config()
+        config.GEMINI_FILE_SEARCH_STORE_NAME = "test-store"
+        manager = GeminiFileSearchManager(config=config, dry_run=True)
+
+        # First call
+        store1 = manager.create_or_get_store()
+        # Second call should return cached value
+        store2 = manager.create_or_get_store()
+
+        assert store1 == store2

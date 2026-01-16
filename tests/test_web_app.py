@@ -567,5 +567,232 @@ class TestAgentsModuleExports:
         assert callable(set_podcast_filter)
 
 
+class TestValidateSessionId:
+    """Tests for _validate_session_id function."""
+
+    def test_validate_session_id_valid_uuid(self):
+        """Test valid UUID passes validation."""
+        import uuid
+
+        from src.web.app import _validate_session_id
+
+        valid_uuid = str(uuid.uuid4())
+        result = _validate_session_id(valid_uuid)
+        assert result == valid_uuid
+
+    def test_validate_session_id_empty_generates_new(self):
+        """Test empty session_id generates a new UUID."""
+        from src.web.app import _validate_session_id
+
+        result = _validate_session_id("")
+        # Should be a valid UUID format
+        import uuid
+        uuid.UUID(result)  # Should not raise
+
+    def test_validate_session_id_none_generates_new(self):
+        """Test None session_id generates a new UUID."""
+        from src.web.app import _validate_session_id
+
+        result = _validate_session_id(None)
+        import uuid
+        uuid.UUID(result)  # Should not raise
+
+    def test_validate_session_id_too_long_generates_new(self):
+        """Test overly long session_id generates a new UUID."""
+        from src.web.app import _validate_session_id
+
+        long_id = "a" * 100
+        result = _validate_session_id(long_id)
+        assert result != long_id
+        import uuid
+        uuid.UUID(result)  # Should be valid UUID
+
+    def test_validate_session_id_invalid_chars_generates_new(self):
+        """Test session_id with invalid characters generates a new UUID."""
+        from src.web.app import _validate_session_id
+
+        invalid_ids = [
+            "session<script>",
+            "session id with spaces",
+            "session;injection",
+            "session\nid",
+        ]
+
+        for invalid_id in invalid_ids:
+            result = _validate_session_id(invalid_id)
+            assert result != invalid_id
+            import uuid
+            uuid.UUID(result)  # Should be valid UUID
+
+    def test_validate_session_id_allows_alphanumeric(self):
+        """Test session_id with alphanumeric characters passes."""
+        from src.web.app import _validate_session_id
+
+        valid_ids = [
+            "abc123",
+            "SESSION-123",
+            "session_id_test",
+            "test-session-123",
+            "test_session-123",
+        ]
+
+        for valid_id in valid_ids:
+            result = _validate_session_id(valid_id)
+            assert result == valid_id
+
+
+class TestLifespanContextManager:
+    """Tests for the lifespan context manager."""
+
+    def test_lifespan_exists(self):
+        """Test that lifespan context manager is defined."""
+        from src.web.app import lifespan
+
+        assert lifespan is not None
+        # Should be callable (async context manager wrapped with decorator)
+        assert callable(lifespan)
+
+
+class TestHealthEndpointExtended:
+    """Extended tests for health endpoint."""
+
+    def test_health_endpoint_returns_json(self, client):
+        """Test health endpoint returns valid JSON."""
+        response = client.get("/health")
+        data = response.json()
+        assert "status" in data
+        assert "service" in data
+
+    def test_health_endpoint_timing(self, client):
+        """Test health endpoint responds quickly."""
+        import time
+        start = time.time()
+        client.get("/health")
+        elapsed = time.time() - start
+        assert elapsed < 1.0  # Should respond in less than 1 second
+
+
+class TestRootRedirect:
+    """Tests for root URL redirect."""
+
+    def test_root_redirects_to_podcasts(self, client):
+        """Test root URL redirects to podcasts.html."""
+        response = client.get("/", follow_redirects=False)
+        assert response.status_code in [302, 307]
+        assert "/podcasts.html" in response.headers.get("location", "")
+
+
+class TestAPIRoutes:
+    """Tests for API route registration."""
+
+    def test_api_chat_route_exists(self, client):
+        """Test that /api/chat route is registered."""
+        # Will return 401 without auth, but route should exist
+        response = client.post("/api/chat", json={"query": "test"})
+        assert response.status_code != 404
+
+    def test_api_conversations_route_exists(self, client):
+        """Test that /api/conversations route is registered."""
+        response = client.get("/api/conversations")
+        assert response.status_code != 404
+
+    def test_api_podcasts_route_exists(self, client):
+        """Test that /api/podcasts route is registered."""
+        response = client.get("/api/podcasts")
+        assert response.status_code != 404
+
+    def test_api_episodes_route_exists(self, client):
+        """Test that /api/episodes route is registered."""
+        response = client.get("/api/episodes/test-id")
+        assert response.status_code != 404
+
+    def test_api_search_route_exists(self, client):
+        """Test that /api/search route is registered."""
+        response = client.get("/api/search", params={"type": "keyword", "q": "test"})
+        assert response.status_code != 404
+
+    def test_admin_routes_exist(self, client):
+        """Test that admin routes are registered."""
+        response = client.get("/api/admin/users")
+        # Will return 401/403, but route should exist
+        assert response.status_code in [401, 403]
+
+
+class TestMiddlewareConfiguration:
+    """Tests for middleware configuration."""
+
+    def test_session_middleware_configured(self):
+        """Test that session middleware is configured."""
+        from src.web.app import app
+
+        # Check middleware stack - look at cls attribute of Middleware objects
+        middleware_classes = [str(m) for m in app.user_middleware]
+        # SessionMiddleware should be in the list
+        assert any("Session" in name for name in middleware_classes)
+
+    def test_cors_middleware_configured(self):
+        """Test that CORS middleware is configured."""
+        from src.web.app import app
+
+        middleware_classes = [str(m) for m in app.user_middleware]
+        assert any("CORS" in name for name in middleware_classes)
+
+    def test_rate_limiter_in_state(self):
+        """Test that rate limiter is in app state."""
+        from src.web.app import app
+
+        assert hasattr(app.state, "limiter")
+
+
+class TestAppConfiguration:
+    """Tests for app configuration."""
+
+    def test_app_title(self):
+        """Test app title is set."""
+        from src.web.app import app
+
+        assert app.title == "Podcast RAG Chat"
+
+    def test_app_version(self):
+        """Test app version is set."""
+        from src.web.app import app
+
+        assert app.version == "2.0.0"
+
+    def test_config_in_state(self):
+        """Test config is in app state."""
+        from src.web.app import app
+
+        assert hasattr(app.state, "config")
+
+    def test_repository_in_state(self):
+        """Test repository is in app state."""
+        from src.web.app import app
+
+        assert hasattr(app.state, "repository")
+
+
+class TestAuthEndpoints:
+    """Tests for auth endpoints."""
+
+    def test_login_endpoint_exists(self, client):
+        """Test that login endpoint is registered."""
+        response = client.get("/auth/login")
+        # Should redirect to Google OAuth, not return 404
+        assert response.status_code != 404
+
+    def test_logout_endpoint_exists(self, client):
+        """Test that logout endpoint is registered."""
+        response = client.post("/auth/logout")
+        # Should work or redirect, not 404
+        assert response.status_code != 404
+
+    def test_me_endpoint_exists(self, client):
+        """Test that /auth/me endpoint is registered."""
+        response = client.get("/auth/me")
+        # Will return 401 without auth, but should exist
+        assert response.status_code != 404
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
