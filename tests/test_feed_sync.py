@@ -77,11 +77,9 @@ class TestFeedSyncService:
         """Test successful sync of all podcasts."""
         mock_podcast1 = Mock()
         mock_podcast1.id = "pod-1"
-        mock_podcast1.is_subscribed = True
 
         mock_podcast2 = Mock()
         mock_podcast2.id = "pod-2"
-        mock_podcast2.is_subscribed = True
 
         mock_repository.list_podcasts.return_value = [mock_podcast1, mock_podcast2]
 
@@ -101,11 +99,9 @@ class TestFeedSyncService:
         """Test sync_all with partial failures."""
         mock_podcast1 = Mock()
         mock_podcast1.id = "pod-1"
-        mock_podcast1.is_subscribed = True
 
         mock_podcast2 = Mock()
         mock_podcast2.id = "pod-2"
-        mock_podcast2.is_subscribed = True
 
         mock_repository.list_podcasts.return_value = [mock_podcast1, mock_podcast2]
 

@@ -59,8 +59,7 @@ class Podcast(Base):
     image_url: Mapped[str | None] = mapped_column(String(2048))
     image_local_path: Mapped[str | None] = mapped_column(String(1024))
 
-    # Subscription management
-    is_subscribed: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Feed management
     last_checked: Mapped[datetime | None] = mapped_column(DateTime)
     last_new_episode: Mapped[datetime | None] = mapped_column(DateTime)
     check_frequency_hours: Mapped[int] = mapped_column(Integer, default=24)

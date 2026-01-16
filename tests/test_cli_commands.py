@@ -394,7 +394,7 @@ class TestListPodcasts:
     def test_list_podcasts_empty(self, mock_create_repo, mock_config, capsys):
         """Test listing when no podcasts exist."""
         mock_repo = Mock()
-        mock_repo.list_podcasts.return_value = []
+        mock_repo.list_podcasts_with_subscribers.return_value = []
         mock_create_repo.return_value = mock_repo
 
         args = Mock()
@@ -412,11 +412,11 @@ class TestListPodcasts:
         mock_podcast = Mock()
         mock_podcast.id = "pod-123"
         mock_podcast.title = "Test Podcast"
-        mock_podcast.is_subscribed = True
 
         mock_repo = Mock()
-        mock_repo.list_podcasts.return_value = [mock_podcast]
+        mock_repo.list_podcasts_with_subscribers.return_value = [mock_podcast]
         mock_repo.list_episodes.return_value = [Mock(), Mock()]  # 2 episodes
+        mock_repo.get_podcast_subscriber_counts.return_value = {"pod-123": 3}
         mock_create_repo.return_value = mock_repo
 
         args = Mock()
@@ -427,7 +427,7 @@ class TestListPodcasts:
 
         captured = capsys.readouterr()
         assert "Test Podcast" in captured.out
-        assert "Subscribed" in captured.out
+        assert "Subscribers" in captured.out  # Column header
 
 
 class TestShowStatus:

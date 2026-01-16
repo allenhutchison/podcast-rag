@@ -317,19 +317,19 @@ class TestSyncWorker:
         assert service == mock_service
 
     def test_get_pending_count(self, sync_worker, mock_repository):
-        """Test getting pending count (number of podcasts)."""
+        """Test getting pending count (number of podcasts with subscribers)."""
         mock_podcasts = [Mock(), Mock()]
-        mock_repository.list_podcasts.return_value = mock_podcasts
+        mock_repository.list_podcasts_with_subscribers.return_value = mock_podcasts
 
         count = sync_worker.get_pending_count()
 
         assert count == 2
-        mock_repository.list_podcasts.assert_called_with(subscribed_only=True)
+        mock_repository.list_podcasts_with_subscribers.assert_called_once()
 
     def test_process_batch_success(self, sync_worker):
         """Test successful feed sync."""
         mock_service = Mock()
-        mock_service.sync_all_podcasts.return_value = {
+        mock_service.sync_podcasts_with_subscribers.return_value = {
             "synced": 5,
             "failed": 0,
             "new_episodes": 10,
@@ -341,12 +341,12 @@ class TestSyncWorker:
 
         assert result.processed == 5
         assert result.failed == 0
-        mock_service.sync_all_podcasts.assert_called_with(subscribed_only=True)
+        mock_service.sync_podcasts_with_subscribers.assert_called_once()
 
     def test_process_batch_with_failures(self, sync_worker):
         """Test feed sync with some failures."""
         mock_service = Mock()
-        mock_service.sync_all_podcasts.return_value = {
+        mock_service.sync_podcasts_with_subscribers.return_value = {
             "synced": 3,
             "failed": 2,
             "new_episodes": 5,
@@ -368,7 +368,7 @@ class TestSyncWorker:
     def test_process_batch_exception(self, sync_worker):
         """Test feed sync with exception."""
         mock_service = Mock()
-        mock_service.sync_all_podcasts.side_effect = Exception("Sync failed")
+        mock_service.sync_podcasts_with_subscribers.side_effect = Exception("Sync failed")
         sync_worker._feed_sync_service = mock_service
 
         result = sync_worker.process_batch(limit=0)

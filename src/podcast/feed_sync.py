@@ -107,15 +107,9 @@ class FeedSyncService:
 
         return result
 
-    def sync_all_podcasts(
-        self,
-        subscribed_only: bool = True,
-    ) -> dict[str, Any]:
+    def sync_all_podcasts(self) -> dict[str, Any]:
         """
         Synchronize all podcasts from the repository.
-
-        Parameters:
-            subscribed_only (bool): If True, limit synchronization to podcasts marked as subscribed.
 
         Returns:
             overall_result (dict): Aggregated sync results with keys:
@@ -124,8 +118,38 @@ class FeedSyncService:
                 - new_episodes (int): Total number of new episodes added across all podcasts.
                 - results (list): Per-podcast result dictionaries returned by `sync_podcast`.
         """
-        podcasts = self.repository.list_podcasts(subscribed_only=subscribed_only)
+        podcasts = self.repository.list_podcasts()
 
+        return self._sync_podcasts(podcasts)
+
+    def sync_podcasts_with_subscribers(self) -> dict[str, Any]:
+        """
+        Synchronize podcasts that have at least one user subscribed.
+
+        This is the primary method used by the pipeline to sync feeds.
+        Only podcasts with active user subscriptions are synced.
+
+        Returns:
+            overall_result (dict): Aggregated sync results with keys:
+                - synced (int): Number of podcasts successfully synced.
+                - failed (int): Number of podcasts that failed to sync.
+                - new_episodes (int): Total number of new episodes added across all podcasts.
+                - results (list): Per-podcast result dictionaries returned by `sync_podcast`.
+        """
+        podcasts = self.repository.list_podcasts_with_subscribers()
+
+        return self._sync_podcasts(podcasts)
+
+    def _sync_podcasts(self, podcasts: list) -> dict[str, Any]:
+        """
+        Internal method to sync a list of podcasts.
+
+        Parameters:
+            podcasts: List of Podcast objects to sync.
+
+        Returns:
+            overall_result (dict): Aggregated sync results.
+        """
         overall_result = {
             "synced": 0,
             "failed": 0,

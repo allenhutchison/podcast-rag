@@ -62,7 +62,7 @@ class PodcastRepositoryInterface(ABC):
         Parameters:
             feed_url (str): RSS or Atom feed URL of the podcast.
             title (str): Display title for the podcast subscription.
-            **kwargs: Additional Podcast attributes to set (e.g., description, is_subscribed, image_url).
+            **kwargs: Additional Podcast attributes to set (e.g., description, author, image_url).
 
         Returns:
             Podcast: The persisted Podcast instance with updated identifiers and timestamps.
@@ -95,25 +95,22 @@ class PodcastRepositoryInterface(ABC):
     @abstractmethod
     def list_podcasts(
         self,
-        subscribed_only: bool = True,
         limit: int | None = None,
         sort_by: str = "recency",
         sort_order: str = "desc"
     ) -> list[Podcast]:
         """
-        Return podcasts optionally filtered to subscribed ones and limited in count.
+        Return all podcasts with configurable sorting.
 
-        Queries podcasts with configurable sorting. If `subscribed_only` is True, only podcasts
-        with an active subscription are returned. `limit` caps the number of results when provided.
+        Use list_podcasts_with_subscribers() to get only podcasts with active subscribers.
 
         Parameters:
-            subscribed_only (bool): If True, include only subscribed podcasts. Default is True.
             limit (Optional[int]): Maximum number of podcasts to return; if None, no limit is applied.
             sort_by (str): Field to sort by ("recency", "subscribers", "alphabetical"). Default is "recency".
             sort_order (str): Sort direction ("asc" or "desc"). Default is "desc".
 
         Returns:
-            List[Podcast]: Podcasts matching the filters, sorted according to parameters.
+            List[Podcast]: Podcasts sorted according to parameters.
         """
         pass
 
@@ -124,7 +121,7 @@ class PodcastRepositoryInterface(ABC):
 
         Parameters:
             podcast_id (str): The podcast's primary key.
-            **kwargs: Podcast fields to update (for example `title`, `feed_url`, `is_subscribed`).
+            **kwargs: Podcast fields to update (for example `title`, `feed_url`, `image_url`).
 
         Returns:
             Optional[Podcast]: The updated Podcast instance if found and updated, `None` if no podcast with `podcast_id` exists.
@@ -144,6 +141,23 @@ class PodcastRepositoryInterface(ABC):
 
         Returns:
             bool: `True` if a podcast was found and deleted, `False` if no podcast with `podcast_id` exists.
+        """
+        pass
+
+    @abstractmethod
+    def list_podcasts_with_subscribers(
+        self, limit: int | None = None
+    ) -> list[Podcast]:
+        """List podcasts that have at least one user subscribed.
+
+        This is used by the pipeline to determine which podcasts need to be synced.
+        Only podcasts with active user subscriptions are returned.
+
+        Args:
+            limit: Maximum number of podcasts to return.
+
+        Returns:
+            List[Podcast]: Podcasts with at least one subscriber.
         """
         pass
 
@@ -1450,16 +1464,16 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
 
     def list_podcasts(
         self,
-        subscribed_only: bool = True,
         limit: int | None = None,
         sort_by: str = "recency",
         sort_order: str = "desc"
     ) -> list[Podcast]:
         """
-        List podcasts, optionally restricting results to subscribed podcasts.
+        List all podcasts with configurable sorting.
+
+        Use list_podcasts_with_subscribers() to get only podcasts with active subscribers.
 
         Parameters:
-            subscribed_only (bool): If True, include only podcasts with `is_subscribed` set to True.
             limit (Optional[int]): Maximum number of podcasts to return; if None, no limit is applied.
             sort_by (str): Field to sort by ("recency", "subscribers", "alphabetical")
             sort_order (str): Sort direction ("asc" or "desc")
@@ -1470,8 +1484,6 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         with self._get_session() as session:
             # Build base query
             stmt = select(Podcast)
-            if subscribed_only:
-                stmt = stmt.where(Podcast.is_subscribed.is_(True))
 
             # Determine sort column
             if sort_by == "recency":
@@ -1560,6 +1572,32 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             session.commit()
             logger.info(f"Deleted podcast: {podcast.title} ({podcast_id})")
             return True
+
+    def list_podcasts_with_subscribers(
+        self, limit: int | None = None
+    ) -> list[Podcast]:
+        """List podcasts that have at least one user subscribed.
+
+        This is used by the pipeline to determine which podcasts need to be synced.
+        Only podcasts with active user subscriptions are returned.
+
+        Args:
+            limit: Maximum number of podcasts to return.
+
+        Returns:
+            List[Podcast]: Podcasts with at least one subscriber.
+        """
+        with self._get_session() as session:
+            # Get distinct podcast IDs that have at least one subscription
+            subquery = (
+                select(UserSubscription.podcast_id)
+                .distinct()
+                .subquery()
+            )
+            stmt = select(Podcast).where(Podcast.id.in_(select(subquery)))
+            if limit:
+                stmt = stmt.limit(limit)
+            return list(session.scalars(stmt).all())
 
     # --- Episode Operations ---
 
@@ -2664,7 +2702,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         @returns:
             stats (Dict[str, Any]): Mapping of statistic names to integer counts:
                 - total_podcasts: Total number of podcasts in the repository.
-                - subscribed_podcasts: Number of podcasts marked as subscribed.
+                - subscribed_podcasts: Number of podcasts with at least one user subscriber.
                 - total_episodes: Total number of episodes in the repository.
                 - pending_download: Episodes with download_status == "pending".
                 - downloading: Episodes with download_status == "downloading".
@@ -2683,8 +2721,9 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         with self._get_session() as session:
             # Podcast counts (efficient SQL aggregations)
             total_podcasts = session.scalar(select(func.count(Podcast.id))) or 0
+            # Count podcasts with at least one subscriber
             subscribed_podcasts = session.scalar(
-                select(func.count(Podcast.id)).where(Podcast.is_subscribed.is_(True))
+                select(func.count(func.distinct(UserSubscription.podcast_id)))
             ) or 0
 
             # Episode counts by status (single query with conditional aggregation)

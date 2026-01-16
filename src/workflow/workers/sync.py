@@ -51,16 +51,16 @@ class SyncWorker(WorkerInterface):
         return self._feed_sync_service
 
     def get_pending_count(self) -> int:
-        """Get the count of subscribed podcasts to sync.
+        """Get the count of podcasts with subscribers to sync.
 
         Returns:
-            Number of subscribed podcasts.
+            Number of podcasts with at least one subscriber.
         """
-        podcasts = self.repository.list_podcasts(subscribed_only=True)
+        podcasts = self.repository.list_podcasts_with_subscribers()
         return len(podcasts)
 
     def process_batch(self, limit: int = 0) -> WorkerResult:
-        """Sync all subscribed podcast feeds.
+        """Sync podcast feeds for podcasts with subscribers.
 
         Args:
             limit: Ignored for sync worker (always syncs all feeds).
@@ -71,9 +71,7 @@ class SyncWorker(WorkerInterface):
         result = WorkerResult()
 
         try:
-            sync_result = self.feed_sync_service.sync_all_podcasts(
-                subscribed_only=True
-            )
+            sync_result = self.feed_sync_service.sync_podcasts_with_subscribers()
 
             result.processed = sync_result.get("synced", 0)
             result.failed = sync_result.get("failed", 0)
