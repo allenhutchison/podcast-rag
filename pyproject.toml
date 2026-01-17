@@ -55,6 +55,10 @@ encoding = [
     # NVIDIA cuDNN libraries for GPU support (required for faster-whisper on CUDA)
     "nvidia-cublas-cu12; sys_platform == 'linux'",
     "nvidia-cudnn-cu12; sys_platform == 'linux'",
+    # YouTube integration
+    "google-api-python-client>=2.100.0",
+    "youtube-transcript-api>=0.6.0",
+    "yt-dlp>=2024.1.0",
 ]
 # Web service dependencies
 web = [

@@ -3,6 +3,7 @@
 Provides commands for:
 - Importing OPML files
 - Adding podcasts from feed URLs
+- Adding YouTube channels
 - Syncing feeds
 - Downloading episodes
 - Viewing status and statistics
@@ -121,6 +122,56 @@ def add_podcast(args, config: Config):
         repository.close()
 
 
+def add_youtube(args, config: Config):
+    """Add a YouTube channel to the repository.
+
+    Parameters:
+        args: Parsed CLI arguments with:
+            - url: YouTube channel URL or handle (e.g., @mkbhd)
+            - max_videos: Maximum videos to sync on add (optional)
+        config: Application configuration.
+    """
+    if not config.YOUTUBE_API_KEY:
+        print("Error: YOUTUBE_API_KEY not configured")
+        print("Please set YOUTUBE_API_KEY in your environment or Doppler config")
+        sys.exit(1)
+
+    logger.info(f"Adding YouTube channel: {args.url}")
+
+    repository = create_repository(
+        database_url=config.DATABASE_URL,
+        pool_size=config.DB_POOL_SIZE,
+        max_overflow=config.DB_MAX_OVERFLOW,
+        echo=config.DB_ECHO,
+    )
+
+    try:
+        from ..youtube.api_client import YouTubeAPIClient
+        from ..youtube.channel_sync import YouTubeChannelSyncService
+
+        api_client = YouTubeAPIClient(api_key=config.YOUTUBE_API_KEY)
+        sync_service = YouTubeChannelSyncService(
+            repository=repository,
+            api_client=api_client,
+            download_directory=config.PODCAST_DOWNLOAD_DIRECTORY,
+            default_max_videos=config.YOUTUBE_DEFAULT_MAX_VIDEOS,
+        )
+
+        max_videos = args.max_videos or config.YOUTUBE_DEFAULT_MAX_VIDEOS
+        result = sync_service.add_channel_from_url(args.url, max_videos=max_videos)
+
+        if result["error"]:
+            print(f"Error: {result['error']}")
+            sys.exit(1)
+
+        print(f"\nAdded YouTube channel: {result['title']}")
+        print(f"  ID: {result['podcast_id']}")
+        print(f"  Videos synced: {result['videos']}")
+
+    finally:
+        repository.close()
+
+
 def sync_feeds(args, config: Config):
     """Sync podcast feeds to get new episodes."""
     repository = create_repository(
@@ -222,11 +273,13 @@ def list_podcasts(args, config: Config):
     Prints a table of podcasts to stdout.
 
     Displays podcasts from the repository as rows containing ID, title (truncated to 40 characters),
-    episode count, and subscriber count. When `args.all` is false, only shows podcasts with subscribers.
+    episode count, subscriber count, and source type. When `args.all` is false, only shows podcasts
+    with subscribers.
 
     Parameters:
         args: argparse.Namespace with at least:
             - all (bool): If true, include all podcasts; otherwise only podcasts with subscribers.
+            - source (str | None): Filter by source type ("rss", "youtube", or None for all).
             - limit (int | None): Maximum number of podcasts to retrieve; when None, no limit is applied.
     """
     repository = create_repository(
@@ -237,10 +290,20 @@ def list_podcasts(args, config: Config):
     )
 
     try:
+        # Normalize source filter
+        source_type = None
+        if hasattr(args, 'source') and args.source and args.source != 'all':
+            source_type = args.source
+
         if args.all:
             podcasts = repository.list_podcasts(limit=args.limit)
+            # Manual filter by source type for list_podcasts
+            if source_type:
+                podcasts = [p for p in podcasts if p.source_type == source_type]
         else:
-            podcasts = repository.list_podcasts_with_subscribers(limit=args.limit)
+            podcasts = repository.list_podcasts_with_subscribers(
+                limit=args.limit, source_type=source_type
+            )
 
         if not podcasts:
             print("No podcasts found")
@@ -250,16 +313,18 @@ def list_podcasts(args, config: Config):
         podcast_ids = [p.id for p in podcasts]
         subscriber_counts = repository.get_podcast_subscriber_counts(podcast_ids)
 
-        print(f"\n{'ID':<36}  {'Title':<40}  {'Episodes':<10}  {'Subscribers'}")
-        print("-" * 105)
+        print(f"\n{'ID':<36}  {'Title':<40}  {'Type':<8}  {'Episodes':<10}  {'Subscribers'}")
+        print("-" * 115)
 
         for podcast in podcasts:
             # Get episode count
             episodes = repository.list_episodes(podcast_id=podcast.id)
             sub_count = subscriber_counts.get(podcast.id, 0)
+            source_label = "YouTube" if podcast.source_type == "youtube" else "RSS"
             print(
                 f"{podcast.id:<36}  "
                 f"{podcast.title[:40]:<40}  "
+                f"{source_label:<8}  "
                 f"{len(episodes):<10}  "
                 f"{sub_count}"
             )
@@ -465,6 +530,21 @@ def create_parser() -> argparse.ArgumentParser:
     )
     add_parser.add_argument("url", help="RSS feed URL")
 
+    # add-youtube command
+    add_youtube_parser = subparsers.add_parser(
+        "add-youtube",
+        help="Add a YouTube channel",
+    )
+    add_youtube_parser.add_argument(
+        "url",
+        help="YouTube channel URL or handle (e.g., @mkbhd, https://youtube.com/@mkbhd)",
+    )
+    add_youtube_parser.add_argument(
+        "--max-videos",
+        type=int,
+        help="Maximum number of videos to sync (default: from config)",
+    )
+
     # sync command
     sync_parser = subparsers.add_parser(
         "sync",
@@ -506,6 +586,12 @@ def create_parser() -> argparse.ArgumentParser:
         "--all",
         action="store_true",
         help="Include all podcasts (default: only podcasts with subscribers)",
+    )
+    list_parser.add_argument(
+        "--source",
+        choices=["rss", "youtube", "all"],
+        default="all",
+        help="Filter by source type (default: all)",
     )
     list_parser.add_argument(
         "--limit",
@@ -564,6 +650,7 @@ def main():
     commands = {
         "import-opml": import_opml,
         "add": add_podcast,
+        "add-youtube": add_youtube,
         "sync": sync_feeds,
         "download": download_episodes,
         "list": list_podcasts,
