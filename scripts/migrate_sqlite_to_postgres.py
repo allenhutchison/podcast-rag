@@ -59,13 +59,24 @@ def migrate_podcasts(sqlite_conn, pg_conn, dry_run=False):
     """Migrate podcasts table."""
     sqlite_cur = sqlite_conn.cursor()
     sqlite_cur.execute("SELECT * FROM podcasts")
-    columns = [description[0] for description in sqlite_cur.description]
+    all_columns = [description[0] for description in sqlite_cur.description]
     rows = sqlite_cur.fetchall()
 
     logger.info(f"Found {len(rows)} podcasts to migrate")
 
     if dry_run or not rows:
         return len(rows)
+
+    # Columns to exclude (removed from schema)
+    excluded_columns = {'is_subscribed'}
+
+    # Filter columns and get indices to keep
+    columns = []
+    keep_indices = []
+    for i, col in enumerate(all_columns):
+        if col not in excluded_columns:
+            columns.append(col)
+            keep_indices.append(i)
 
     pg_cur = pg_conn.cursor()
 
@@ -75,11 +86,12 @@ def migrate_podcasts(sqlite_conn, pg_conn, dry_run=False):
     insert_sql = f'INSERT INTO podcasts ({columns_str}) VALUES ({placeholders}) ON CONFLICT (id) DO NOTHING'
 
     for row in rows:
-        # Convert SQLite booleans (0/1) to Python booleans
+        # Convert SQLite booleans (0/1) to Python booleans, excluding removed columns
         converted_row = []
-        for i, val in enumerate(row):
-            col_name = columns[i]
-            if col_name in ('is_subscribed', 'itunes_explicit') and val is not None:
+        for i in keep_indices:
+            col_name = all_columns[i]
+            val = row[i]
+            if col_name == 'itunes_explicit' and val is not None:
                 converted_row.append(bool(val))
             else:
                 converted_row.append(val)

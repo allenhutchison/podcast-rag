@@ -347,47 +347,6 @@ class TestGenerateAgenticResponseSignature:
         assert inspect.isasyncgenfunction(generate_agentic_response)
 
 
-class TestChatEndpointWithSubscribedOnly:
-    """Tests for chat endpoint with subscribed_only parameter."""
-
-    def test_chat_endpoint_accepts_subscribed_only_in_request(self, client):
-        """Test that chat endpoint accepts subscribed_only in request body."""
-        # Note: Will return 401 without auth, but validates request structure
-        response = client.post(
-            "/api/chat",
-            json={
-                "query": "What are the latest episodes?",
-                "subscribed_only": True
-            }
-        )
-        # Should fail auth, not request validation
-        assert response.status_code == 401
-
-    def test_chat_endpoint_accepts_subscribed_only_false(self, client):
-        """Test that chat endpoint accepts subscribed_only=False."""
-        response = client.post(
-            "/api/chat",
-            json={
-                "query": "Search all podcasts",
-                "subscribed_only": False
-            }
-        )
-        assert response.status_code == 401  # Auth failure, not validation
-
-    def test_chat_endpoint_validates_request_with_all_filters(self, client):
-        """Test that chat endpoint accepts multiple filter parameters."""
-        response = client.post(
-            "/api/chat",
-            json={
-                "query": "Test query",
-                "podcast_id": "123e4567-e89b-12d3-a456-426614174000",
-                "subscribed_only": True
-            }
-        )
-        # Should fail auth before processing filters
-        assert response.status_code == 401
-
-
 class TestValidatePodcastId:
     """Tests for _validate_podcast_id function."""
 
