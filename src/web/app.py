@@ -689,7 +689,6 @@ async def list_all_podcasts(
     user_id = current_user["sub"]
     all_podcasts = await asyncio.to_thread(
         _repository.list_podcasts,
-        subscribed_only=False,
         sort_by=sort_by,
         sort_order=sort_order
     )
