@@ -660,3 +660,77 @@ class TestEpisodeDownloaderMimeTypes:
         filename = downloader._generate_filename(mock_episode)
         # Should get extension from URL
         assert filename.endswith(".mp3")
+
+
+class TestEpisodeDownloaderPermissionErrors:
+    """Tests for PermissionError handling in downloader."""
+
+    @pytest.fixture
+    def mock_repository(self):
+        """Create mock repository."""
+        return Mock()
+
+    def test_init_permission_error_raises_clear_message(self, mock_repository):
+        """Test that PermissionError in init raises with helpful message."""
+        with patch("os.makedirs", side_effect=PermissionError("Permission denied")):
+            with pytest.raises(PermissionError) as exc_info:
+                EpisodeDownloader(
+                    repository=mock_repository,
+                    download_directory="/opt/podcasts",
+                )
+
+            assert "Cannot create download directory" in str(exc_info.value)
+            assert "PODCAST_DOWNLOAD_DIRECTORY" in str(exc_info.value)
+
+    def test_download_episode_permission_error_marks_failed(
+        self, mock_repository, tmp_path
+    ):
+        """Test that PermissionError when creating episode dir marks episode as failed."""
+        downloader = EpisodeDownloader(
+            repository=mock_repository,
+            download_directory=str(tmp_path),
+        )
+
+        mock_episode = Mock()
+        mock_episode.id = "ep-1"
+        mock_episode.podcast_id = "pod-1"
+        mock_episode.title = "Test Episode"
+
+        mock_podcast = Mock()
+        mock_podcast.title = "Test Podcast"
+        mock_podcast.local_directory = "/opt/podcasts/forbidden"
+        mock_repository.get_podcast.return_value = mock_podcast
+
+        with patch("os.makedirs", side_effect=PermissionError("Permission denied")):
+            result = downloader.download_episode(mock_episode)
+
+        assert result.success is False
+        assert "Permission denied" in result.error
+        mock_repository.mark_download_failed.assert_called_once()
+        assert "ep-1" in mock_repository.mark_download_failed.call_args[0]
+
+    def test_download_episode_permission_error_does_not_mark_started(
+        self, mock_repository, tmp_path
+    ):
+        """Test that PermissionError doesn't mark episode as download started."""
+        downloader = EpisodeDownloader(
+            repository=mock_repository,
+            download_directory=str(tmp_path),
+        )
+
+        mock_episode = Mock()
+        mock_episode.id = "ep-1"
+        mock_episode.podcast_id = "pod-1"
+        mock_episode.title = "Test Episode"
+
+        mock_podcast = Mock()
+        mock_podcast.title = "Test Podcast"
+        mock_podcast.local_directory = "/opt/podcasts/forbidden"
+        mock_repository.get_podcast.return_value = mock_podcast
+
+        with patch("os.makedirs", side_effect=PermissionError("Permission denied")):
+            result = downloader.download_episode(mock_episode)
+
+        assert result.success is False
+        # Should NOT have called mark_download_started
+        mock_repository.mark_download_started.assert_not_called()
