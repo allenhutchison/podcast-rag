@@ -96,7 +96,13 @@ class EpisodeDownloader:
         self.progress_callback = progress_callback
 
         # Create download directory if it doesn't exist
-        os.makedirs(download_directory, exist_ok=True)
+        try:
+            os.makedirs(download_directory, exist_ok=True)
+        except PermissionError as e:
+            raise PermissionError(
+                f"Cannot create download directory '{download_directory}': {e}. "
+                "Check that the PODCAST_DOWNLOAD_DIRECTORY path is writable."
+            ) from e
 
         # Set up requests session with retry logic
         self._session = self._create_session()
@@ -152,7 +158,18 @@ class EpisodeDownloader:
             self.download_directory,
             self._sanitize_filename(podcast.title),
         )
-        os.makedirs(podcast_dir, exist_ok=True)
+
+        try:
+            os.makedirs(podcast_dir, exist_ok=True)
+        except PermissionError as e:
+            error_msg = f"Permission denied creating directory {podcast_dir}: {e}"
+            logger.error(error_msg)
+            self.repository.mark_download_failed(episode.id, error_msg)
+            return DownloadResult(
+                episode_id=episode.id,
+                success=False,
+                error=error_msg,
+            )
 
         filename = self._generate_filename(episode)
         output_path = os.path.join(podcast_dir, filename)
@@ -406,7 +423,18 @@ class EpisodeDownloader:
             self.download_directory,
             self._sanitize_filename(podcast.title),
         )
-        os.makedirs(podcast_dir, exist_ok=True)
+
+        try:
+            os.makedirs(podcast_dir, exist_ok=True)
+        except PermissionError as e:
+            error_msg = f"Permission denied creating directory {podcast_dir}: {e}"
+            logger.error(error_msg)
+            self.repository.mark_download_failed(episode.id, error_msg)
+            return DownloadResult(
+                episode_id=episode.id,
+                success=False,
+                error=error_msg,
+            )
 
         filename = self._generate_filename(episode)
         output_path = os.path.join(podcast_dir, filename)
