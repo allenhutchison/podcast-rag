@@ -24,7 +24,7 @@ def backfill_last_new_episode():
     print("Backfilling last_new_episode for podcasts...")
 
     # Get all podcasts using public API
-    podcasts = repo.list_podcasts(subscribed_only=False)
+    podcasts = repo.list_podcasts()
 
     updated_count = 0
     skipped_count = 0

@@ -814,7 +814,7 @@ class PodcastRepositoryInterface(ABC):
 
         Returns:
             stats (Dict[str, Any]): A dictionary containing per-podcast statistics and counts, typically including:
-                - podcast (dict): A short snapshot of the podcast (e.g., `id`, `title`, `feed_url`, `is_subscribed`).
+                - podcast (dict): A short snapshot of the podcast (e.g., `id`, `title`, `feed_url`).
                 - total_episodes (int): Total number of episodes for the podcast.
                 - by_download_status (dict): Counts keyed by download status (e.g., `pending`, `in_progress`, `completed`, `failed`).
                 - by_transcript_status (dict): Counts keyed by transcript status (e.g., `pending`, `in_progress`, `completed`, `failed`).

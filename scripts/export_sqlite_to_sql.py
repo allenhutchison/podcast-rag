@@ -53,10 +53,13 @@ def export_table_data(cursor, table_name, output_file):
         table_name: Name of table to export
         output_file: File object to write INSERT statements to
     """
+    # Columns to exclude (removed from schema)
+    excluded_columns = {'is_subscribed'}
+
     # Boolean columns (SQLite stores as INTEGER 0/1, PostgreSQL needs true/false)
     # These are known boolean columns in our schema
     boolean_columns = {
-        'is_subscribed', 'itunes_explicit', 'is_active', 'is_admin',
+        'itunes_explicit', 'is_active', 'is_admin',
         'email_digest_enabled', 'smtp_use_tls'
     }
 
@@ -73,16 +76,19 @@ def export_table_data(cursor, table_name, output_file):
         output_file.write(f"-- No data in {table_name}\n")
         return
 
-    # Get column names from cursor description
-    columns = [desc[0] for desc in cursor.description]
+    # Get column names from cursor description, excluding removed columns
+    all_columns = [desc[0] for desc in cursor.description]
+    columns = [col for col in all_columns if col not in excluded_columns]
+    keep_indices = [i for i, col in enumerate(all_columns) if col not in excluded_columns]
     col_list = ", ".join(columns)
 
     output_file.write(f"-- Inserting {len(rows)} rows into {table_name}\n")
 
     for row in rows:
         values = []
-        for idx, val in enumerate(row):
-            col_name = columns[idx]
+        for idx in keep_indices:
+            col_name = all_columns[idx]
+            val = row[idx]
             # Handle JSON columns - keep as-is, just wrap in single quotes
             if col_name in json_columns:
                 if val is None:
