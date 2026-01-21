@@ -95,6 +95,7 @@ class PipelineOrchestrator:
         # Workers (created lazily)
         self._sync_worker = None
         self._download_worker = None
+        self._youtube_download_worker = None
         self._transcription_worker = None
         self._email_digest_worker = None
         self._post_processor: PostProcessor | None = None
@@ -125,6 +126,17 @@ class PipelineOrchestrator:
                 download_workers=self.pipeline_config.download_workers,
             )
         return self._download_worker
+
+    def _get_youtube_download_worker(self):
+        """Get or create the YouTube download worker."""
+        if self._youtube_download_worker is None:
+            from src.workflow.workers.youtube_download import YouTubeDownloadWorker
+
+            self._youtube_download_worker = YouTubeDownloadWorker(
+                config=self.config,
+                repository=self.repository,
+            )
+        return self._youtube_download_worker
 
     def _get_transcription_worker(self):
         """Get or create the transcription worker."""
@@ -457,7 +469,14 @@ class PipelineOrchestrator:
         self._email_digest_future.add_done_callback(_on_complete)
 
     def _maintain_download_buffer(self) -> None:
-        """Ensure download buffer has enough episodes ready for transcription."""
+        """Ensure download buffer has enough episodes ready for transcription.
+
+        Also processes pending YouTube videos (caption download or audio extraction).
+        """
+        # First, process any pending YouTube videos
+        self._process_youtube_downloads()
+
+        # Then maintain the standard download buffer for RSS podcasts
         current_buffer = self.repository.get_download_buffer_count()
 
         if current_buffer < self.pipeline_config.download_buffer_threshold:
@@ -475,6 +494,23 @@ class PipelineOrchestrator:
 
             except Exception:
                 logger.exception("Download buffer refill failed")
+
+    def _process_youtube_downloads(self) -> None:
+        """Process pending YouTube videos (caption download or audio extraction)."""
+        try:
+            youtube_worker = self._get_youtube_download_worker()
+            pending_count = youtube_worker.get_pending_count()
+
+            if pending_count > 0:
+                logger.info(f"Processing {pending_count} pending YouTube videos")
+                result = youtube_worker.process_batch(
+                    limit=min(pending_count, self.pipeline_config.download_buffer_size)
+                )
+                youtube_worker.log_result(result)
+                self._stats.episodes_downloaded += result.processed
+
+        except Exception:
+            logger.exception("YouTube download processing failed")
 
     def _help_post_process(self) -> bool:
         """Use main thread to help with post-processing when idle.

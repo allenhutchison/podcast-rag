@@ -160,6 +160,16 @@ class Config:
             os.getenv("PODCAST_CHUNK_SIZE", "8192")
         )
 
+        # YouTube integration configuration
+        self.YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")
+        self.YOUTUBE_CAPTIONS_LANGUAGE = os.getenv("YOUTUBE_CAPTIONS_LANGUAGE", "en")
+        self.YOUTUBE_PREFER_MANUAL_CAPTIONS = (
+            os.getenv("YOUTUBE_PREFER_MANUAL_CAPTIONS", "true").lower() == "true"
+        )
+        self.YOUTUBE_DEFAULT_MAX_VIDEOS = int(
+            os.getenv("YOUTUBE_DEFAULT_MAX_VIDEOS", "50")
+        )
+
     def load_config(self):
         """
         Prints selected configuration values useful for debugging.

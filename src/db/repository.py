@@ -146,7 +146,7 @@ class PodcastRepositoryInterface(ABC):
 
     @abstractmethod
     def list_podcasts_with_subscribers(
-        self, limit: int | None = None
+        self, limit: int | None = None, source_type: str | None = None
     ) -> list[Podcast]:
         """List podcasts that have at least one user subscribed.
 
@@ -155,9 +155,40 @@ class PodcastRepositoryInterface(ABC):
 
         Args:
             limit: Maximum number of podcasts to return.
+            source_type: Filter by source type ("rss", "youtube", or None for all).
 
         Returns:
             List[Podcast]: Podcasts with at least one subscriber.
+        """
+        pass
+
+    @abstractmethod
+    def get_podcast_by_youtube_channel_id(self, channel_id: str) -> Podcast | None:
+        """Retrieve a podcast by its YouTube channel ID.
+
+        Args:
+            channel_id: YouTube channel ID (UC... format).
+
+        Returns:
+            Podcast if found, None otherwise.
+        """
+        pass
+
+    @abstractmethod
+    def get_youtube_videos_pending_caption_download(
+        self, limit: int = 10
+    ) -> list[Episode]:
+        """Get YouTube videos that need caption/audio download.
+
+        Returns videos where:
+        - source_type is "youtube_video"
+        - download_status is "pending"
+
+        Args:
+            limit: Maximum number of episodes to return.
+
+        Returns:
+            List of episodes pending caption/audio download.
         """
         pass
 
@@ -553,6 +584,7 @@ class PodcastRepositoryInterface(ABC):
         episode_id: str,
         transcript_text: str,
         transcript_path: str | None = None,
+        transcript_source: str | None = None,
     ) -> None:
         """
         Mark an episode's transcription as completed and store the transcript content.
@@ -564,6 +596,7 @@ class PodcastRepositoryInterface(ABC):
             episode_id (str): Primary key of the episode to update.
             transcript_text (str): Full transcript content.
             transcript_path (str, optional): Legacy file path, kept for backward compatibility.
+            transcript_source (str, optional): Source of transcript ("whisper" | "youtube_captions").
         """
         pass
 
@@ -1574,7 +1607,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             return True
 
     def list_podcasts_with_subscribers(
-        self, limit: int | None = None
+        self, limit: int | None = None, source_type: str | None = None
     ) -> list[Podcast]:
         """List podcasts that have at least one user subscribed.
 
@@ -1583,6 +1616,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
 
         Args:
             limit: Maximum number of podcasts to return.
+            source_type: Filter by source type ("rss", "youtube", or None for all).
 
         Returns:
             List[Podcast]: Podcasts with at least one subscriber.
@@ -1595,8 +1629,48 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 .subquery()
             )
             stmt = select(Podcast).where(Podcast.id.in_(select(subquery)))
+            if source_type:
+                stmt = stmt.where(Podcast.source_type == source_type)
             if limit:
                 stmt = stmt.limit(limit)
+            return list(session.scalars(stmt).all())
+
+    def get_podcast_by_youtube_channel_id(self, channel_id: str) -> Podcast | None:
+        """Retrieve a podcast by its YouTube channel ID.
+
+        Args:
+            channel_id: YouTube channel ID (UC... format).
+
+        Returns:
+            Podcast if found, None otherwise.
+        """
+        with self._get_session() as session:
+            stmt = select(Podcast).where(Podcast.youtube_channel_id == channel_id)
+            return session.scalar(stmt)
+
+    def get_youtube_videos_pending_caption_download(
+        self, limit: int = 10
+    ) -> list[Episode]:
+        """Get YouTube videos that need caption/audio download.
+
+        Returns videos where:
+        - source_type is "youtube_video"
+        - download_status is "pending"
+
+        Args:
+            limit: Maximum number of episodes to return.
+
+        Returns:
+            List of episodes pending caption/audio download.
+        """
+        with self._get_session() as session:
+            stmt = (
+                select(Episode)
+                .where(Episode.source_type == "youtube_video")
+                .where(Episode.download_status == "pending")
+                .order_by(Episode.published_date.desc().nullslast())
+                .limit(limit)
+            )
             return list(session.scalars(stmt).all())
 
     # --- Episode Operations ---
@@ -2185,6 +2259,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         episode_id: str,
         transcript_text: str,
         transcript_path: str | None = None,
+        transcript_source: str | None = None,
     ) -> None:
         """
         Mark an episode's transcription as complete and store the transcript content.
@@ -2193,17 +2268,19 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             episode_id (str): ID of the episode to update.
             transcript_text (str): Full transcript content.
             transcript_path (str, optional): Legacy file path, kept for backward compatibility.
+            transcript_source (str, optional): Source of transcript ("whisper" | "youtube_captions").
 
         Notes:
             Sets `transcript_status` to "completed", stores `transcript_text` (and optionally
-            `transcript_path`), sets `transcribed_at` to the current UTC time, and clears
-            `transcript_error`.
+            `transcript_path` and `transcript_source`), sets `transcribed_at` to the current
+            UTC time, and clears `transcript_error`.
         """
         self.update_episode(
             episode_id,
             transcript_status="completed",
             transcript_text=transcript_text,
             transcript_path=transcript_path,
+            transcript_source=transcript_source,
             transcribed_at=datetime.now(UTC),
             transcript_error=None,
         )

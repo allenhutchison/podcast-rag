@@ -27,7 +27,7 @@ class Base(DeclarativeBase):
 class Podcast(Base):
     """Podcast subscription model.
 
-    Stores podcast-level metadata from RSS feeds and subscription management data.
+    Stores podcast-level metadata from RSS feeds or YouTube channels and subscription management data.
     """
 
     __tablename__ = "podcasts"
@@ -36,6 +36,11 @@ class Podcast(Base):
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
+
+    # Source type discriminator
+    source_type: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="rss"
+    )  # "rss" | "youtube"
 
     # Core identifiers
     feed_url: Mapped[str] = mapped_column(String(2048), unique=True, nullable=False)
@@ -67,6 +72,14 @@ class Podcast(Base):
     # File organization
     local_directory: Mapped[str | None] = mapped_column(String(1024))
 
+    # YouTube-specific fields (for source_type="youtube")
+    youtube_channel_id: Mapped[str | None] = mapped_column(String(64))  # UC...
+    youtube_channel_url: Mapped[str | None] = mapped_column(String(2048))
+    youtube_handle: Mapped[str | None] = mapped_column(String(256))  # @handle
+    youtube_playlist_id: Mapped[str | None] = mapped_column(String(64))  # Uploads playlist ID
+    youtube_subscriber_count: Mapped[int | None] = mapped_column(Integer)
+    youtube_video_count: Mapped[int | None] = mapped_column(Integer)
+
     # Description document File Search integration
     description_file_search_status: Mapped[str] = mapped_column(
         String(32), default="pending"
@@ -96,6 +109,8 @@ class Podcast(Base):
     __table_args__ = (
         Index("ix_podcasts_feed_url", "feed_url"),
         Index("ix_podcasts_description_file_search_status", "description_file_search_status"),
+        Index("ix_podcasts_source_type", "source_type"),
+        Index("ix_podcasts_youtube_channel_id", "youtube_channel_id"),
     )
 
     def __repr__(self) -> str:
@@ -112,7 +127,7 @@ class Episode(Base):
     """Episode model.
 
     Stores episode-level metadata, download status, and processing status.
-    MP3 files are deleted after processing, but URLs are retained for re-download.
+    Audio files are deleted after processing, but URLs are retained for re-download.
     """
 
     __tablename__ = "episodes"
@@ -124,6 +139,11 @@ class Episode(Base):
     podcast_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("podcasts.id", ondelete="CASCADE"), nullable=False
     )
+
+    # Source type discriminator
+    source_type: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="podcast_episode"
+    )  # "podcast_episode" | "youtube_video"
 
     # Core identifiers - GUID is unique per podcast
     guid: Mapped[str] = mapped_column(String(2048), nullable=False)
@@ -164,6 +184,14 @@ class Episode(Base):
     file_size_bytes: Mapped[int | None] = mapped_column(Integer)
     file_hash: Mapped[str | None] = mapped_column(String(64))  # SHA256
 
+    # YouTube-specific fields (for source_type="youtube_video")
+    youtube_video_id: Mapped[str | None] = mapped_column(String(16))  # 11-char video ID
+    youtube_video_url: Mapped[str | None] = mapped_column(String(2048))
+    youtube_view_count: Mapped[int | None] = mapped_column(Integer)
+    youtube_like_count: Mapped[int | None] = mapped_column(Integer)
+    youtube_captions_available: Mapped[bool | None] = mapped_column(Boolean)
+    youtube_captions_language: Mapped[str | None] = mapped_column(String(16))  # e.g., "en"
+
     # Transcription status
     transcript_status: Mapped[str] = mapped_column(
         String(32), default="pending"
@@ -172,6 +200,7 @@ class Episode(Base):
     transcript_path: Mapped[str | None] = mapped_column(String(1024))
     transcript_text: Mapped[str | None] = mapped_column(Text)  # Full transcript content
     transcribed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    transcript_source: Mapped[str | None] = mapped_column(String(32))  # "whisper" | "youtube_captions"
 
     # MP3 ID3 tag metadata
     mp3_artist: Mapped[str | None] = mapped_column(String(512))
@@ -221,6 +250,8 @@ class Episode(Base):
         Index("ix_episodes_transcript_status", "transcript_status"),
         Index("ix_episodes_file_search_status", "file_search_status"),
         Index("ix_episodes_published_date", "published_date"),
+        Index("ix_episodes_source_type", "source_type"),
+        Index("ix_episodes_youtube_video_id", "youtube_video_id"),
     )
 
     def __repr__(self) -> str:

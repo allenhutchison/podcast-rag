@@ -136,6 +136,95 @@ class TestPodcastOperations:
         retrieved = repository.get_podcast(sample_podcast.id)
         assert retrieved is None
 
+    def test_list_podcasts_with_subscribers_source_type_filter(
+        self, repository, sample_user
+    ):
+        """Test filtering podcasts by source type."""
+        # Create RSS podcast
+        rss_podcast = repository.create_podcast(
+            feed_url="https://example.com/rss.xml",
+            title="RSS Podcast",
+            source_type="rss",
+        )
+        # Create YouTube podcast
+        youtube_podcast = repository.create_podcast(
+            feed_url="https://youtube.com/playlist?list=UU123",
+            title="YouTube Channel",
+            source_type="youtube",
+            youtube_channel_id="UC123",
+        )
+
+        # Subscribe user to both
+        repository.subscribe_user_to_podcast(sample_user.id, rss_podcast.id)
+        repository.subscribe_user_to_podcast(sample_user.id, youtube_podcast.id)
+
+        # Filter by RSS
+        rss_only = repository.list_podcasts_with_subscribers(source_type="rss")
+        assert len(rss_only) == 1
+        assert rss_only[0].source_type == "rss"
+
+        # Filter by YouTube
+        youtube_only = repository.list_podcasts_with_subscribers(source_type="youtube")
+        assert len(youtube_only) == 1
+        assert youtube_only[0].source_type == "youtube"
+
+        # No filter (all)
+        all_podcasts = repository.list_podcasts_with_subscribers()
+        assert len(all_podcasts) == 2
+
+    def test_get_podcast_by_youtube_channel_id(self, repository):
+        """Test getting podcast by YouTube channel ID."""
+        podcast = repository.create_podcast(
+            feed_url="https://youtube.com/playlist?list=UU123456",
+            title="YouTube Channel",
+            source_type="youtube",
+            youtube_channel_id="UC123456",
+        )
+
+        retrieved = repository.get_podcast_by_youtube_channel_id("UC123456")
+        assert retrieved is not None
+        assert retrieved.id == podcast.id
+
+        # Non-existent channel
+        not_found = repository.get_podcast_by_youtube_channel_id("UC_nonexistent")
+        assert not_found is None
+
+    def test_get_youtube_videos_pending_caption_download(self, repository):
+        """Test getting YouTube videos pending caption download."""
+        # Create YouTube podcast
+        podcast = repository.create_podcast(
+            feed_url="https://youtube.com/playlist?list=UU123",
+            title="YouTube Channel",
+            source_type="youtube",
+            youtube_channel_id="UC123",
+        )
+
+        # Create YouTube video episodes
+        ep1 = repository.create_episode(
+            podcast_id=podcast.id,
+            guid="video1",
+            title="Video 1",
+            enclosure_url="https://youtube.com/watch?v=video1",
+            enclosure_type="video/youtube",
+            source_type="youtube_video",
+            youtube_video_id="video1",
+            download_status="pending",
+        )
+        ep2 = repository.create_episode(
+            podcast_id=podcast.id,
+            guid="video2",
+            title="Video 2",
+            enclosure_url="https://youtube.com/watch?v=video2",
+            enclosure_type="video/youtube",
+            source_type="youtube_video",
+            youtube_video_id="video2",
+            download_status="completed",  # Not pending
+        )
+
+        pending = repository.get_youtube_videos_pending_caption_download(limit=10)
+        assert len(pending) == 1
+        assert pending[0].youtube_video_id == "video1"
+
 
 class TestEpisodeOperations:
     """Tests for episode CRUD operations."""
