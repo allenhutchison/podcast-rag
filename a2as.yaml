@@ -1,0 +1,1338 @@
+manifest:
+  version: "0.1.3"
+  schema: https://a2as.org/cert/schema
+  subject:
+    name: allenhutchison/podcast-rag
+    source: https://github.com/allenhutchison/podcast-rag
+    branch: main
+    commit: "37efc0f1"
+    scope: [src/agents/podcast_search.py, src/config.py, src/db/gemini_file_search.py, src/db/repository.py, src/prompt_manager.py]
+  issued:
+    by: A2AS.org
+    at: '2026-02-11T16:38:20Z'
+    url: https://a2as.org/certified/agents/allenhutchison/podcast-rag
+  signatures:
+    digest: sha256:XXwJ8pGpAoCqGr7QQRLIhlLQsJWMZ6k0ecq3QWyXeew
+    key: ed25519:vYjKim_hvbQGoYK4FCIDCU0asaUACHJHCUTiXi5Ul-w
+    sig: ed25519:_iYZBb80XZwq9o3ze2GEy8ldj2XJsN55VeACkBSeXNv3PBMppxJOePL5WJtguxn0Tne14uIBsohu-SsxN6OkCQ
+
+agents:
+  agent.create_podcast_search_agent:
+    type: factory
+    models: [config.GEMINI_MODEL_FLASH]
+    tools: [create_podcast_search_tool]
+    params:
+      name: PodcastSearchAgent
+      instruction: agent_instruction
+      description: Searches podcast transcripts using Gemini File Search
+      output_key: podcast_results
+      function: create_podcast_search_agent
+
+models:
+  config.GEMINI_MODEL_FLASH:
+    type: literal
+    agents: [agent.create_podcast_search_agent]
+
+imports:
+  _rate_limit_exceeded_handler: slowapi._rate_limit_exceeded_handler
+  ABC: abc.ABC
+  abstractmethod: abc.abstractmethod
+  admin_router: src.web.admin_routes.router
+  Any: typing.Any
+  APIError: google.genai.errors.APIError
+  argparse: argparse
+  asynccontextmanager: contextlib.asynccontextmanager
+  AsyncGenerator: collections.abc.AsyncGenerator
+  asyncio: asyncio
+  auth_router: src.web.auth_routes.router
+  Boolean: sqlalchemy.Boolean
+  Callable: collections.abc.Callable
+  case: sqlalchemy.case
+  cast: sqlalchemy.cast
+  chat_router: src.web.chat_routes.router
+  ChatMessage: models.ChatMessage
+  ChatRequest: src.web.models.ChatRequest
+  clear_podcast_citations: src.agents.podcast_search.clear_podcast_citations
+  ClientError: google.genai.errors.ClientError
+  Config: src.config.Config
+  Conversation: models.Conversation
+  CORSMiddleware: fastapi.middleware.cors.CORSMiddleware
+  create_chat_tools: src.agents.chat_tools.create_chat_tools
+  create_engine: sqlalchemy.create_engine
+  create_repository: src.db.factory.create_repository
+  datetime: datetime.datetime
+  DateTime: sqlalchemy.DateTime
+  DeclarativeBase: sqlalchemy.orm.DeclarativeBase
+  Depends: fastapi.Depends
+  Episode: models.Episode
+  escape_filter_value: src.agents.podcast_search.escape_filter_value
+  FastAPI: fastapi.FastAPI
+  flatten_episode_metadata: src.utils.metadata_utils.flatten_episode_metadata
+  ForeignKey: sqlalchemy.ForeignKey
+  func: sqlalchemy.func
+  GeminiFileSearchManager: src.db.gemini_file_search.GeminiFileSearchManager
+  genai: google.genai
+  get_current_user: src.web.auth.get_current_user
+  get_episode_filter: src.agents.podcast_search.get_episode_filter
+  get_latest_podcast_citations: src.agents.podcast_search.get_latest_podcast_citations
+  get_podcast_citations: src.agents.podcast_search.get_podcast_citations
+  get_podcast_filter: src.agents.podcast_search.get_podcast_filter
+  get_remote_address: slowapi.util.get_remote_address
+  glob: glob
+  HTTPException: fastapi.HTTPException
+  Index: sqlalchemy.Index
+  Integer: sqlalchemy.Integer
+  IntegrityError: sqlalchemy.exc.IntegrityError
+  joinedload: sqlalchemy.orm.joinedload
+  JSON: sqlalchemy.types.JSON
+  json: json
+  Limiter: slowapi.Limiter
+  Literal: typing.Literal
+  LlmAgent: google.adk.agents.LlmAgent
+  load_dotenv: dotenv.load_dotenv
+  logging: logging
+  Mapped: sqlalchemy.orm.Mapped
+  mapped_column: sqlalchemy.orm.mapped_column
+  Optional: typing.Optional
+  or_: sqlalchemy.or_
+  os: os
+  partial: functools.partial
+  Podcast: models.Podcast
+  podcast_router: src.web.podcast_routes.router
+  PodcastRepositoryInterface: src.db.repository.PodcastRepositoryInterface
+  PromptManager: src.prompt_manager.PromptManager
+  RateLimitExceeded: slowapi.errors.RateLimitExceeded
+  re: re
+  RedirectResponse: fastapi.responses.RedirectResponse
+  relationship: sqlalchemy.orm.relationship
+  Request: fastapi.Request
+  sanitize_query: src.agents.podcast_search.sanitize_query
+  select: sqlalchemy.select
+  Session: sqlalchemy.orm.Session
+  sessionmaker: sqlalchemy.orm.sessionmaker
+  SessionMiddleware: starlette.middleware.sessions.SessionMiddleware
+  set_podcast_citations: src.agents.podcast_search.set_podcast_citations
+  set_podcast_filter: src.agents.podcast_search.set_podcast_filter
+  shutil: shutil
+  SQLAlchemyPodcastRepository: src.db.repository.SQLAlchemyPodcastRepository
+  StaticFiles: fastapi.staticfiles.StaticFiles
+  StreamingResponse: fastapi.responses.StreamingResponse
+  String: sqlalchemy.String
+  sys: sys
+  tempfile: tempfile
+  Template: string.Template
+  text: sqlalchemy.text
+  Text: sqlalchemy.Text
+  textwrap: textwrap
+  threading: threading
+  time: time
+  timedelta: datetime.timedelta
+  tqdm_module: tqdm
+  TypedDict: typing.TypedDict
+  types: google.genai.types
+  TypeVar: typing.TypeVar
+  UniqueConstraint: sqlalchemy.UniqueConstraint
+  User: models.User
+  user_router: src.web.user_routes.router
+  UserSubscription: models.UserSubscription
+  UTC: datetime.UTC
+  uuid: uuid
+  uvicorn: uvicorn
+
+functions:
+  __init__:
+    type: sync
+    module: src.db.gemini_file_search
+    args: [self, config, dry_run]
+  __repr__:
+    type: sync
+    module: src.db.models
+    args: [self]
+    params:
+      returns: str
+  _build_scope_context:
+    type: async
+    module: src.web.app
+    args: [repository, podcast_id, episode_id]
+    params:
+      returns: str
+  _cleanup_old_citations:
+    type: sync
+    module: src.agents.podcast_search
+  _cleanup_old_filters:
+    type: sync
+    module: src.agents.podcast_search
+  _escape_like_pattern:
+    type: sync
+    module: src.db.repository
+    args: [value]
+    params:
+      returns: str
+  _extract_citations_from_response:
+    type: sync
+    module: src.agents.chat_tools
+    args: [response, repository, source_type]
+    params:
+      returns: list[dict]
+  _extract_doc_metadata:
+    type: sync
+    module: src.db.gemini_file_search
+    args: [self, doc]
+    params:
+      returns: dict
+  _extract_placeholders:
+    type: sync
+    module: src.prompt_manager
+    args: [template_string]
+    params:
+      returns: set[str]
+  _fetch_files_async:
+    type: async
+    module: src.db.gemini_file_search
+    args: [self, store_name, show_progress]
+    params:
+      returns: dict
+  _fetch_files_sync:
+    type: sync
+    module: src.db.gemini_file_search
+    args: [self, store_name, show_progress]
+    params:
+      returns: dict
+  _get_session:
+    type: sync
+    module: src.db.repository
+    args: [self]
+    params:
+      returns: Session
+  _get_tool_description:
+    type: sync
+    module: src.web.app
+    args: [tool_name, args]
+    params:
+      returns: str
+  _get_tool_display_name:
+    type: sync
+    module: src.web.app
+    args: [tool_name]
+    params:
+      returns: str
+  _load_doppler_env:
+    type: sync
+    module: src.config
+  _load_prompts:
+    type: sync
+    module: src.prompt_manager
+    args: [self]
+  _poll_operation:
+    type: sync
+    module: src.db.gemini_file_search
+    args: [self, operation, timeout]
+    params:
+      returns: None
+  _prefetch_metadata_for_documents:
+    type: sync
+    module: src.db.gemini_file_search
+    args: [self, display_names, store_name]
+    params:
+      returns: None
+  _prepare_metadata:
+    type: sync
+    module: src.db.gemini_file_search
+    args: [self, metadata]
+    params:
+      returns: list[dict]
+  _retry_with_backoff:
+    type: sync
+    module: src.db.gemini_file_search
+    args: [self, func, max_retries, initial_delay, max_delay, backoff_factor]
+    params:
+      returns: T
+  _sanitize_display_name:
+    type: sync
+    module: src.db.gemini_file_search
+    args: [self, name]
+    params:
+      returns: str
+  _summarize_tool_result:
+    type: sync
+    module: src.web.app
+    args: [tool_name, result]
+    params:
+      returns: str
+  _upload:
+    type: sync
+    module: src.db.gemini_file_search
+  _validate_jwt_config:
+    type: sync
+    module: src.web.app
+  _validate_podcast_id:
+    type: sync
+    module: src.web.app
+    args: [podcast_id]
+    params:
+      returns: str
+  _validate_session_id:
+    type: sync
+    module: src.web.app
+    args: [session_id]
+    params:
+      returns: str
+  add_message:
+    type: sync
+    module: src.db.repository
+    args: [self, conversation_id, role, content, citations]
+    params:
+      returns: ChatMessage
+  batch_upload_directory:
+    type: sync
+    module: src.db.gemini_file_search
+    args: [self, directory_path, pattern, metadata_pattern, progress_callback]
+    params:
+      returns: dict
+  build_filter:
+    type: sync
+    module: scripts.profile_file_search_filter
+    args: [podcasts, num_podcasts]
+    params:
+      returns: str
+  build_prompt:
+    type: sync
+    module: src.prompt_manager
+    args: [self, prompt_name]
+    params:
+      returns: str
+  build_temp_file:
+    type: sync
+    module: src.config
+    args: [self, transcription_file]
+  build_transcription_file:
+    type: sync
+    module: src.config
+    args: [self, episode_path]
+  can_cleanup_audio:
+    type: sync
+    module: src.db.models
+    args: [self]
+    params:
+      returns: bool
+  chat:
+    type: async
+    module: src.web.app
+    args: [request, chat_request, current_user]
+  clear_podcast_citations:
+    type: sync
+    module: src.agents.podcast_search
+    args: [session_id]
+  close:
+    type: sync
+    module: src.db.repository
+    args: [self]
+    params:
+      returns: None
+  count_conversations:
+    type: sync
+    module: src.db.repository
+    args: [self, user_id]
+    params:
+      returns: int
+  count_episodes:
+    type: sync
+    module: src.db.repository
+    args: [self, podcast_id, download_status, transcript_status, metadata_status, file_search_status]
+    params:
+      returns: int
+  count_episodes_not_pending_indexing:
+    type: sync
+    module: src.db.repository
+    args: [self]
+    params:
+      returns: int
+  count_episodes_pending_indexing:
+    type: sync
+    module: src.db.repository
+    args: [self]
+    params:
+      returns: int
+  count_podcasts_not_pending_description_indexing:
+    type: sync
+    module: src.db.repository
+    args: [self]
+    params:
+      returns: int
+  count_podcasts_pending_description_indexing:
+    type: sync
+    module: src.db.repository
+    args: [self]
+    params:
+      returns: int
+  create_chat_tools:
+    type: sync
+    module: src.agents.chat_tools
+    args: [config, repository, file_search_manager, user_id, podcast_id, episode_id]
+    params:
+      returns: list[Callable]
+  create_conversation:
+    type: sync
+    module: src.db.repository
+    args: [self, user_id, scope, podcast_id, episode_id, title]
+    params:
+      returns: Conversation
+  create_episode:
+    type: sync
+    module: src.db.repository
+    args: [self, podcast_id, guid, title, enclosure_url, enclosure_type]
+    params:
+      returns: Episode
+  create_or_get_store:
+    type: sync
+    module: src.db.gemini_file_search
+    args: [self, display_name]
+    params:
+      returns: str
+  create_podcast:
+    type: sync
+    module: src.db.repository
+    args: [self, feed_url, title]
+    params:
+      returns: Podcast
+  create_podcast_search_agent:
+    type: sync
+    module: src.agents.podcast_search
+    args: [config, repository, session_id]
+    params:
+      returns: LlmAgent
+  create_podcast_search_tool:
+    type: sync
+    module: src.agents.podcast_search
+    args: [config, file_search_manager, repository, session_id, prompt_manager]
+  create_user:
+    type: sync
+    module: src.db.repository
+    args: [self, google_id, email, name, picture_url]
+    params:
+      returns: User
+  deduplicate_preserving_order:
+    type: sync
+    module: src.utils.metadata_utils
+    args: [items]
+    params:
+      returns: list
+  delete_conversation:
+    type: sync
+    module: src.db.repository
+    args: [self, conversation_id]
+    params:
+      returns: bool
+  delete_episode:
+    type: sync
+    module: src.db.repository
+    args: [self, episode_id, delete_files]
+    params:
+      returns: bool
+  delete_file:
+    type: sync
+    module: src.db.gemini_file_search
+    args: [self, file_name, force]
+  delete_podcast:
+    type: sync
+    module: src.db.repository
+    args: [self, podcast_id, delete_files]
+    params:
+      returns: bool
+  escape_filter_value:
+    type: sync
+    module: src.agents.podcast_search
+    args: [value]
+  extract_citations:
+    type: sync
+    module: src.agents.podcast_search
+    args: [response, repository]
+    params:
+      returns: list[dict]
+  flatten_episode_metadata:
+    type: sync
+    module: src.utils.metadata_utils
+    args: [metadata]
+    params:
+      returns: dict
+  generate_agentic_response:
+    type: async
+    module: src.web.app
+    args: [query, session_id, user_id, _history, podcast_id, episode_id]
+    params:
+      returns: AsyncGenerator
+  get_conversation:
+    type: sync
+    module: src.db.repository
+    args: [self, conversation_id]
+  get_document_by_name:
+    type: sync
+    module: src.db.gemini_file_search
+    args: [self, display_name, store_name]
+  get_document_by_resource_name:
+    type: sync
+    module: src.db.gemini_file_search
+    args: [self, resource_name]
+  get_download_buffer_count:
+    type: sync
+    module: src.db.repository
+    args: [self]
+    params:
+      returns: int
+  get_episode:
+    type: sync
+    module: src.db.repository
+    args: [self, episode_id]
+  get_episode_by_file_search_display_name:
+    type: sync
+    module: src.db.repository
+    args: [self, display_name]
+  get_episode_by_guid:
+    type: sync
+    module: src.db.repository
+    args: [self, podcast_id, guid]
+  get_episode_detail:
+    type: async
+    module: src.web.app
+    args: [episode_id, current_user]
+  get_episode_filter:
+    type: sync
+    module: src.agents.podcast_search
+    args: [session_id]
+  get_episode_info:
+    type: sync
+    module: src.agents.chat_tools
+    args: [episode_id_param]
+    params:
+      returns: dict
+  get_episodes_pending_download:
+    type: sync
+    module: src.db.repository
+    args: [self, limit]
+    params:
+      returns: list[Episode]
+  get_episodes_pending_indexing:
+    type: sync
+    module: src.db.repository
+    args: [self, limit]
+    params:
+      returns: list[Episode]
+  get_episodes_pending_metadata:
+    type: sync
+    module: src.db.repository
+    args: [self, limit]
+    params:
+      returns: list[Episode]
+  get_episodes_pending_transcription:
+    type: sync
+    module: src.db.repository
+    args: [self, limit]
+    params:
+      returns: list[Episode]
+  get_episodes_ready_for_cleanup:
+    type: sync
+    module: src.db.repository
+    args: [self, limit]
+    params:
+      returns: list[Episode]
+  get_existing_episode_guids:
+    type: sync
+    module: src.db.repository
+    args: [self, podcast_id]
+    params:
+      returns: set[str]
+  get_existing_files:
+    type: sync
+    module: src.db.gemini_file_search
+    args: [self, store_name, show_progress]
+    params:
+      returns: dict
+  get_existing_files_async:
+    type: sync
+    module: src.db.gemini_file_search
+    args: [self, store_name, show_progress]
+    params:
+      returns: dict
+  get_latest_episode:
+    type: sync
+    module: src.db.repository
+    args: [self, podcast_id]
+  get_latest_podcast_citations:
+    type: sync
+    module: src.agents.podcast_search
+    params:
+      returns: list[dict]
+  get_messages:
+    type: sync
+    module: src.db.repository
+    args: [self, conversation_id, limit, offset]
+    params:
+      returns: list[ChatMessage]
+  get_new_episodes_for_user_since:
+    type: sync
+    module: src.db.repository
+    args: [self, user_id, since, limit]
+    params:
+      returns: list[Episode]
+  get_next_for_transcription:
+    type: sync
+    module: src.db.repository
+    args: [self]
+  get_next_pending_post_processing:
+    type: sync
+    module: src.db.repository
+    args: [self]
+  get_or_create_episode:
+    type: sync
+    module: src.db.repository
+    args: [self, podcast_id, guid, title, enclosure_url, enclosure_type]
+    params:
+      returns: tuple
+  get_overall_stats:
+    type: sync
+    module: src.db.repository
+    args: [self]
+    params:
+      returns: dict
+  get_podcast:
+    type: sync
+    module: src.db.repository
+    args: [self, podcast_id]
+  get_podcast_by_description_display_name:
+    type: sync
+    module: src.db.repository
+    args: [self, display_name]
+  get_podcast_by_feed_url:
+    type: sync
+    module: src.db.repository
+    args: [self, feed_url]
+  get_podcast_citations:
+    type: sync
+    module: src.agents.podcast_search
+    args: [session_id]
+    params:
+      returns: list[dict]
+  get_podcast_detail:
+    type: async
+    module: src.web.app
+    args: [podcast_id, current_user]
+  get_podcast_episode_counts:
+    type: sync
+    module: src.db.repository
+    args: [self, podcast_ids]
+    params:
+      returns: dict
+  get_podcast_filter:
+    type: sync
+    module: src.agents.podcast_search
+    args: [session_id]
+  get_podcast_filter_list:
+    type: sync
+    module: src.agents.podcast_search
+    args: [session_id]
+  get_podcast_info:
+    type: sync
+    module: src.agents.chat_tools
+    args: [podcast_id_param]
+    params:
+      returns: dict
+  get_podcast_stats:
+    type: sync
+    module: src.db.repository
+    args: [self, podcast_id]
+    params:
+      returns: dict
+  get_podcast_subscriber_counts:
+    type: sync
+    module: src.db.repository
+    args: [self, podcast_ids]
+    params:
+      returns: dict
+  get_podcasts_pending_description_indexing:
+    type: sync
+    module: src.db.repository
+    args: [self, limit]
+    params:
+      returns: list[Podcast]
+  get_recent_processed_episodes:
+    type: sync
+    module: src.db.repository
+    args: [self, limit]
+    params:
+      returns: list[Episode]
+  get_store_info:
+    type: sync
+    module: src.db.gemini_file_search
+    args: [self, store_name]
+    params:
+      returns: dict
+  get_subscription_podcasts:
+    type: sync
+    module: scripts.profile_file_search_filter
+    args: [repository, user_email]
+    params:
+      returns: list[str]
+  get_transcript_text:
+    type: sync
+    module: src.db.repository
+    args: [self, episode_id]
+  get_user:
+    type: sync
+    module: src.db.repository
+    args: [self, user_id]
+  get_user_by_email:
+    type: sync
+    module: src.db.repository
+    args: [self, email]
+  get_user_by_google_id:
+    type: sync
+    module: src.db.repository
+    args: [self, google_id]
+  get_user_count:
+    type: sync
+    module: src.db.repository
+    args: [self, is_admin]
+    params:
+      returns: int
+  get_user_subscriptions:
+    type: sync
+    module: src.agents.chat_tools
+    params:
+      returns: dict
+  get_users_for_email_digest:
+    type: sync
+    module: src.db.repository
+    args: [self, limit]
+    params:
+      returns: list[User]
+  health:
+    type: async
+    module: src.web.app
+  increment_retry_count:
+    type: sync
+    module: src.db.repository
+    args: [self, episode_id, stage]
+    params:
+      returns: int
+  is_fully_processed:
+    type: sync
+    module: src.db.models
+    args: [self]
+    params:
+      returns: bool
+  is_mp3_file:
+    type: sync
+    module: src.config
+    args: [self, file_path]
+  is_transcription_file:
+    type: sync
+    module: src.config
+    args: [self, file_path]
+  is_transcription_in_progress:
+    type: sync
+    module: src.config
+    args: [self, temp_file]
+  is_user_subscribed:
+    type: sync
+    module: src.db.repository
+    args: [self, user_id, podcast_id]
+    params:
+      returns: bool
+  lifespan:
+    type: async
+    module: src.web.app
+    args: [_app]
+  list_all_podcasts:
+    type: async
+    module: src.web.app
+    args: [include_stats, sort_by, sort_order, current_user]
+  list_conversations:
+    type: sync
+    module: src.db.repository
+    args: [self, user_id, limit, offset]
+    params:
+      returns: list[Conversation]
+  list_episodes:
+    type: sync
+    module: src.db.repository
+    args: [self, podcast_id, download_status, transcript_status, metadata_status, file_search_status, limit, offset]
+    params:
+      returns: list[Episode]
+  list_files:
+    type: sync
+    module: src.db.gemini_file_search
+    args: [self, store_name]
+    params:
+      returns: list[str]
+  list_podcasts:
+    type: async
+    module: src.web.app
+    args: [include_stats, sort_by, sort_order, current_user]
+  list_podcasts_for_user:
+    type: sync
+    module: src.db.repository
+    args: [self, user_id, limit]
+    params:
+      returns: list[Podcast]
+  list_podcasts_with_subscribers:
+    type: sync
+    module: src.db.repository
+    args: [self, limit]
+    params:
+      returns: list[Podcast]
+  list_users:
+    type: sync
+    module: src.db.repository
+    args: [self, is_admin, is_active, limit, offset]
+    params:
+      returns: list[User]
+  load_and_flatten_metadata:
+    type: sync
+    module: src.utils.metadata_utils
+    args: [transcript_path, transcription_suffix]
+  load_config:
+    type: sync
+    module: src.config
+    args: [self]
+  load_metadata_from_file:
+    type: sync
+    module: src.utils.metadata_utils
+    args: [metadata_path]
+  main:
+    type: sync
+    module: scripts.profile_file_search_filter
+  mark_audio_cleaned_up:
+    type: sync
+    module: src.db.repository
+    args: [self, episode_id]
+    params:
+      returns: None
+  mark_description_indexing_complete:
+    type: sync
+    module: src.db.repository
+    args: [self, podcast_id, resource_name, display_name]
+    params:
+      returns: None
+  mark_description_indexing_failed:
+    type: sync
+    module: src.db.repository
+    args: [self, podcast_id, error]
+    params:
+      returns: None
+  mark_description_indexing_started:
+    type: sync
+    module: src.db.repository
+    args: [self, podcast_id]
+    params:
+      returns: None
+  mark_download_complete:
+    type: sync
+    module: src.db.repository
+    args: [self, episode_id, local_path, file_size, file_hash]
+    params:
+      returns: None
+  mark_download_failed:
+    type: sync
+    module: src.db.repository
+    args: [self, episode_id, error]
+    params:
+      returns: None
+  mark_download_started:
+    type: sync
+    module: src.db.repository
+    args: [self, episode_id]
+    params:
+      returns: None
+  mark_email_digest_sent:
+    type: sync
+    module: src.db.repository
+    args: [self, user_id]
+    params:
+      returns: None
+  mark_indexing_complete:
+    type: sync
+    module: src.db.repository
+    args: [self, episode_id, resource_name, display_name]
+    params:
+      returns: None
+  mark_indexing_failed:
+    type: sync
+    module: src.db.repository
+    args: [self, episode_id, error]
+    params:
+      returns: None
+  mark_indexing_started:
+    type: sync
+    module: src.db.repository
+    args: [self, episode_id]
+    params:
+      returns: None
+  mark_metadata_complete:
+    type: sync
+    module: src.db.repository
+    args: [self, episode_id, summary, keywords, hosts, guests, mp3_artist, mp3_album, email_content, metadata_path]
+    params:
+      returns: None
+  mark_metadata_failed:
+    type: sync
+    module: src.db.repository
+    args: [self, episode_id, error]
+    params:
+      returns: None
+  mark_metadata_started:
+    type: sync
+    module: src.db.repository
+    args: [self, episode_id]
+    params:
+      returns: None
+  mark_permanently_failed:
+    type: sync
+    module: src.db.repository
+    args: [self, episode_id, stage, error]
+    params:
+      returns: None
+  mark_transcript_complete:
+    type: sync
+    module: src.db.repository
+    args: [self, episode_id, transcript_text, transcript_path]
+    params:
+      returns: None
+  mark_transcript_failed:
+    type: sync
+    module: src.db.repository
+    args: [self, episode_id, error]
+    params:
+      returns: None
+  mark_transcript_started:
+    type: sync
+    module: src.db.repository
+    args: [self, episode_id]
+    params:
+      returns: None
+  reset_all_episode_indexing_status:
+    type: sync
+    module: src.db.repository
+    args: [self]
+    params:
+      returns: int
+  reset_all_podcast_description_indexing_status:
+    type: sync
+    module: src.db.repository
+    args: [self]
+    params:
+      returns: int
+  reset_episode_for_retry:
+    type: sync
+    module: src.db.repository
+    args: [self, episode_id, stage]
+    params:
+      returns: None
+  root:
+    type: async
+    module: src.web.app
+  sanitize_query:
+    type: sync
+    module: src.agents.podcast_search
+    args: [query]
+    params:
+      returns: str
+  search_episodes:
+    type: async
+    module: src.web.app
+    args: [type, q, current_user]
+  search_episodes_by_keyword:
+    type: sync
+    module: src.db.repository
+    args: [self, keyword, limit]
+    params:
+      returns: list[Episode]
+  search_episodes_by_person:
+    type: sync
+    module: src.db.repository
+    args: [self, name, limit]
+    params:
+      returns: list[Episode]
+  search_podcast_descriptions:
+    type: sync
+    module: src.agents.chat_tools
+    args: [query]
+    params:
+      returns: dict
+  search_podcasts:
+    type: sync
+    module: src.agents.podcast_search
+    args: [query]
+    params:
+      returns: dict
+  search_transcripts:
+    type: sync
+    module: src.agents.chat_tools
+    args: [query]
+    params:
+      returns: dict
+  set_podcast_citations:
+    type: sync
+    module: src.agents.podcast_search
+    args: [session_id, citations]
+  set_podcast_filter:
+    type: sync
+    module: src.agents.podcast_search
+    args: [session_id, podcast_name, episode_name, podcast_list]
+  set_user_admin_status:
+    type: sync
+    module: src.db.repository
+    args: [self, user_id, is_admin]
+  subscribe_to_podcast:
+    type: async
+    module: src.web.app
+    args: [podcast_id, current_user]
+  subscribe_user_to_podcast:
+    type: sync
+    module: src.db.repository
+    args: [self, user_id, podcast_id]
+    params:
+      returns: UserSubscription
+  test_query:
+    type: sync
+    module: scripts.profile_file_search_filter
+    args: [client, store_name, podcasts, num_podcasts]
+    params:
+      returns: dict
+  transcription_exists:
+    type: sync
+    module: src.config
+    args: [self, transcription_file]
+  unsubscribe_from_podcast:
+    type: async
+    module: src.web.app
+    args: [podcast_id, current_user]
+  unsubscribe_user_from_podcast:
+    type: sync
+    module: src.db.repository
+    args: [self, user_id, podcast_id]
+    params:
+      returns: bool
+  update_conversation:
+    type: sync
+    module: src.db.repository
+    args: [self, conversation_id]
+  update_episode:
+    type: sync
+    module: src.db.repository
+    args: [self, episode_id]
+  update_podcast:
+    type: sync
+    module: src.db.repository
+    args: [self, podcast_id]
+  update_user:
+    type: sync
+    module: src.db.repository
+    args: [self, user_id]
+  upload_description_document:
+    type: sync
+    module: src.db.gemini_file_search
+    args: [self, podcast_name, description, metadata, store_name]
+    params:
+      returns: tuple
+  upload_transcript:
+    type: sync
+    module: src.db.gemini_file_search
+    args: [self, transcript_path, metadata, store_name, existing_files, skip_existing]
+  upload_transcript_text:
+    type: sync
+    module: src.db.gemini_file_search
+    args: [self, text, display_name, metadata, store_name]
+    params:
+      returns: str
+  validate_file_search_model:
+    type: sync
+    module: src.config
+    args: [self]
+
+variables:
+  ALLOWED_ORIGINS:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  COOKIE_DOMAIN:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  COOKIE_SECURE:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  DATABASE_URL:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  DB_ECHO:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  DB_MAX_OVERFLOW:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  DB_POOL_PRE_PING:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  DB_POOL_SIZE:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  DEV_MODE:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [src.web.app]
+  EMAIL_DIGEST_SEND_HOUR:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  EMAIL_DIGEST_TIMEZONE:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  ENV:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [src.config]
+  GEMINI_API_KEY:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  GEMINI_FILE_SEARCH_STORE_NAME:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  GEMINI_MODEL:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  GEMINI_MODEL_FLASH:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  GEMINI_MODEL_LITE:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  GEMINI_MODEL_PRO:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  GOOGLE_CLIENT_ID:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  GOOGLE_CLIENT_SECRET:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  GOOGLE_REDIRECT_URI:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  JWT_EXPIRATION_DAYS:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  JWT_SECRET_KEY:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  LOG_LEVEL:
+    type: env
+    params:
+      caller: [os.environ.get]
+      path: [src.web.app]
+  MAX_CONVERSATION_TOKENS:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  PODCAST_CHUNK_SIZE:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  PODCAST_DOWNLOAD_DIRECTORY:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  PODCAST_DOWNLOAD_RETRY_ATTEMPTS:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  PODCAST_DOWNLOAD_TIMEOUT:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  PODCAST_MAX_CONCURRENT_DOWNLOADS:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  PORT:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  PROMPTS_DIR:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  RATE_LIMIT:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  RESEND_API_KEY:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  RESEND_FROM_EMAIL:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  RESEND_FROM_NAME:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  STREAMING_DELAY:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  SUPABASE_ANON_KEY:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  SUPABASE_SERVICE_ROLE_KEY:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  SUPABASE_URL:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  WEB_BASE_URL:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  WHISPER_COMPUTE_TYPE:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  WHISPER_DEVICE:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+  WHISPER_MODEL:
+    type: env
+    params:
+      caller: [os.getenv]
+      path: [env_file]
+
+files:
+  ./:
+    type: pattern
+    actions: [read]
+    params:
+      patterns: ['os.path.join(directory_path, ''**'', ''%"{...}"%'')']
+      links: [os.path.join]
+      caller: [batch_upload_directory]
+  .txt:
+    type: literal
+    actions: [write]
+    params:
+      caller: [tempfile.mkstemp]
+      text: "True"
+  episode.local_file_path:
+    type: variable
+    actions: [read, delete]
+    params:
+      caller: [os.path.exists, os.remove]
+  episode.transcript_path:
+    type: variable
+    actions: [read]
+    params:
+      caller: [os.path.exists, open]
+  file_path:
+    type: variable
+    actions: [read]
+    params:
+      caller: [os.path.isfile]
+  filepath:
+    type: variable
+    actions: [read]
+    params:
+      caller: [open, json.load]
+      alias: [f]
+  path:
+    type: variable
+    actions: [read, delete]
+    params:
+      caller: [os.path.exists, os.remove]
+  static_path:
+    type: variable
+    actions: [read]
+    params:
+      caller: [os.path.exists]
+  temp_file:
+    type: variable
+    actions: [read]
+    params:
+      caller: [os.path.exists]
+  tmp_path:
+    type: variable
+    actions: [read, delete]
+    params:
+      caller: [os.path.exists, os.unlink]
+  transcript_path:
+    type: variable
+    actions: [read]
+    params:
+      caller: [os.path.exists, os.path.basename, shutil.copy2]
+  transcription_file:
+    type: variable
+    actions: [read]
+    params:
+      caller: [os.path.exists]
