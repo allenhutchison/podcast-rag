@@ -52,6 +52,50 @@ def _get_int_env(
     return value
 
 
+def _get_float_env(
+    name: str,
+    default: float,
+    min_val: float | None = None,
+    max_val: float | None = None,
+) -> float:
+    """Parse a float from an environment variable with validation.
+
+    Args:
+        name: Environment variable name.
+        default: Default value if env var is not set.
+        min_val: Minimum allowed value (inclusive), or None for no minimum.
+        max_val: Maximum allowed value (inclusive), or None for no maximum.
+
+    Returns:
+        The parsed and validated float value.
+
+    Raises:
+        ValueError: If the value cannot be parsed as a float or is out of range.
+    """
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+
+    try:
+        value = float(raw)
+    except ValueError as err:
+        raise ValueError(
+            f"Invalid value for {name}: '{raw}' is not a valid number"
+        ) from err
+
+    if min_val is not None and value < min_val:
+        raise ValueError(
+            f"Invalid value for {name}: {value} must be >= {min_val}"
+        )
+
+    if max_val is not None and value > max_val:
+        raise ValueError(
+            f"Invalid value for {name}: {value} must be <= {max_val}"
+        )
+
+    return value
+
+
 @dataclass
 class PipelineConfig:
     """Configuration for pipeline-oriented orchestrator.
@@ -77,6 +121,11 @@ class PipelineConfig:
 
     # Retry settings
     max_retries: int = 3  # Max retry attempts before marking permanently failed
+
+    # Transient DB error retry settings
+    max_consecutive_db_errors: int = 5  # Consecutive DB errors before shutdown
+    db_retry_base_wait: float = 5.0  # Base wait in seconds for exponential backoff
+    db_retry_max_wait: float = 60.0  # Cap on backoff wait time
 
     @classmethod
     def from_env(cls) -> "PipelineConfig":
@@ -113,6 +162,15 @@ class PipelineConfig:
         max_retries = _get_int_env(
             "PIPELINE_MAX_RETRIES", 3, min_val=0
         )
+        max_consecutive_db_errors = _get_int_env(
+            "PIPELINE_MAX_CONSECUTIVE_DB_ERRORS", 5, min_val=1
+        )
+        db_retry_base_wait = _get_float_env(
+            "PIPELINE_DB_RETRY_BASE_WAIT", 5.0, min_val=0.1
+        )
+        db_retry_max_wait = _get_float_env(
+            "PIPELINE_DB_RETRY_MAX_WAIT", 60.0, min_val=1.0
+        )
 
         # Cross-field validation
         if download_buffer_threshold >= download_buffer_size:
@@ -131,4 +189,7 @@ class PipelineConfig:
             post_processing_workers=post_processing_workers,
             idle_wait_seconds=idle_wait_seconds,
             max_retries=max_retries,
+            max_consecutive_db_errors=max_consecutive_db_errors,
+            db_retry_base_wait=db_retry_base_wait,
+            db_retry_max_wait=db_retry_max_wait,
         )

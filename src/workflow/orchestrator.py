@@ -11,6 +11,8 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+from sqlalchemy.exc import OperationalError
+
 from src.config import Config
 from src.db.repository import PodcastRepositoryInterface
 from src.workflow.config import PipelineConfig
@@ -173,23 +175,51 @@ class PipelineOrchestrator:
             # Initialize workers
             self._startup()
 
+            consecutive_db_errors = 0
+
             # Main pipeline loop
             while self._running:
-                work_done = self._pipeline_iteration()
+                try:
+                    work_done = self._pipeline_iteration()
+                    consecutive_db_errors = 0  # Reset on success
 
-                if not work_done:
-                    # No transcription work available - help with post-processing
-                    helped = self._help_post_process()
+                    if not work_done:
+                        # No transcription work available - help with post-processing
+                        helped = self._help_post_process()
 
-                    if not helped:
-                        # Nothing to do - sleep briefly
-                        logger.debug(
-                            f"No work available, sleeping {self.pipeline_config.idle_wait_seconds}s"
+                        if not helped:
+                            # Nothing to do - sleep briefly
+                            logger.debug(
+                                f"No work available, sleeping {self.pipeline_config.idle_wait_seconds}s"
+                            )
+                            time.sleep(self.pipeline_config.idle_wait_seconds)
+
+                except OperationalError as e:
+                    consecutive_db_errors += 1
+                    max_errors = self.pipeline_config.max_consecutive_db_errors
+                    if consecutive_db_errors >= max_errors:
+                        logger.error(
+                            f"Database unreachable after {consecutive_db_errors} "
+                            f"consecutive errors, shutting down: {e}"
                         )
-                        time.sleep(self.pipeline_config.idle_wait_seconds)
+                        break
+                    wait = min(
+                        self.pipeline_config.db_retry_base_wait
+                        * (2 ** (consecutive_db_errors - 1)),
+                        self.pipeline_config.db_retry_max_wait,
+                    )
+                    logger.warning(
+                        f"Transient database error (attempt {consecutive_db_errors}/{max_errors}), "
+                        f"retrying in {wait:.0f}s: {e}"
+                    )
+                    time.sleep(wait)
+
+                except Exception:
+                    logger.exception("Pipeline iteration error")
+                    time.sleep(self.pipeline_config.idle_wait_seconds)
 
         except Exception:
-            logger.exception("Pipeline error")
+            logger.exception("Pipeline startup error")
         finally:
             # Restore signal handlers
             signal.signal(signal.SIGINT, original_sigint)
