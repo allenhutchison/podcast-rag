@@ -4,6 +4,7 @@ Provides environment-based configuration for batch sizes, timeouts,
 and other workflow-related settings.
 """
 
+import math
 import os
 from dataclasses import dataclass
 
@@ -82,6 +83,11 @@ def _get_float_env(
         raise ValueError(
             f"Invalid value for {name}: '{raw}' is not a valid number"
         ) from err
+
+    if not math.isfinite(value):
+        raise ValueError(
+            f"Invalid value for {name}: '{raw}' is not a finite number"
+        )
 
     if min_val is not None and value < min_val:
         raise ValueError(

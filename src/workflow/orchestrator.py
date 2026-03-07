@@ -202,6 +202,7 @@ class PipelineOrchestrator:
                             f"Database unreachable after {consecutive_db_errors} "
                             f"consecutive errors, shutting down: {e}"
                         )
+                        self._running = False
                         break
                     wait = min(
                         self.pipeline_config.db_retry_base_wait
@@ -215,6 +216,7 @@ class PipelineOrchestrator:
                     time.sleep(wait)
 
                 except Exception:
+                    consecutive_db_errors = 0
                     logger.exception("Pipeline iteration error")
                     time.sleep(self.pipeline_config.idle_wait_seconds)
 
