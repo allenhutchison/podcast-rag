@@ -227,6 +227,7 @@ class PipelineOrchestrator:
             signal.signal(signal.SIGINT, original_sigint)
             signal.signal(signal.SIGTERM, original_sigterm)
 
+            self._running = False
             self._shutdown()
 
         return self._stats
