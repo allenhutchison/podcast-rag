@@ -213,7 +213,10 @@ class PipelineOrchestrator:
                         f"Transient database error (attempt {consecutive_db_errors}/{max_errors}), "
                         f"retrying in {wait:.0f}s: {e}"
                     )
-                    time.sleep(wait)
+                    remaining = wait
+                    while remaining > 0 and self._running:
+                        time.sleep(min(1.0, remaining))
+                        remaining -= 1.0
 
                 except Exception:
                     consecutive_db_errors = 0
