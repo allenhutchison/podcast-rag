@@ -200,7 +200,8 @@ class PipelineOrchestrator:
                     if consecutive_db_errors >= max_errors:
                         logger.error(
                             f"Database unreachable after {consecutive_db_errors} "
-                            f"consecutive errors, shutting down: {e}"
+                            f"consecutive errors, shutting down",
+                            exc_info=True,
                         )
                         self._running = False
                         break
