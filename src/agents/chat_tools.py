@@ -523,10 +523,55 @@ def create_chat_tools(
                 'error': f"{e!s}"
             }
 
+    def get_library_stats() -> dict:
+        """
+        Get system-wide library statistics and a full listing of all podcasts.
+
+        Use this tool when users ask how many podcasts or episodes are available,
+        what podcasts exist in the library, how many episodes have been transcribed,
+        or general questions about the library's contents and processing status.
+
+        Returns:
+            Dict with overall stats and list of all podcasts with episode counts
+        """
+        logger.info("get_library_stats called")
+
+        try:
+            stats = repository.get_overall_stats()
+            podcasts = repository.list_podcasts()
+
+            podcast_ids = [str(p.id) for p in podcasts]
+            episode_counts = repository.get_podcast_episode_counts(podcast_ids)
+
+            podcast_list = []
+            for p in podcasts:
+                podcast_list.append({
+                    'podcast_id': str(p.id),
+                    'title': p.title,
+                    'author': p.itunes_author or p.author or '',
+                    'episode_count': episode_counts.get(p.id, 0),
+                })
+
+            return {
+                'stats': stats,
+                'podcasts': podcast_list,
+                'podcast_count': len(podcast_list),
+            }
+
+        except Exception as e:
+            logger.error(f"get_library_stats failed: {e}", exc_info=True)
+            return {
+                'stats': {},
+                'podcasts': [],
+                'podcast_count': 0,
+                'error': f"{e!s}",
+            }
+
     return [
         search_transcripts,
         search_podcast_descriptions,
         get_user_subscriptions,
         get_podcast_info,
-        get_episode_info
+        get_episode_info,
+        get_library_stats,
     ]
