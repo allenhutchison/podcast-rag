@@ -275,6 +275,9 @@ class TestSyncWorker:
         """Create mock config."""
         config = Mock()
         config.PODCAST_DOWNLOAD_DIRECTORY = "/tmp/podcasts"
+        # YouTube settings - disabled by default in tests
+        config.YOUTUBE_API_KEY = ""  # Empty disables YouTube sync
+        config.YOUTUBE_DEFAULT_MAX_VIDEOS = 50
         return config
 
     @pytest.fixture
