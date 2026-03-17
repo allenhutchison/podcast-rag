@@ -459,6 +459,7 @@ def _get_tool_display_name(tool_name: str) -> str:
         'get_user_subscriptions': 'Getting subscriptions',
         'get_podcast_info': 'Getting podcast details',
         'get_episode_info': 'Getting episode details',
+        'get_library_stats': 'Getting library stats',
     }
     return display_names.get(tool_name, tool_name)
 
@@ -477,6 +478,8 @@ def _get_tool_description(tool_name: str, args: dict) -> str:
         return 'Looking up podcast details'
     elif tool_name == 'get_episode_info':
         return 'Looking up episode details'
+    elif tool_name == 'get_library_stats':
+        return 'Retrieving library statistics and podcast listing'
     return f'Running {tool_name}'
 
 
@@ -500,6 +503,11 @@ def _summarize_tool_result(tool_name: str, result: dict) -> str:
         episode = result.get('episode', {})
         title = episode.get('title', 'Unknown')
         return f'Episode: {title}'
+    elif tool_name == 'get_library_stats':
+        podcast_count = result.get('podcast_count', 0)
+        stats = result.get('stats', {})
+        total_episodes = stats.get('total_episodes', 0)
+        return f'{podcast_count} podcasts, {total_episodes} episodes in library'
     return 'Completed'
 
 

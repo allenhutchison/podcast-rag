@@ -567,5 +567,104 @@ class TestSearchPodcastDescriptionsTool:
         assert result['citations'] == []
 
 
+class TestGetLibraryStatsTool:
+    """Tests for the get_library_stats tool function."""
+
+    def _create_tools(self, mock_repo):
+        """Helper to create tools with standard mocks."""
+        from src.agents.chat_tools import create_chat_tools
+
+        mock_config = MagicMock()
+        mock_config.GEMINI_API_KEY = "test-key"
+        mock_config.GEMINI_MODEL_FLASH = "gemini-2.0-flash"
+
+        mock_file_search = MagicMock()
+        mock_file_search.create_or_get_store.return_value = "stores/test-store"
+
+        mock_repo.get_podcast.return_value = None
+        mock_repo.get_episode.return_value = None
+
+        with patch('src.agents.chat_tools.genai.Client'):
+            return create_chat_tools(
+                config=mock_config,
+                repository=mock_repo,
+                file_search_manager=mock_file_search,
+                user_id="user-123",
+            )
+
+    def test_get_library_stats_returns_stats_and_podcasts(self):
+        """Test that get_library_stats returns overall stats and podcast listing."""
+        mock_repo = MagicMock()
+        mock_repo.get_overall_stats.return_value = {
+            'total_podcasts': 3,
+            'total_episodes': 150,
+            'indexed': 120,
+        }
+
+        mock_podcast_1 = MagicMock()
+        mock_podcast_1.id = "p1"
+        mock_podcast_1.title = "Podcast One"
+        mock_podcast_1.itunes_author = "Author A"
+        mock_podcast_1.author = None
+
+        mock_podcast_2 = MagicMock()
+        mock_podcast_2.id = "p2"
+        mock_podcast_2.title = "Podcast Two"
+        mock_podcast_2.itunes_author = None
+        mock_podcast_2.author = "Author B"
+
+        mock_repo.list_podcasts.return_value = [mock_podcast_1, mock_podcast_2]
+        mock_repo.get_podcast_episode_counts.return_value = {"p1": 80, "p2": 70}
+
+        tools = self._create_tools(mock_repo)
+        stats_tool = next(t for t in tools if t.__name__ == 'get_library_stats')
+
+        result = stats_tool()
+
+        assert result['podcast_count'] == 2
+        assert result['stats']['total_podcasts'] == 3
+        assert result['stats']['total_episodes'] == 150
+        assert len(result['podcasts']) == 2
+        assert result['podcasts'][0]['title'] == "Podcast One"
+        assert result['podcasts'][0]['author'] == "Author A"
+        assert result['podcasts'][0]['episode_count'] == 80
+        assert result['podcasts'][1]['author'] == "Author B"
+        assert 'error' not in result
+
+    def test_get_library_stats_handles_error(self):
+        """Test that get_library_stats returns error dict on failure."""
+        mock_repo = MagicMock()
+        mock_repo.get_overall_stats.side_effect = Exception("DB connection lost")
+
+        tools = self._create_tools(mock_repo)
+        stats_tool = next(t for t in tools if t.__name__ == 'get_library_stats')
+
+        result = stats_tool()
+
+        assert 'error' in result
+        assert result['podcasts'] == []
+        assert result['podcast_count'] == 0
+
+    def test_get_library_stats_empty_library(self):
+        """Test get_library_stats with no podcasts."""
+        mock_repo = MagicMock()
+        mock_repo.get_overall_stats.return_value = {
+            'total_podcasts': 0,
+            'total_episodes': 0,
+        }
+        mock_repo.list_podcasts.return_value = []
+        mock_repo.get_podcast_episode_counts.return_value = {}
+
+        tools = self._create_tools(mock_repo)
+        stats_tool = next(t for t in tools if t.__name__ == 'get_library_stats')
+
+        result = stats_tool()
+
+        assert result['podcast_count'] == 0
+        assert result['podcasts'] == []
+        assert result['stats']['total_episodes'] == 0
+        assert 'error' not in result
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
