@@ -549,7 +549,7 @@ def create_chat_tools(
                     'podcast_id': str(p.id),
                     'title': p.title,
                     'author': p.itunes_author or p.author or '',
-                    'episode_count': episode_counts.get(p.id, 0),
+                    'episode_count': episode_counts.get(str(p.id), 0),
                 })
 
             return {
