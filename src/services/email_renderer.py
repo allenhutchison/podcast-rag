@@ -95,10 +95,131 @@ def escape_html(text: str) -> str:
     )
 
 
+def _render_briefing_html(briefing: dict) -> str:
+    """Render the briefing section as an HTML card.
+
+    Args:
+        briefing: Dict with headline, briefing, key_themes, episode_highlights,
+                  and connection_insight.
+
+    Returns:
+        HTML string for the briefing card.
+    """
+    headline = escape_html(briefing.get("headline", ""))
+    # Convert newlines in briefing to <br> for paragraph rendering
+    body_text = briefing.get("briefing", "")
+    body_paragraphs = body_text.split("\n\n") if body_text else [body_text]
+    body_html = "".join(
+        f'<p style="margin: 0 0 12px 0; color: #374151; font-size: 14px; line-height: 1.6;">'
+        f'{escape_html(p.strip())}</p>'
+        for p in body_paragraphs if p.strip()
+    )
+
+    themes = briefing.get("key_themes", [])
+    theme_pills = " ".join(
+        f'<span style="display: inline-block; background: #dbeafe; color: #1e40af; '
+        f'border-radius: 12px; padding: 2px 10px; font-size: 12px; margin: 2px 4px 2px 0;">'
+        f'{escape_html(t)}</span>'
+        for t in themes[:5]
+    )
+
+    # Episode highlights
+    highlights = briefing.get("episode_highlights", [])
+    highlights_html = ""
+    if highlights:
+        highlight_items = ""
+        for h in highlights:
+            podcast_name = escape_html(h.get("podcast_name", ""))
+            ep_title = escape_html(h.get("episode_title", ""))
+            analysis = escape_html(h.get("analysis", ""))
+            highlight_items += f'''
+            <div style="margin-bottom: 10px; padding-left: 12px; border-left: 2px solid #93c5fd;">
+                <p style="margin: 0 0 2px 0; font-weight: 600; color: #1e3a8a; font-size: 13px;">
+                    {podcast_name}: {ep_title}
+                </p>
+                <p style="margin: 0; color: #4b5563; font-size: 13px; line-height: 1.5;">
+                    {analysis}
+                </p>
+            </div>
+            '''
+        highlights_html = f'''
+        <div style="margin-top: 16px;">
+            <p style="font-weight: 600; margin: 0 0 10px 0; color: #1e3a8a; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">
+                Episode-by-Episode
+            </p>
+            {highlight_items}
+        </div>
+        '''
+
+    connection = briefing.get("connection_insight")
+    connection_html = ""
+    if connection:
+        connection_html = (
+            f'<div style="margin-top: 14px; padding: 10px 14px; background: #dbeafe; border-radius: 6px;">'
+            f'<p style="margin: 0; font-style: italic; color: #1e40af; font-size: 13px; line-height: 1.5;">'
+            f'{escape_html(connection)}</p></div>'
+        )
+
+    return f'''
+    <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 24px; margin-bottom: 24px;">
+        <p style="margin: 0 0 4px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #6b7280; font-weight: 600;">Today's Briefing</p>
+        <h2 style="margin: 0 0 16px 0; color: #1e3a8a; font-size: 20px; line-height: 1.3;">{headline}</h2>
+        {body_html}
+        <div style="margin-top: 12px;">{theme_pills}</div>
+        {highlights_html}
+        {connection_html}
+    </div>
+    '''
+
+
+def _render_briefing_text(briefing: dict) -> str:
+    """Render the briefing section as plain text.
+
+    Args:
+        briefing: Dict with headline, briefing, key_themes, episode_highlights,
+                  and connection_insight.
+
+    Returns:
+        Plain text string for the briefing section.
+    """
+    lines = [
+        "== TODAY'S BRIEFING ==",
+        "",
+        briefing.get("headline", ""),
+        "",
+        briefing.get("briefing", ""),
+        "",
+    ]
+
+    themes = briefing.get("key_themes", [])
+    if themes:
+        lines.append("Themes: " + " | ".join(themes[:5]))
+        lines.append("")
+
+    highlights = briefing.get("episode_highlights", [])
+    if highlights:
+        lines.append("Episode-by-Episode:")
+        for h in highlights:
+            podcast_name = h.get("podcast_name", "")
+            ep_title = h.get("episode_title", "")
+            analysis = h.get("analysis", "")
+            lines.append(f"  [{podcast_name}] {ep_title}")
+            lines.append(f"    {analysis}")
+            lines.append("")
+
+    connection = briefing.get("connection_insight")
+    if connection:
+        lines.append(f"Connection: {connection}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 def render_digest_html(
     user_name: str | None,
     episodes: list,
     preview_notice: str | None = None,
+    briefing: dict | None = None,
 ) -> str:
     """Render HTML email content for the digest.
 
@@ -106,6 +227,7 @@ def render_digest_html(
         user_name: The recipient's display name (or None for "there").
         episodes: List of Episode objects to include.
         preview_notice: Optional notice to display at the top (for preview mode).
+        briefing: Optional analyst briefing dict to render at the top.
 
     Returns:
         HTML string for the email body.
@@ -235,6 +357,7 @@ def render_digest_html(
         </div>
 
         <div style="background: white; border: 1px solid #e5e7eb; border-top: none; padding: 24px; border-radius: 0 0 8px 8px;">
+            {_render_briefing_html(briefing) if briefing else ""}
             {episodes_html}
 
             <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;">
@@ -253,6 +376,7 @@ def render_digest_text(
     user_name: str | None,
     episodes: list,
     preview_notice: str | None = None,
+    briefing: dict | None = None,
 ) -> str:
     """Render plain text email content for the digest.
 
@@ -260,6 +384,7 @@ def render_digest_text(
         user_name: The recipient's display name (or None for "there").
         episodes: List of Episode objects to include.
         preview_notice: Optional notice to prepend (for preview mode).
+        briefing: Optional analyst briefing dict to render at the top.
 
     Returns:
         Plain text string for the email body.
@@ -276,6 +401,9 @@ def render_digest_text(
         f"Hi {display_name}, here are the latest episodes from your subscriptions:",
         "",
     ])
+
+    if briefing:
+        lines.append(_render_briefing_text(briefing))
 
     # Group by podcast
     by_podcast: dict = {}

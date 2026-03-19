@@ -82,6 +82,56 @@ class PodcastMetadata(BaseModel):
     )
 
 
+class EpisodeBriefingItem(BaseModel):
+    """Per-episode mini-analysis within the digest briefing."""
+
+    podcast_name: str = Field(
+        description="Name of the podcast"
+    )
+    episode_title: str = Field(
+        description="Title of the episode"
+    )
+    analysis: str = Field(
+        description="2-4 sentence analysis of why this episode matters and what the listener should know (150-500 chars)",
+        min_length=50,
+        max_length=800,
+    )
+
+
+class DigestBriefing(BaseModel):
+    """Structured briefing for the top of a daily email digest."""
+
+    headline: str = Field(
+        description="Punchy 5-12 word headline summarizing the day's episodes",
+        max_length=150,
+    )
+    briefing: str = Field(
+        description=(
+            "3-5 paragraph expert analyst briefing (800-2500 characters). "
+            "Write like a newsletter editor synthesizing the day's most important ideas. "
+            "Reference specific episodes, guests, quotes, and arguments. "
+            "Draw connections across episodes. End with a forward-looking thought."
+        ),
+        min_length=200,
+        max_length=4000,
+    )
+    key_themes: list[str] = Field(
+        description="3-5 cross-cutting themes across episodes",
+        min_length=1,
+        max_length=6,
+    )
+    episode_highlights: list[EpisodeBriefingItem] = Field(
+        description="Per-episode mini-analysis for each episode, ordered by editorial importance",
+        min_length=1,
+        max_length=20,
+    )
+    connection_insight: str | None = Field(
+        default=None,
+        description="Optional surprising connection or thread linking ideas from multiple episodes (1-2 sentences)",
+        max_length=500,
+    )
+
+
 class MP3Metadata(BaseModel):
     title: str = Field(default="")
     artist: str = Field(default="")

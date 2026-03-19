@@ -321,3 +321,115 @@ class TestEmailRendererText:
         )
         text = render_digest_text("User", [ep])
         assert "Plain text fallback summary here" in text
+
+
+SAMPLE_BRIEFING = {
+    "headline": "AI Revolution Reshapes Tech Landscape",
+    "briefing": (
+        "Today's episodes converge on a single theme: artificial intelligence is no longer "
+        "theoretical. Multiple podcasts explored real-world AI deployments and their measurable "
+        "impact on productivity. The consensus is cautiously optimistic.\n\n"
+        "On the a]16z Show, guest Dr. Smith argued that current AI adoption is 'barely scratching "
+        "the surface' of what's possible in enterprise workflows. Meanwhile, the Daily explored "
+        "how government regulators are struggling to keep pace with AI capabilities."
+    ),
+    "key_themes": ["AI Adoption", "Productivity", "Ethics"],
+    "episode_highlights": [
+        {
+            "podcast_name": "The a16z Show",
+            "episode_title": "AI in the Enterprise",
+            "analysis": "Dr. Smith makes a compelling case for AI-first workflows. The key insight is that productivity gains compound over time.",
+        },
+        {
+            "podcast_name": "The Daily",
+            "episode_title": "Regulating AI",
+            "analysis": "A sobering look at how regulators are falling behind. Worth listening for the interview with the FTC commissioner.",
+        },
+    ],
+    "connection_insight": "Both shows arrived at the same conclusion from different angles.",
+}
+
+
+class TestBriefingRenderingHtml:
+    """Tests for briefing section in HTML digest."""
+
+    def test_briefing_renders_in_html(self):
+        """Briefing card renders with headline, body, themes, and connection."""
+        ep = MockEpisode()
+        html = render_digest_html("User", [ep], briefing=SAMPLE_BRIEFING)
+        assert "AI Revolution Reshapes Tech Landscape" in html
+        assert "cautiously optimistic" in html
+        assert "AI Adoption" in html
+        assert "Productivity" in html
+        assert "Both shows arrived" in html
+
+    def test_briefing_none_renders_without_error(self):
+        """No briefing renders normally without briefing section."""
+        ep = MockEpisode()
+        html = render_digest_html("User", [ep], briefing=None)
+        assert "TODAY'S BRIEFING" not in html
+        assert "Test Episode" in html
+
+    def test_briefing_without_connection_insight(self):
+        """Briefing without connection_insight omits that section."""
+        briefing = {**SAMPLE_BRIEFING, "connection_insight": None}
+        ep = MockEpisode()
+        html = render_digest_html("User", [ep], briefing=briefing)
+        assert "AI Revolution" in html
+        assert "Both shows arrived" not in html
+
+    def test_briefing_renders_episode_highlights(self):
+        """Episode highlights render with podcast name, title, and analysis."""
+        ep = MockEpisode()
+        html = render_digest_html("User", [ep], briefing=SAMPLE_BRIEFING)
+        assert "The a16z Show" in html
+        assert "AI in the Enterprise" in html
+        assert "productivity gains compound" in html
+        assert "The Daily" in html
+        assert "Regulating AI" in html
+        assert "Episode-by-Episode" in html
+
+    def test_briefing_renders_multi_paragraph(self):
+        """Multi-paragraph briefing renders as separate paragraphs."""
+        ep = MockEpisode()
+        html = render_digest_html("User", [ep], briefing=SAMPLE_BRIEFING)
+        # Should have multiple <p> tags for the briefing body
+        assert "barely scratching" in html
+
+
+class TestBriefingRenderingText:
+    """Tests for briefing section in plain text digest."""
+
+    def test_briefing_renders_in_text(self):
+        """Briefing section renders in plain text."""
+        ep = MockEpisode()
+        text = render_digest_text("User", [ep], briefing=SAMPLE_BRIEFING)
+        assert "== TODAY'S BRIEFING ==" in text
+        assert "AI Revolution Reshapes Tech Landscape" in text
+        assert "cautiously optimistic" in text
+        assert "AI Adoption" in text
+        assert "Both shows arrived" in text
+
+    def test_briefing_none_renders_without_error(self):
+        """No briefing renders normally without briefing section."""
+        ep = MockEpisode()
+        text = render_digest_text("User", [ep], briefing=None)
+        assert "TODAY'S BRIEFING" not in text
+        assert "Test Episode" in text
+
+    def test_briefing_without_connection_insight(self):
+        """Briefing without connection_insight omits that line."""
+        briefing = {**SAMPLE_BRIEFING, "connection_insight": None}
+        ep = MockEpisode()
+        text = render_digest_text("User", [ep], briefing=briefing)
+        assert "AI Revolution" in text
+        assert "Connection:" not in text
+
+    def test_briefing_renders_episode_highlights_text(self):
+        """Episode highlights render in plain text."""
+        ep = MockEpisode()
+        text = render_digest_text("User", [ep], briefing=SAMPLE_BRIEFING)
+        assert "Episode-by-Episode:" in text
+        assert "[The a16z Show] AI in the Enterprise" in text
+        assert "productivity gains compound" in text
+        assert "[The Daily] Regulating AI" in text
