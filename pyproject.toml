@@ -88,6 +88,26 @@ serve = "uvicorn src.web.app:app --reload --reload-dir src/web --reload-dir src/
 pipeline = "python src/scheduler.py"
 query = "python -m src.rag --query"
 
+[tool.poe.tasks.dev-db-up]
+shell = "docker compose -f docker-compose.dev.yml up -d dev-db"
+help = "Start the local dev database"
+
+[tool.poe.tasks.dev-db-sync]
+shell = "bash scripts/sync-dev-db.sh"
+help = "Clone production database into local dev database"
+
+[tool.poe.tasks.dev-db-stop]
+shell = "docker compose -f docker-compose.dev.yml down"
+help = "Stop the local dev database"
+
+[tool.poe.tasks.dev-db-reset]
+shell = "bash scripts/sync-dev-db.sh --schema"
+help = "Reset local dev database with production schema only (no data)"
+
+[tool.poe.tasks.prod-serve]
+shell = "doppler run -c prod -- uvicorn src.web.app:app --reload --reload-dir src/web --reload-dir src/agents --reload-dir src/db --reload-dir src/prompts --port 8080"
+help = "Start web server against production database (use with caution)"
+
 [project.urls]
 Homepage = "https://github.com/allenhutchison/podcast-rag"
 Repository = "https://github.com/allenhutchison/podcast-rag"
