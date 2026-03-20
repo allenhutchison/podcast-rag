@@ -8,6 +8,8 @@ import pytest
 from src.services.briefing_generator import (
     _build_episode_block,
     generate_digest_briefing,
+    _SINGLE_EPISODE_PROMPT_UNGROUNDED,
+    _MULTI_EPISODE_PROMPT_UNGROUNDED,
 )
 
 
@@ -160,6 +162,46 @@ class TestGenerateDigestBriefing:
         call_args = client.models.generate_content.call_args
         prompt = call_args.kwargs.get("contents") or call_args[1].get("contents") or call_args[0][0]
         assert "why this episode matters" in str(prompt)
+
+    @patch("src.services.briefing_generator._get_file_search_store_name", return_value=None)
+    @patch("src.services.briefing_generator.genai")
+    def test_no_store_uses_ungrounded_prompt(self, mock_genai, mock_store):
+        """When no File Search store, uses ungrounded prompt without transcript references."""
+        client = mock_genai.Client.return_value
+        client.models.generate_content.return_value = _make_gemini_response(VALID_BRIEFING)
+
+        config = Mock()
+        config.GEMINI_API_KEY = "test-key"
+        config.GEMINI_MODEL_FLASH = "gemini-2.0-flash"
+
+        episodes = [MockEpisode(), MockEpisode(title="Second Episode")]
+        generate_digest_briefing(episodes, config)
+
+        call_args = client.models.generate_content.call_args
+        prompt = call_args.kwargs.get("contents") or call_args[1].get("contents") or call_args[0][0]
+        # Must NOT mention File Search tool
+        assert "File Search" not in str(prompt)
+        assert "Do not invent quotes" in str(prompt)
+
+    @patch("src.services.briefing_generator._get_file_search_store_name", return_value=None)
+    @patch("src.services.briefing_generator.genai")
+    def test_single_episode_no_store_uses_ungrounded_prompt(self, mock_genai, mock_store):
+        """Single episode without store uses ungrounded single-episode prompt."""
+        client = mock_genai.Client.return_value
+        single_briefing = {**VALID_BRIEFING, "episode_highlights": [VALID_BRIEFING["episode_highlights"][0]]}
+        client.models.generate_content.return_value = _make_gemini_response(single_briefing)
+
+        config = Mock()
+        config.GEMINI_API_KEY = "test-key"
+        config.GEMINI_MODEL_FLASH = "gemini-2.0-flash"
+
+        episodes = [MockEpisode()]
+        generate_digest_briefing(episodes, config)
+
+        call_args = client.models.generate_content.call_args
+        prompt = call_args.kwargs.get("contents") or call_args[1].get("contents") or call_args[0][0]
+        assert "File Search" not in str(prompt)
+        assert "Do not invent" in str(prompt)
 
     @patch("src.services.briefing_generator._get_file_search_store_name", return_value=None)
     @patch("src.services.briefing_generator.genai")

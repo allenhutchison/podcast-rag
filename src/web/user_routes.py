@@ -22,6 +22,23 @@ from src.web.auth import get_current_user
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/user", tags=["user"])
 
+
+async def _generate_briefing_for_digest(
+    episodes: list, config: Config
+) -> dict | None:
+    """Generate an analyst briefing, returning None on any failure.
+
+    Wraps generate_digest_briefing in a thread so it doesn't block the
+    event loop, and catches all exceptions for best-effort behavior.
+    """
+    try:
+        return await asyncio.to_thread(
+            generate_digest_briefing, episodes, config
+        )
+    except Exception:
+        logger.exception("Briefing generation failed")
+        return None
+
 # Common IANA timezones for the dropdown
 COMMON_TIMEZONES = [
     "America/New_York",
@@ -228,13 +245,7 @@ async def get_email_preview(
 
     # Generate analyst briefing
     config: Config = request.app.state.config
-    briefing = None
-    try:
-        briefing = await asyncio.to_thread(
-            generate_digest_briefing, episodes, config
-        )
-    except Exception:
-        logger.exception("Briefing generation failed for preview")
+    briefing = await _generate_briefing_for_digest(episodes, config)
 
     # Render the preview
     html_content = render_digest_html(
@@ -294,13 +305,7 @@ async def send_digest_now(
         }
 
     # Generate analyst briefing
-    briefing = None
-    try:
-        briefing = await asyncio.to_thread(
-            generate_digest_briefing, episodes, config
-        )
-    except Exception:
-        logger.exception("Briefing generation failed for send-digest")
+    briefing = await _generate_briefing_for_digest(episodes, config)
 
     # Render email content
     user_name = user.name if user else current_user.get("name")

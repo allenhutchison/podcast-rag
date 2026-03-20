@@ -1,6 +1,9 @@
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
+
+# Reusable non-empty stripped string type
+NonEmptyStr = Annotated[str, StringConstraints(min_length=1, strip_whitespace=True)]
 
 
 class StoryItem(BaseModel):
@@ -85,10 +88,10 @@ class PodcastMetadata(BaseModel):
 class EpisodeBriefingItem(BaseModel):
     """Per-episode mini-analysis within the digest briefing."""
 
-    podcast_name: str = Field(
+    podcast_name: NonEmptyStr = Field(
         description="Name of the podcast"
     )
-    episode_title: str = Field(
+    episode_title: NonEmptyStr = Field(
         description="Title of the episode"
     )
     analysis: str = Field(
@@ -101,7 +104,7 @@ class EpisodeBriefingItem(BaseModel):
 class DigestBriefing(BaseModel):
     """Structured briefing for the top of a daily email digest."""
 
-    headline: str = Field(
+    headline: NonEmptyStr = Field(
         description="Punchy 5-12 word headline summarizing the day's episodes",
         max_length=150,
     )
@@ -115,7 +118,7 @@ class DigestBriefing(BaseModel):
         min_length=200,
         max_length=4000,
     )
-    key_themes: list[str] = Field(
+    key_themes: list[NonEmptyStr] = Field(
         description="3-5 cross-cutting themes across episodes",
         min_length=1,
         max_length=6,

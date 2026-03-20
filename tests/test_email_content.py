@@ -389,6 +389,36 @@ class TestBriefingRenderingHtml:
         assert "Regulating AI" in html
         assert "Episode-by-Episode" in html
 
+    def test_briefing_escapes_html(self):
+        """Briefing fields with HTML/special chars are properly escaped."""
+        xss_briefing = {
+            "headline": '<script>alert(1)</script> & "headline"',
+            "briefing": '<img src=x onerror=alert(1)> Tom & Jerry\'s "show"',
+            "key_themes": ["<b>bold</b>", "A & B"],
+            "episode_highlights": [
+                {
+                    "podcast_name": "<script>xss</script>",
+                    "episode_title": 'Ep & "Title"',
+                    "analysis": "<div>analysis</div> & more",
+                },
+            ],
+            "connection_insight": "<script>alert('connection')</script> & link",
+        }
+        ep = MockEpisode()
+        html = render_digest_html("User", [ep], briefing=xss_briefing)
+        # Raw tags must NOT appear
+        assert "<script>" not in html
+        assert "<img " not in html
+        assert "<div>" not in html
+        assert "<b>" not in html
+        # Escaped versions should be present
+        assert "&amp;" in html
+        assert "&lt;script&gt;" in html
+        # Text content is still there
+        assert "alert(1)" in html
+        assert "Tom" in html
+        assert "A &amp; B" in html
+
     def test_briefing_renders_multi_paragraph(self):
         """Multi-paragraph briefing renders as separate paragraphs."""
         ep = MockEpisode()
