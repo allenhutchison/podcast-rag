@@ -14,12 +14,30 @@ from pydantic import BaseModel, field_validator
 
 from src.config import Config
 from src.db.repository import PodcastRepositoryInterface
+from src.services.briefing_generator import generate_digest_briefing
 from src.services.email_renderer import render_digest_html, render_digest_text
 from src.services.email_service import EmailService
 from src.web.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/user", tags=["user"])
+
+
+async def _generate_briefing_for_digest(
+    episodes: list, config: Config
+) -> dict | None:
+    """Generate an analyst briefing, returning None on any failure.
+
+    Wraps generate_digest_briefing in a thread so it doesn't block the
+    event loop, and catches all exceptions for best-effort behavior.
+    """
+    try:
+        return await asyncio.to_thread(
+            generate_digest_briefing, episodes, config
+        )
+    except Exception:
+        logger.exception("Briefing generation failed")
+        return None
 
 # Common IANA timezones for the dropdown
 COMMON_TIMEZONES = [
@@ -225,11 +243,16 @@ async def get_email_preview(
                 status_code=200,
             )
 
+    # Generate analyst briefing
+    config: Config = request.app.state.config
+    briefing = await _generate_briefing_for_digest(episodes, config)
+
     # Render the preview
     html_content = render_digest_html(
         user_name=user_name,
         episodes=episodes,
         preview_notice=preview_notice,
+        briefing=briefing,
     )
 
     return HTMLResponse(content=html_content, status_code=200)
@@ -281,11 +304,14 @@ async def send_digest_now(
             "message": "No new episodes found in the last 24 hours"
         }
 
+    # Generate analyst briefing
+    briefing = await _generate_briefing_for_digest(episodes, config)
+
     # Render email content
     user_name = user.name if user else current_user.get("name")
     subject = f"Your Podcast Digest - {len(episodes)} new episode{'s' if len(episodes) > 1 else ''}"
-    html_content = render_digest_html(user_name=user_name, episodes=episodes)
-    text_content = render_digest_text(user_name=user_name, episodes=episodes)
+    html_content = render_digest_html(user_name=user_name, episodes=episodes, briefing=briefing)
+    text_content = render_digest_text(user_name=user_name, episodes=episodes, briefing=briefing)
 
     # Send email (run in thread to avoid blocking on external API call)
     success = await asyncio.to_thread(

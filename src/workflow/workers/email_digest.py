@@ -15,6 +15,7 @@ except ImportError:
 from src.config import Config
 from src.db.models import User
 from src.db.repository import PodcastRepositoryInterface
+from src.services.briefing_generator import generate_digest_briefing
 from src.services.email_renderer import render_digest_html, render_digest_text
 from src.services.email_service import EmailService
 from src.workflow.workers.base import WorkerInterface, WorkerResult
@@ -200,10 +201,17 @@ class EmailDigestWorker(WorkerInterface):
             # later in the day at their preferred delivery time
             return False
 
+        # Generate analyst briefing (failures never block email delivery)
+        briefing = None
+        try:
+            briefing = generate_digest_briefing(episodes, self.config)
+        except Exception:
+            logger.exception("Briefing generation failed, sending without briefing")
+
         # Generate and send email
         subject = f"Your Daily Podcast Digest - {len(episodes)} new episode{'s' if len(episodes) > 1 else ''}"
-        html_content = render_digest_html(user.name, episodes)
-        text_content = render_digest_text(user.name, episodes)
+        html_content = render_digest_html(user.name, episodes, briefing=briefing)
+        text_content = render_digest_text(user.name, episodes, briefing=briefing)
 
         success = self.email_service.send_email(
             to_email=user.email,

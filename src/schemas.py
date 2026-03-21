@@ -1,6 +1,9 @@
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
+
+# Reusable non-empty stripped string type
+NonEmptyStr = Annotated[str, StringConstraints(min_length=1, strip_whitespace=True)]
 
 
 class StoryItem(BaseModel):
@@ -79,6 +82,56 @@ class PodcastMetadata(BaseModel):
     email_content: EmailContent | None = Field(
         default=None,
         description="Email-optimized content for digest emails"
+    )
+
+
+class EpisodeBriefingItem(BaseModel):
+    """Per-episode mini-analysis within the digest briefing."""
+
+    podcast_name: NonEmptyStr = Field(
+        description="Name of the podcast"
+    )
+    episode_title: NonEmptyStr = Field(
+        description="Title of the episode"
+    )
+    analysis: str = Field(
+        description="2-4 sentence analysis of why this episode matters and what the listener should know (150-500 chars)",
+        min_length=50,
+        max_length=800,
+    )
+
+
+class DigestBriefing(BaseModel):
+    """Structured briefing for the top of a daily email digest."""
+
+    headline: NonEmptyStr = Field(
+        description="Punchy 5-12 word headline summarizing the day's episodes",
+        max_length=150,
+    )
+    briefing: str = Field(
+        description=(
+            "3-5 paragraph expert analyst briefing (800-2500 characters). "
+            "Write like a newsletter editor synthesizing the day's most important ideas. "
+            "Reference specific episodes, guests, quotes, and arguments. "
+            "Draw connections across episodes. End with a forward-looking thought."
+        ),
+        min_length=200,
+        max_length=4000,
+    )
+    key_themes: list[NonEmptyStr] = Field(
+        description="3-5 cross-cutting themes across episodes",
+        min_length=1,
+        max_length=6,
+    )
+    episode_highlights: list[EpisodeBriefingItem] = Field(
+        description="Per-episode mini-analysis for each episode, ordered by editorial importance",
+        min_length=1,
+        max_length=20,
+    )
+    connection_insight: str | None = Field(
+        default=None,
+        description="Optional surprising connection or thread linking ideas from multiple episodes (1-2 sentences)",
+        max_length=500,
     )
 
 
