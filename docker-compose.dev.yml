@@ -1,0 +1,20 @@
+services:
+  dev-db:
+    image: postgres:17
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: podcast_rag
+      POSTGRES_PASSWORD: ${DEV_DB_PASSWORD:-dev_password}
+      POSTGRES_DB: podcast_rag
+    volumes:
+      - dev-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U podcast_rag"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  dev-db-data:

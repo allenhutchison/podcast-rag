@@ -1,8 +1,15 @@
 name: Build and Push Docker Images
 
 on:
+  push:
+    tags:
+      - 'v*'
   release:
     types: [published]
+
+concurrency:
+  group: docker-release-${{ github.ref_name }}
+  cancel-in-progress: true
 
 env:
   REGISTRY: docker.io
