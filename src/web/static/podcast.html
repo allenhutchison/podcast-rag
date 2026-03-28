@@ -195,7 +195,9 @@
                     <div class="flex-1 min-w-0">
                         <h3 class="font-semibold text-gray-900 line-clamp-2">${escapeHtml(episode.title)}</h3>
                         <p class="text-sm text-gray-500 mt-1">${escapeHtml(metadata)}</p>
-                        ${episode.ai_summary ? `<p class="text-sm text-gray-600 mt-2 line-clamp-2">${escapeHtml(episode.ai_summary)}</p>` : ''}
+                        ${episode.teaser_summary
+                            ? `<p class="text-sm text-gray-600 mt-2 line-clamp-2">${escapeHtml(episode.teaser_summary)}</p>`
+                            : episode.ai_summary ? `<p class="text-sm text-gray-600 mt-2 line-clamp-2">${escapeHtml(episode.ai_summary)}</p>` : ''}
                     </div>
                     <div class="text-gray-400 flex-shrink-0">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
