@@ -225,11 +225,18 @@ def _parse_email_content(text: str):
     """
     from src.schemas import EmailContent
 
+    def _unwrap(data):
+        if isinstance(data, list):
+            if len(data) == 0:
+                raise ValueError("Parsed content is an empty list")
+            data = data[0]
+        if not isinstance(data, dict):
+            raise ValueError(f"Expected dict, got {type(data).__name__}")
+        return data
+
     # First, try direct parse
     try:
-        data = json.loads(text)
-        if isinstance(data, list) and len(data) > 0:
-            data = data[0]
+        data = _unwrap(json.loads(text))
         return EmailContent(**data)
     except json.JSONDecodeError:
         pass
@@ -237,15 +244,12 @@ def _parse_email_content(text: str):
     # Handle extra data after the first JSON object
     decoder = json.JSONDecoder()
     data, _ = decoder.raw_decode(text.strip())
-    if isinstance(data, list) and len(data) > 0:
-        data = data[0]
-    return EmailContent(**data)
+    return EmailContent(**_unwrap(data))
 
 
 def cmd_batch_apply(args, config):
     """Apply results from a completed batch job to the database."""
     from src.db.factory import create_repository
-    from src.schemas import EmailContent
 
     client = get_client(config)
     batch_job = client.batches.get(name=args.job_name)
@@ -437,8 +441,8 @@ def cmd_sequential(args, config):
             )
             success_count += 1
 
-        except Exception as e:
-            logger.error(f"  ERROR: {e}")
+        except Exception:
+            logger.exception("  ERROR processing episode")
             error_count += 1
 
         if i < len(episodes):
