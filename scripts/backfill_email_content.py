@@ -77,14 +77,16 @@ Transcript:
 Return ONLY valid JSON matching the structure above."""
 
 
-def get_client(config):
+def get_client(config: "Config") -> "genai.Client":
     """Create a Gemini API client."""
     import google.genai as genai
 
     return genai.Client(api_key=config.GEMINI_API_KEY)
 
 
-def find_episodes_missing_email_content(config, limit=None, since_hours=0):
+def find_episodes_missing_email_content(
+    config: "Config", limit: int | None = None, since_hours: int = 0
+) -> list:
     """Query episodes that have transcripts but no ai_email_content."""
     from src.db.factory import create_repository
 
@@ -498,7 +500,7 @@ def main():
     )
     p.add_argument("--dry-run", action="store_true", help="Show what would be processed")
     p.add_argument(
-        "--limit", type=int, default=0, help="Max episodes to process (0 = all)"
+        "--limit", type=int, default=None, help="Max episodes to process (default: all)"
     )
     p.add_argument(
         "--delay", type=float, default=2.0, help="Delay between API calls in seconds"
