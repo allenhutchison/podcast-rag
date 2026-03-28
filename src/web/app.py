@@ -903,6 +903,7 @@ async def get_podcast_detail(
                 "episode_number": ep.episode_number,
                 "season_number": ep.season_number,
                 "ai_summary": (ep.ai_summary[:200] + "...") if ep.ai_summary and len(ep.ai_summary) > 200 else ep.ai_summary,
+                "teaser_summary": (ep.ai_email_content or {}).get("teaser_summary"),
             }
             for ep in episodes
         ]
@@ -943,6 +944,7 @@ async def get_episode_detail(
             "enclosure_url": episode.enclosure_url,
             "link": episode.link,
             "ai_summary": episode.ai_summary,
+            "ai_email_content": episode.ai_email_content,
             "ai_keywords": episode.ai_keywords or [],
             "ai_hosts": episode.ai_hosts or [],
             "ai_guests": episode.ai_guests or [],

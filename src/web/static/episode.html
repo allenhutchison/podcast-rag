@@ -95,16 +95,53 @@
             <div id="audioPlayer" class="skeleton h-12 rounded"></div>
         </div>
 
-        <!-- AI Summary -->
+        <!-- AI Summary / Rich Content -->
         <div id="summarySection" class="bg-white rounded-lg shadow-md p-6 mb-6 hidden">
-            <h3 class="text-lg font-semibold text-gray-900 mb-3">Summary</h3>
-            <p id="summaryText" class="text-gray-700 leading-relaxed whitespace-pre-line"></p>
+            <!-- Rich email content (shown when available) -->
+            <div id="richContent" class="hidden">
+                <p id="teaserSummary" class="text-lg text-gray-800 font-medium mb-4"></p>
+
+                <div id="takeawaysSection" class="mb-4 hidden">
+                    <h4 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Key Takeaways</h4>
+                    <ul id="takeawaysList" class="space-y-2 text-gray-700"></ul>
+                </div>
+
+                <div id="highlightSection" class="mb-4 hidden">
+                    <h4 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Highlight</h4>
+                    <blockquote id="highlightMoment" class="border-l-4 border-primary pl-4 italic text-gray-600"></blockquote>
+                </div>
+
+                <div id="storiesSection" class="mb-4 hidden">
+                    <h4 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Stories Covered</h4>
+                    <div id="storiesList" class="space-y-3"></div>
+                </div>
+
+                <!-- Collapsible full summary -->
+                <details class="mt-4">
+                    <summary class="text-sm text-gray-500 cursor-pointer hover:text-gray-700">Full summary</summary>
+                    <p id="fullSummaryText" class="text-gray-700 leading-relaxed whitespace-pre-line mt-2"></p>
+                </details>
+            </div>
+
+            <!-- Plain summary fallback -->
+            <div id="plainContent" class="hidden">
+                <h3 class="text-lg font-semibold text-gray-900 mb-3">Summary</h3>
+                <p id="summaryText" class="text-gray-700 leading-relaxed whitespace-pre-line"></p>
+            </div>
         </div>
 
         <!-- Description -->
         <div id="descriptionSection" class="bg-white rounded-lg shadow-md p-6 mb-6 hidden">
-            <h3 class="text-lg font-semibold text-gray-900 mb-3">Description</h3>
-            <p id="descriptionText" class="text-gray-700 leading-relaxed whitespace-pre-line"></p>
+            <!-- Shown expanded when it's the only content -->
+            <div id="descriptionExpanded" class="hidden">
+                <h3 class="text-lg font-semibold text-gray-900 mb-3">Description</h3>
+                <p id="descriptionTextExpanded" class="text-gray-700 leading-relaxed whitespace-pre-line"></p>
+            </div>
+            <!-- Collapsed when rich content or summary exists -->
+            <details id="descriptionCollapsed" class="hidden">
+                <summary class="text-sm text-gray-500 cursor-pointer hover:text-gray-700">Show episode description</summary>
+                <p id="descriptionTextCollapsed" class="text-gray-700 leading-relaxed whitespace-pre-line mt-2"></p>
+            </details>
         </div>
 
         <!-- Keywords -->
@@ -167,7 +204,6 @@
         const summarySection = document.getElementById('summarySection');
         const summaryText = document.getElementById('summaryText');
         const descriptionSection = document.getElementById('descriptionSection');
-        const descriptionText = document.getElementById('descriptionText');
         const keywordsSection = document.getElementById('keywordsSection');
         const keywordsList = document.getElementById('keywordsList');
         const peopleSection = document.getElementById('peopleSection');
@@ -318,15 +354,66 @@
                     audioSection.classList.add('hidden');
                 }
 
-                // Update AI summary
-                if (episode.ai_summary) {
+                // Update AI summary / rich content
+                const ec = episode.ai_email_content;
+                if (ec) {
+                    // Show rich content
+                    const richContent = document.getElementById('richContent');
+                    richContent.classList.remove('hidden');
+
+                    if (ec.teaser_summary) {
+                        document.getElementById('teaserSummary').textContent = ec.teaser_summary;
+                    }
+
+                    if (ec.key_takeaways && ec.key_takeaways.length > 0) {
+                        const takeawaysList = document.getElementById('takeawaysList');
+                        takeawaysList.innerHTML = ec.key_takeaways.map(t =>
+                            `<li class="flex items-start gap-2"><span class="text-primary mt-1 shrink-0">•</span><span>${escapeHtml(t)}</span></li>`
+                        ).join('');
+                        document.getElementById('takeawaysSection').classList.remove('hidden');
+                    }
+
+                    if (ec.highlight_moment) {
+                        document.getElementById('highlightMoment').textContent = ec.highlight_moment;
+                        document.getElementById('highlightSection').classList.remove('hidden');
+                    }
+
+                    if (ec.story_summaries && ec.story_summaries.length > 0) {
+                        const storiesList = document.getElementById('storiesList');
+                        storiesList.innerHTML = ec.story_summaries.map(s =>
+                            `<div class="border-b border-gray-100 pb-2 last:border-0 last:pb-0">
+                                <p class="font-medium text-gray-900">${escapeHtml(s.headline)}</p>
+                                <p class="text-sm text-gray-600">${escapeHtml(s.summary)}</p>
+                            </div>`
+                        ).join('');
+                        document.getElementById('storiesSection').classList.remove('hidden');
+                    }
+
+                    // Full summary in collapsible
+                    if (episode.ai_summary) {
+                        document.getElementById('fullSummaryText').textContent = episode.ai_summary;
+                    }
+
+                    summarySection.classList.remove('hidden');
+                } else if (episode.ai_summary) {
+                    // Fallback to plain summary
+                    document.getElementById('plainContent').classList.remove('hidden');
                     summaryText.textContent = episode.ai_summary;
                     summarySection.classList.remove('hidden');
                 }
 
                 // Update description
+                const hasRichOrSummary = !!(ec || episode.ai_summary);
                 if (episode.description) {
-                    descriptionText.textContent = episode.description;
+                    if (hasRichOrSummary) {
+                        // Collapse description when we have better content
+                        document.getElementById('descriptionTextCollapsed').textContent = episode.description;
+                        document.getElementById('descriptionCollapsed').classList.remove('hidden');
+                    } else {
+                        // Show expanded as primary content
+                        document.getElementById('descriptionTextExpanded').textContent = episode.description;
+                        document.getElementById('descriptionExpanded').classList.remove('hidden');
+                    }
                     descriptionSection.classList.remove('hidden');
                 }
 
