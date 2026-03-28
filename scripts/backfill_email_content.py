@@ -28,10 +28,18 @@ Sequential mode (for small backfills):
     doppler run -- python scripts/backfill_email_content.py sequential --since-hours 0
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import logging
 import os
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import google.genai as genai
+
+    from src.config import Config
 import sys
 import tempfile
 import time
@@ -77,7 +85,7 @@ Transcript:
 Return ONLY valid JSON matching the structure above."""
 
 
-def get_client(config: "Config") -> "genai.Client":
+def get_client(config: Config) -> genai.Client:
     """Create a Gemini API client."""
     import google.genai as genai
 
@@ -85,7 +93,7 @@ def get_client(config: "Config") -> "genai.Client":
 
 
 def find_episodes_missing_email_content(
-    config: "Config", limit: int | None = None, since_hours: int = 0
+    config: Config, limit: int | None = None, since_hours: int = 0
 ) -> list:
     """Query episodes that have transcripts but no ai_email_content."""
     from src.db.factory import create_repository
@@ -263,6 +271,7 @@ def cmd_batch_apply(args, config):
     repository = create_repository(database_url=config.DATABASE_URL)
 
     applied = 0
+    skipped = 0
     failed = 0
 
     # Handle file-based results
@@ -295,13 +304,15 @@ def cmd_batch_apply(args, config):
                 text = response["candidates"][0]["content"]["parts"][0]["text"]
                 email_content = _parse_email_content(text)
 
-                repository.update_episode(
-                    episode_id, ai_email_content=email_content.model_dump()
-                )
-                applied += 1
+                if repository.set_email_content_if_missing(
+                    episode_id, email_content.model_dump()
+                ):
+                    applied += 1
+                else:
+                    skipped += 1
 
-                if applied % 500 == 0:
-                    logger.info(f"  Applied {applied} updates...")
+                if (applied + skipped) % 500 == 0:
+                    logger.info(f"  Progress: {applied} applied, {skipped} skipped...")
 
             except Exception:
                 logger.exception(f"Episode {episode_id}: failed to parse response")
@@ -317,10 +328,12 @@ def cmd_batch_apply(args, config):
                     text = inline_response.response.text
                     email_content = _parse_email_content(text)
 
-                    repository.update_episode(
-                        episode_id, ai_email_content=email_content.model_dump()
-                    )
-                    applied += 1
+                    if repository.set_email_content_if_missing(
+                        episode_id, email_content.model_dump()
+                    ):
+                        applied += 1
+                    else:
+                        skipped += 1
                 except Exception:
                     logger.exception(
                         f"Episode {episode_id}: failed to parse response"
@@ -335,7 +348,7 @@ def cmd_batch_apply(args, config):
         logger.error("No results found (neither file nor inline).")
         sys.exit(1)
 
-    logger.info(f"Done. Applied: {applied}, Failed: {failed}")
+    logger.info(f"Done. Applied: {applied}, Skipped (already set): {skipped}, Failed: {failed}")
 
 
 def cmd_batch_list(args, config):
@@ -432,9 +445,11 @@ def cmd_sequential(args, config):
                 continue
 
             email_content_dict = metadata.email_content.model_dump()
-            repository.update_episode(
-                str(episode.id), ai_email_content=email_content_dict
-            )
+            if not repository.set_email_content_if_missing(
+                str(episode.id), email_content_dict
+            ):
+                logger.info("  Skipped (already has email content)")
+                continue
 
             logger.info(
                 f"  SUCCESS: type={metadata.email_content.podcast_type}, "

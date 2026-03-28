@@ -447,6 +447,25 @@ class PodcastRepositoryInterface(ABC):
         pass
 
     @abstractmethod
+    def set_email_content_if_missing(
+        self, episode_id: str, email_content: dict
+    ) -> bool:
+        """
+        Conditionally set ai_email_content only if it is currently NULL.
+
+        Performs an atomic UPDATE ... WHERE ai_email_content IS NULL to avoid
+        overwriting content that was set by the pipeline after a batch job was submitted.
+
+        Parameters:
+            episode_id: The episode ID to update.
+            email_content: The email content dict to store.
+
+        Returns:
+            True if the row was updated, False if it already had email content.
+        """
+        pass
+
+    @abstractmethod
     def get_episodes_missing_email_content(
         self, limit: int | None = None, since_hours: int = 0
     ) -> list[Episode]:
@@ -2044,6 +2063,22 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 .limit(limit)
             )
             return list(session.scalars(stmt).all())
+
+    def set_email_content_if_missing(
+        self, episode_id: str, email_content: dict
+    ) -> bool:
+        """Conditionally set ai_email_content only if currently NULL."""
+        from sqlalchemy import update
+
+        with self._get_session() as session:
+            stmt = (
+                update(Episode)
+                .where(Episode.id == episode_id, Episode.ai_email_content.is_(None))
+                .values(ai_email_content=email_content, updated_at=datetime.now(UTC))
+            )
+            result = session.execute(stmt)
+            session.commit()
+            return result.rowcount > 0
 
     def get_episodes_missing_email_content(
         self, limit: int | None = None, since_hours: int = 0
