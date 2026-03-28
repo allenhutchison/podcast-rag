@@ -138,15 +138,31 @@ async function loadEpisodes(podcastId) {
     }
 }
 
-// Handle URL parameters (for deep linking from podcast/episode pages)
+// Handle URL parameters (for deep linking from podcast/episode pages and feed search)
 async function handleUrlParams() {
     const params = new URLSearchParams(window.location.search);
     const scope = params.get('scope');
     const podcastId = params.get('podcast_id');
     const episodeId = params.get('episode_id');
+    const conversationId = params.get('conversation');
+    const initialQuery = params.get('initial_query');
 
     if (scope) {
         await setScope(scope, podcastId, episodeId);
+    }
+
+    // Load existing conversation if specified
+    if (conversationId) {
+        await selectConversation(conversationId);
+    }
+
+    // Auto-send initial query from feed search box
+    if (initialQuery) {
+        messageInput.value = initialQuery;
+        // Clean up URL
+        window.history.replaceState({}, '', window.location.pathname);
+        // Small delay to ensure conversation is ready
+        setTimeout(() => sendMessage(), 100);
     }
 }
 

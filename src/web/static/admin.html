@@ -101,24 +101,7 @@
 </head>
 <body class="bg-gray-50 min-h-screen flex flex-col">
 
-    <!-- Header -->
-    <header class="bg-white border-b border-gray-200 px-6 py-4 shadow-sm">
-        <div class="max-w-6xl mx-auto flex justify-between items-center">
-            <div>
-                <h1 class="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
-                <p class="text-sm text-gray-600 mt-1">System overview and user management</p>
-            </div>
-            <div class="flex items-center gap-4">
-                <a
-                    href="/podcasts.html"
-                    class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm"
-                >
-                    Back to Podcasts
-                </a>
-                <div id="userInfo" class="border-l pl-4 border-gray-200"></div>
-            </div>
-        </div>
-    </header>
+    <div id="app-header" data-active="admin" data-title="Admin"></div>
 
     <!-- Tab Navigation -->
     <nav class="bg-white border-b border-gray-200">
@@ -395,6 +378,7 @@
     <!-- Footer -->
     <div id="app-footer"></div>
 
+    <script src="/nav.js"></script>
     <script src="/footer.js"></script>
     <script src="/auth.js?v=1"></script>
     <script>

@@ -208,6 +208,31 @@ class EmailDigestWorker(WorkerInterface):
         except Exception:
             logger.exception("Briefing generation failed, sending without briefing")
 
+        # Persist briefing for web feed display
+        if briefing:
+            try:
+                from datetime import UTC
+
+                briefing_date = datetime.now(UTC).replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                )
+                self.repository.create_or_update_daily_briefing(
+                    user_id=user.id,
+                    briefing_date=briefing_date,
+                    headline=briefing["headline"],
+                    briefing_text=briefing["briefing"],
+                    key_themes=briefing["key_themes"],
+                    episode_highlights=[
+                        h if isinstance(h, dict) else h.model_dump()
+                        for h in briefing["episode_highlights"]
+                    ],
+                    connection_insight=briefing.get("connection_insight"),
+                    episode_count=len(episodes),
+                    episode_ids=[str(ep.id) for ep in episodes],
+                )
+            except Exception:
+                logger.exception("Failed to persist briefing for user %s", user.id)
+
         # Generate and send email
         subject = f"Your Daily Podcast Digest - {len(episodes)} new episode{'s' if len(episodes) > 1 else ''}"
         html_content = render_digest_html(user.name, episodes, briefing=briefing)

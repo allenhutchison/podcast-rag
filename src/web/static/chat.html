@@ -18,33 +18,7 @@
 </head>
 <body class="bg-gray-50 min-h-screen flex flex-col">
 
-    <!-- Header -->
-    <header class="bg-white border-b border-gray-200 px-4 sm:px-6 py-4 shadow-sm flex-shrink-0">
-        <div class="max-w-7xl mx-auto flex justify-between items-center gap-2">
-            <div class="min-w-0">
-                <h1 class="text-2xl font-bold text-gray-900">AI Chat</h1>
-                <p class="text-sm text-gray-600 mt-1 hidden sm:block">Ask questions about your podcasts</p>
-            </div>
-            <div class="flex items-center gap-2 sm:gap-4 flex-shrink-0">
-                <a
-                    href="/podcasts.html"
-                    class="px-3 sm:px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm h-10 flex items-center justify-center whitespace-nowrap"
-                >
-                    <span class="hidden sm:inline">← Podcasts</span>
-                    <span class="sm:hidden">←</span>
-                </a>
-                <button
-                    id="newChatBtn"
-                    onclick="createNewConversation()"
-                    class="px-3 sm:px-4 py-2.5 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm h-10 flex items-center justify-center whitespace-nowrap"
-                >
-                    <span class="hidden sm:inline">+ New Chat</span>
-                    <span class="sm:hidden">+ New</span>
-                </button>
-                <div id="userInfo" class="border-l pl-2 sm:pl-4 border-gray-200"></div>
-            </div>
-        </div>
-    </header>
+    <div id="app-header" data-active="chat"></div>
 
     <!-- Main Layout -->
     <div class="flex flex-1 overflow-hidden">
@@ -182,6 +156,7 @@
         </main>
     </div>
 
+    <script src="/nav.js"></script>
     <script src="/auth.js?v=1"></script>
     <script src="/chat.js"></script>
 </body>
