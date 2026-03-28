@@ -356,6 +356,58 @@ class UserSubscription(Base):
         return f"<UserSubscription(user_id={self.user_id}, podcast_id={self.podcast_id})>"
 
 
+class DailyBriefing(Base):
+    """Persisted daily analyst briefing for a user.
+
+    Stores the structured briefing generated from a user's subscribed podcast episodes
+    for a given day. Used by both the email digest worker and the web feed.
+    """
+
+    __tablename__ = "daily_briefings"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+
+    # The date this briefing covers (stored as midnight UTC)
+    briefing_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+    # Briefing content (mirrors DigestBriefing schema)
+    headline: Mapped[str] = mapped_column(String(256), nullable=False)
+    briefing_text: Mapped[str] = mapped_column(Text, nullable=False)
+    key_themes: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    episode_highlights: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, nullable=False
+    )
+    connection_insight: Mapped[str | None] = mapped_column(Text)
+
+    # Metadata
+    episode_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    episode_ids: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=list
+    )
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    # Relationships
+    user: Mapped["User"] = relationship("User")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "briefing_date", name="uq_user_briefing_date"),
+        Index("ix_daily_briefings_user_date", "user_id", "briefing_date"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<DailyBriefing(user_id={self.user_id}, date={self.briefing_date}, headline={self.headline!r})>"
+
+
 class Conversation(Base):
     """Chat conversation model.
 

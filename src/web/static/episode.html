@@ -50,29 +50,22 @@
 </head>
 <body class="bg-gray-50 min-h-screen flex flex-col">
 
-    <!-- Header -->
-    <header class="bg-white border-b border-gray-200 px-6 py-4 shadow-sm">
-        <div class="max-w-4xl mx-auto flex justify-between items-center">
-            <div>
-                <a id="backLink" href="/podcasts.html" class="text-primary hover:underline text-sm">&larr; Back to Podcast</a>
-                <h1 id="pageTitle" class="text-2xl font-bold text-gray-900 mt-1 line-clamp-1">Loading...</h1>
-            </div>
-            <div class="flex items-center gap-4">
-                <a
-                    id="openChatBtn"
-                    href="/chat.html?scope=episode"
-                    class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm"
-                    title="Ask questions about this episode using AI"
-                >
-                    AI Podcast Chat
-                </a>
-                <div id="userInfo" class="border-l pl-4 border-gray-200"></div>
-            </div>
-        </div>
-    </header>
+    <div id="app-header" data-title="Episode"></div>
 
     <!-- Main Content -->
     <main id="mainContent" class="flex-1 max-w-4xl w-full mx-auto px-4 py-8">
+        <!-- Episode sub-header -->
+        <div class="flex items-center justify-between mb-4">
+            <a id="backLink" href="/podcasts.html" class="text-primary hover:underline text-sm">&larr; Back to Podcast</a>
+            <a
+                id="openChatBtn"
+                href="/chat.html?scope=episode"
+                class="px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm"
+                title="Ask questions about this episode using AI"
+            >
+                AI Chat
+            </a>
+        </div>
         <!-- Podcast Context -->
         <div id="podcastContext" class="flex items-center gap-3 mb-6">
             <div id="podcastCover" class="skeleton w-12 h-12 rounded-lg flex-shrink-0"></div>
@@ -188,11 +181,13 @@
     <!-- Footer -->
     <div id="app-footer"></div>
 
+    <script src="/nav.js"></script>
     <script src="/footer.js"></script>
     <script src="/auth.js?v=1"></script>
 
     <script>
-        const pageTitle = document.getElementById('pageTitle');
+        // pageTitle updates document.title since the header is now shared nav
+        const pageTitle = { set textContent(v) { document.title = v + ' - Podcast RAG'; } };
         const backLink = document.getElementById('backLink');
         const podcastContext = document.getElementById('podcastContext');
         const podcastCover = document.getElementById('podcastCover');

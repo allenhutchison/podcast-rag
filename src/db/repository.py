@@ -15,7 +15,7 @@ from sqlalchemy import String, and_, cast, create_engine, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, sessionmaker
 
-from .models import ChatMessage, Conversation, Episode, Podcast, User, UserSubscription
+from .models import ChatMessage, Conversation, DailyBriefing, Episode, Podcast, User, UserSubscription
 
 logger = logging.getLogger(__name__)
 
@@ -1238,6 +1238,43 @@ class PodcastRepositoryInterface(ABC):
 
         Args:
             user_id: The user's UUID.
+        """
+        pass
+
+    @abstractmethod
+    def create_or_update_daily_briefing(
+        self,
+        user_id: str,
+        briefing_date: datetime,
+        headline: str,
+        briefing_text: str,
+        key_themes: list[str],
+        episode_highlights: list[dict],
+        connection_insight: str | None,
+        episode_count: int,
+        episode_ids: list[str],
+    ) -> "DailyBriefing":
+        """Create or update a daily briefing for a user on a given date.
+
+        Uses upsert semantics: if a briefing already exists for the (user_id, briefing_date)
+        pair, it is updated; otherwise a new one is created.
+        """
+        pass
+
+    @abstractmethod
+    def get_daily_briefings_in_range(
+        self, user_id: str, start_date: datetime, end_date: datetime
+    ) -> list["DailyBriefing"]:
+        """Get all briefings for a user within a date range, ordered by briefing_date desc."""
+        pass
+
+    @abstractmethod
+    def get_feed_episodes_in_range(
+        self, user_id: str, start_date: datetime, end_date: datetime
+    ) -> list[Episode]:
+        """Get fully-processed episodes from subscribed podcasts in a date range.
+
+        Returns episodes with podcast eagerly loaded, ordered by published_date desc.
         """
         pass
 
@@ -3363,6 +3400,92 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
     def mark_email_digest_sent(self, user_id: str) -> None:
         """Update user's last_email_digest_sent timestamp to now."""
         self.update_user(user_id, last_email_digest_sent=datetime.now(UTC))
+
+    def create_or_update_daily_briefing(
+        self,
+        user_id: str,
+        briefing_date: datetime,
+        headline: str,
+        briefing_text: str,
+        key_themes: list[str],
+        episode_highlights: list[dict],
+        connection_insight: str | None,
+        episode_count: int,
+        episode_ids: list[str],
+    ) -> DailyBriefing:
+        """Create or update a daily briefing for a user on a given date."""
+        with self._get_session() as session:
+            existing = session.execute(
+                select(DailyBriefing).where(
+                    DailyBriefing.user_id == user_id,
+                    DailyBriefing.briefing_date == briefing_date,
+                )
+            ).scalar_one_or_none()
+
+            if existing:
+                existing.headline = headline
+                existing.briefing_text = briefing_text
+                existing.key_themes = key_themes
+                existing.episode_highlights = episode_highlights
+                existing.connection_insight = connection_insight
+                existing.episode_count = episode_count
+                existing.episode_ids = episode_ids
+                existing.updated_at = datetime.now(UTC)
+                session.commit()
+                session.refresh(existing)
+                return existing
+
+            briefing = DailyBriefing(
+                user_id=user_id,
+                briefing_date=briefing_date,
+                headline=headline,
+                briefing_text=briefing_text,
+                key_themes=key_themes,
+                episode_highlights=episode_highlights,
+                connection_insight=connection_insight,
+                episode_count=episode_count,
+                episode_ids=episode_ids,
+            )
+            session.add(briefing)
+            session.commit()
+            session.refresh(briefing)
+            return briefing
+
+    def get_daily_briefings_in_range(
+        self, user_id: str, start_date: datetime, end_date: datetime
+    ) -> list[DailyBriefing]:
+        """Get all briefings for a user within a date range, ordered by briefing_date desc."""
+        with self._get_session() as session:
+            stmt = (
+                select(DailyBriefing)
+                .where(
+                    DailyBriefing.user_id == user_id,
+                    DailyBriefing.briefing_date >= start_date,
+                    DailyBriefing.briefing_date < end_date,
+                )
+                .order_by(DailyBriefing.briefing_date.desc())
+            )
+            return list(session.scalars(stmt).all())
+
+    def get_feed_episodes_in_range(
+        self, user_id: str, start_date: datetime, end_date: datetime
+    ) -> list[Episode]:
+        """Get fully-processed episodes from subscribed podcasts in a date range."""
+        with self._get_session() as session:
+            stmt = (
+                select(Episode)
+                .options(joinedload(Episode.podcast))
+                .join(UserSubscription, Episode.podcast_id == UserSubscription.podcast_id)
+                .where(
+                    UserSubscription.user_id == user_id,
+                    Episode.published_date >= start_date,
+                    Episode.published_date < end_date,
+                    Episode.ai_summary.isnot(None),
+                    Episode.metadata_status == "completed",
+                )
+                .order_by(Episode.published_date.desc())
+            )
+            return list(session.scalars(stmt).unique().all())
 
     def get_recent_processed_episodes(self, limit: int = 5) -> list[Episode]:
         """Get the most recently processed episodes from the database.

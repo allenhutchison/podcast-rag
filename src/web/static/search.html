@@ -38,24 +38,7 @@
 </head>
 <body class="bg-gray-50 min-h-screen flex flex-col">
 
-    <!-- Header -->
-    <header class="bg-white border-b border-gray-200 px-6 py-4 shadow-sm">
-        <div class="max-w-4xl mx-auto flex justify-between items-center">
-            <div>
-                <a href="/podcasts.html" class="text-primary hover:underline text-sm">&larr; Back to Podcasts</a>
-                <h1 id="pageTitle" class="text-2xl font-bold text-gray-900 mt-1">Search Results</h1>
-            </div>
-            <div class="flex items-center gap-4">
-                <a
-                    href="/"
-                    class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm"
-                >
-                    Chat
-                </a>
-                <div id="userInfo" class="border-l pl-4 border-gray-200"></div>
-            </div>
-        </div>
-    </header>
+    <div id="app-header" data-title="Search Results"></div>
 
     <!-- Main Content -->
     <main class="flex-1 max-w-4xl w-full mx-auto px-4 py-8">
@@ -112,10 +95,11 @@
     <!-- Footer -->
     <div id="app-footer"></div>
 
+    <script src="/nav.js"></script>
     <script src="/footer.js"></script>
     <script src="/auth.js?v=1"></script>
     <script>
-        const pageTitle = document.getElementById('pageTitle');
+        const pageTitle = { set textContent(v) { document.title = v + ' - Podcast RAG'; } };
         const searchInfo = document.getElementById('searchInfo');
         const searchIcon = document.getElementById('searchIcon');
         const searchTypeLabel = document.getElementById('searchTypeLabel');

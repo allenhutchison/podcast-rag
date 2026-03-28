@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feed - Podcast RAG</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/tailwind-config.js"></script>
+    <link rel="stylesheet" href="/common.css">
+
+    <style>
+        .toggle-switch {
+            display: inline-block;
+            position: relative;
+            width: 44px;
+            height: 24px;
+        }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider {
+            position: absolute; cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #cbd5e1; transition: 0.3s; border-radius: 24px;
+        }
+        .toggle-slider:before {
+            position: absolute; content: "";
+            height: 18px; width: 18px; left: 3px; bottom: 3px;
+            background-color: white; transition: 0.3s; border-radius: 50%;
+        }
+        input:checked + .toggle-slider { background-color: #2563eb; }
+        input:checked + .toggle-slider:before { transform: translateX(20px); }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex flex-col">
+
+    <div id="app-header" data-active="feed"></div>
+
+    <main class="flex-1 max-w-3xl mx-auto w-full px-4 py-6">
+
+        <!-- Search Box -->
+        <form id="searchForm" class="mb-4">
+            <div class="relative">
+                <input
+                    type="text"
+                    id="searchInput"
+                    placeholder="Ask a question about your podcasts..."
+                    class="w-full px-4 py-3 pl-11 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm bg-white shadow-sm"
+                    autocomplete="off"
+                >
+                <svg class="absolute left-3.5 top-3.5 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                </svg>
+            </div>
+        </form>
+
+        <!-- Email Digest Toggle -->
+        <div id="digestToggleRow" class="flex items-center gap-3 mb-6 px-1 hidden">
+            <label class="toggle-switch">
+                <input type="checkbox" id="digestToggle" onchange="toggleDigest()">
+                <span class="toggle-slider"></span>
+            </label>
+            <span class="text-sm text-gray-600">Daily email briefing</span>
+        </div>
+
+        <!-- Feed Container -->
+        <div id="feedContainer"></div>
+
+        <!-- Loading State -->
+        <div id="loadingState" class="text-center py-8">
+            <div class="inline-block w-6 h-6 border-2 border-gray-300 border-t-primary rounded-full animate-spin"></div>
+            <p class="text-sm text-gray-500 mt-2">Loading your feed...</p>
+        </div>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="hidden text-center py-16">
+            <div class="text-5xl mb-4">&#x1F399;</div>
+            <h2 class="text-xl font-semibold text-gray-700 mb-2">Your feed is empty</h2>
+            <p class="text-gray-500 mb-4">Subscribe to podcasts to build your feed.</p>
+            <a href="/podcasts.html" class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm">
+                Browse Podcasts
+            </a>
+        </div>
+
+        <!-- Load More -->
+        <div id="loadMoreContainer" class="text-center py-6 hidden">
+            <button id="loadMoreBtn" onclick="loadMore()" class="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium">
+                Load more
+            </button>
+        </div>
+    </main>
+
+    <div id="app-footer"></div>
+
+    <script src="/nav.js"></script>
+    <script src="/footer.js"></script>
+    <script src="/auth.js?v=1"></script>
+
+    <script>
+        let nextCursor = null;
+        let loading = false;
+        let hasMore = true;
+        let emptyAttempts = 0;
+        const MAX_EMPTY_ATTEMPTS = 7;
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatDuration(seconds) {
+            if (!seconds) return '';
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            if (hours > 0) return `${hours}h ${minutes}m`;
+            return `${minutes}m`;
+        }
+
+        function formatTime(isoDate) {
+            if (!isoDate) return '';
+            const d = new Date(isoDate);
+            return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        }
+
+        // -- Rendering --
+
+        function renderDayGroup(day) {
+            const container = document.getElementById('feedContainer');
+
+            // Day separator
+            const separator = document.createElement('div');
+            separator.className = 'flex items-center gap-3 my-6';
+            separator.innerHTML = `
+                <div class="flex-1 border-t border-gray-200"></div>
+                <span class="text-sm font-semibold text-gray-500 whitespace-nowrap">${escapeHtml(day.date_label)}</span>
+                <div class="flex-1 border-t border-gray-200"></div>
+            `;
+            container.appendChild(separator);
+
+            // Briefing card
+            if (day.briefing) {
+                container.appendChild(renderBriefingCard(day.briefing));
+            }
+
+            // Episode cards
+            for (const ep of day.episodes) {
+                container.appendChild(renderEpisodeCard(ep));
+            }
+        }
+
+        function renderBriefingCard(briefing) {
+            const card = document.createElement('div');
+            card.className = 'bg-blue-50 rounded-lg border border-blue-200 p-5 mb-4';
+
+            let themesHtml = '';
+            if (briefing.key_themes && briefing.key_themes.length > 0) {
+                themesHtml = `
+                    <div class="flex flex-wrap gap-2 mt-3">
+                        ${briefing.key_themes.map(t => `<span class="px-2.5 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">${escapeHtml(t)}</span>`).join('')}
+                    </div>
+                `;
+            }
+
+            let highlightsHtml = '';
+            if (briefing.episode_highlights && briefing.episode_highlights.length > 0) {
+                highlightsHtml = `
+                    <details class="mt-3">
+                        <summary class="text-sm text-blue-600 cursor-pointer hover:text-blue-800 font-medium">Episode highlights (${briefing.episode_highlights.length})</summary>
+                        <div class="mt-2 space-y-2">
+                            ${briefing.episode_highlights.map(h => `
+                                <div class="text-sm">
+                                    <span class="font-medium text-gray-900">${escapeHtml(h.podcast_name || '')} - ${escapeHtml(h.episode_title || '')}</span>
+                                    <p class="text-gray-600 mt-0.5">${escapeHtml(h.analysis || '')}</p>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </details>
+                `;
+            }
+
+            let connectionHtml = '';
+            if (briefing.connection_insight) {
+                connectionHtml = `<p class="text-sm text-blue-700 italic mt-3">${escapeHtml(briefing.connection_insight)}</p>`;
+            }
+
+            card.innerHTML = `
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="text-sm font-semibold text-blue-600 uppercase tracking-wide">Daily Briefing</span>
+                </div>
+                <h3 class="text-lg font-bold text-gray-900">${escapeHtml(briefing.headline)}</h3>
+                <div class="text-gray-700 text-sm leading-relaxed mt-2 whitespace-pre-line">${escapeHtml(briefing.briefing_text)}</div>
+                ${themesHtml}
+                ${connectionHtml}
+                ${highlightsHtml}
+            `;
+
+            return card;
+        }
+
+        function renderEpisodeCard(ep) {
+            const card = document.createElement('a');
+            card.href = `/episode.html?id=${encodeURIComponent(ep.id)}`;
+            card.className = 'block bg-white rounded-lg border border-gray-200 p-5 mb-3 hover:border-gray-300 hover:shadow-sm transition-all';
+
+            const ec = ep.ai_email_content;
+            const duration = formatDuration(ep.duration_seconds);
+            const time = formatTime(ep.published_date);
+
+            const metaParts = [time, duration, ep.episode_number ? `Ep. ${ep.episode_number}` : ''].filter(Boolean);
+            const metaHtml = metaParts.map(p => escapeHtml(p)).join(' <span class="text-gray-300">&middot;</span> ');
+
+            // Podcast info row
+            let podcastHtml = '';
+            if (ep.podcast_title) {
+                const imgHtml = ep.podcast_image_url
+                    ? `<img src="${escapeHtml(ep.podcast_image_url)}" class="w-8 h-8 rounded-md flex-shrink-0" alt="" onerror="this.style.display='none'">`
+                    : '';
+                podcastHtml = `
+                    <div class="flex items-center gap-2 mb-2">
+                        ${imgHtml}
+                        <span class="text-sm text-gray-500 font-medium">${escapeHtml(ep.podcast_title)}</span>
+                        <span class="text-xs text-gray-400 ml-auto">${metaHtml}</span>
+                    </div>
+                `;
+            }
+
+            // Content from ai_email_content or fallback to ai_summary
+            let contentHtml = '';
+            if (ec) {
+                // Teaser
+                if (ec.teaser_summary) {
+                    contentHtml += `<p class="text-gray-700 text-sm mt-2">${escapeHtml(ec.teaser_summary)}</p>`;
+                }
+
+                // Key takeaways
+                if (ec.key_takeaways && ec.key_takeaways.length > 0) {
+                    contentHtml += `
+                        <ul class="mt-2 space-y-1">
+                            ${ec.key_takeaways.slice(0, 3).map(t =>
+                                `<li class="text-sm text-gray-600 flex items-start gap-1.5">
+                                    <span class="text-primary mt-0.5 flex-shrink-0">&bull;</span>
+                                    <span>${escapeHtml(t)}</span>
+                                </li>`
+                            ).join('')}
+                        </ul>
+                    `;
+                }
+
+                // Highlight moment
+                if (ec.highlight_moment) {
+                    contentHtml += `
+                        <blockquote class="border-l-2 border-gray-200 pl-3 mt-2 text-sm text-gray-500 italic">${escapeHtml(ec.highlight_moment)}</blockquote>
+                    `;
+                }
+            } else if (ep.ai_summary) {
+                const truncated = ep.ai_summary.length > 200 ? ep.ai_summary.substring(0, 200) + '...' : ep.ai_summary;
+                contentHtml = `<p class="text-gray-600 text-sm mt-2">${escapeHtml(truncated)}</p>`;
+            }
+
+            card.innerHTML = `
+                ${podcastHtml}
+                <h3 class="font-semibold text-gray-900 leading-snug">${escapeHtml(ep.title)}</h3>
+                ${contentHtml}
+            `;
+
+            return card;
+        }
+
+        // -- Data Loading --
+
+        async function loadFeed(cursor) {
+            if (loading || !hasMore) return;
+            loading = true;
+
+            document.getElementById('loadingState').classList.remove('hidden');
+            document.getElementById('loadMoreContainer').classList.add('hidden');
+
+            try {
+                const params = new URLSearchParams({ days: '1' });
+                if (cursor) params.set('cursor', cursor);
+
+                const response = await fetch(`/api/feed?${params}`, { credentials: 'include' });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const data = await response.json();
+
+                for (const day of data.days) {
+                    renderDayGroup(day);
+                }
+
+                nextCursor = data.next_cursor;
+                hasMore = data.has_more;
+
+                // Auto-fetch next page if this one was empty (sparse days)
+                if (data.days.length === 0 && hasMore && emptyAttempts < MAX_EMPTY_ATTEMPTS) {
+                    emptyAttempts++;
+                    loading = false;
+                    loadFeed(nextCursor);
+                    return;
+                }
+
+                emptyAttempts = 0;
+
+                // Show empty state if feed has no content at all
+                const feedContainer = document.getElementById('feedContainer');
+                if (feedContainer.children.length === 0 && !hasMore) {
+                    document.getElementById('emptyState').classList.remove('hidden');
+                } else if (feedContainer.children.length === 0 && hasMore) {
+                    // Keep trying
+                    loading = false;
+                    loadFeed(nextCursor);
+                    return;
+                }
+
+                // Show load more button
+                if (hasMore && feedContainer.children.length > 0) {
+                    document.getElementById('loadMoreContainer').classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('Failed to load feed:', error);
+            } finally {
+                document.getElementById('loadingState').classList.add('hidden');
+                loading = false;
+            }
+        }
+
+        function loadMore() {
+            loadFeed(nextCursor);
+        }
+
+        // -- Search --
+
+        document.getElementById('searchForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const query = document.getElementById('searchInput').value.trim();
+            if (!query) return;
+
+            try {
+                const response = await fetch('/api/conversations', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ scope: 'subscriptions' }),
+                });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                window.location.href = `/chat.html?conversation=${data.id}&initial_query=${encodeURIComponent(query)}`;
+            } catch (error) {
+                console.error('Failed to create conversation:', error);
+                // Fallback: just go to chat with the query
+                window.location.href = `/chat.html?scope=all&initial_query=${encodeURIComponent(query)}`;
+            }
+        });
+
+        // -- Email Digest Toggle --
+
+        async function loadDigestSetting() {
+            try {
+                const response = await fetch('/api/user/settings', { credentials: 'include' });
+                if (!response.ok) return;
+                const data = await response.json();
+                document.getElementById('digestToggle').checked = data.email_digest_enabled;
+                document.getElementById('digestToggleRow').classList.remove('hidden');
+            } catch (error) {
+                console.error('Failed to load digest setting:', error);
+            }
+        }
+
+        async function toggleDigest() {
+            const enabled = document.getElementById('digestToggle').checked;
+            try {
+                await fetch('/api/user/settings', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ email_digest_enabled: enabled }),
+                });
+            } catch (error) {
+                console.error('Failed to update digest setting:', error);
+                // Revert toggle on error
+                document.getElementById('digestToggle').checked = !enabled;
+            }
+        }
+
+        // -- Init --
+
+        async function init() {
+            const user = await requireAuth();
+            if (!user) return;
+            updateUserUI(user);
+            loadDigestSetting();
+            loadFeed(null);
+        }
+
+        init();
+    </script>
+</body>
+</html>
