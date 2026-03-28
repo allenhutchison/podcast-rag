@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import String, cast, create_engine, func, or_, select
+from sqlalchemy import String, and_, cast, create_engine, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, sessionmaker
 
@@ -443,6 +443,26 @@ class PodcastRepositoryInterface(ABC):
 
         Returns:
             List[Episode]: Episodes where the download is completed, transcription has not started or is pending, and a local audio file is present, ordered by most recently published.
+        """
+        pass
+
+    @abstractmethod
+    def get_episodes_missing_email_content(
+        self, limit: int | None = None, since_hours: int = 0
+    ) -> list[Episode]:
+        """
+        Return episodes that have completed metadata but are missing email content.
+
+        Finds episodes where metadata extraction succeeded, ai_email_content is NULL,
+        and transcript text is available. Useful for backfilling rich email content.
+
+        Parameters:
+            limit: Maximum number of episodes to return (None for all).
+            since_hours: Only include episodes published in the last N hours (0 for all).
+
+        Returns:
+            List[Episode]: Matching episodes with podcast relationship loaded,
+            ordered by published_date descending.
         """
         pass
 
@@ -2024,6 +2044,46 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 .limit(limit)
             )
             return list(session.scalars(stmt).all())
+
+    def get_episodes_missing_email_content(
+        self, limit: int | None = None, since_hours: int = 0
+    ) -> list[Episode]:
+        """
+        Return episodes with completed metadata but missing ai_email_content.
+
+        Parameters:
+            limit: Maximum number of episodes to return (None for all).
+            since_hours: Only include episodes published in the last N hours (0 for all).
+
+        Returns:
+            List[Episode]: Matching episodes with podcast loaded, ordered by published_date desc.
+        """
+        with self._get_session() as session:
+            conditions = [
+                Episode.metadata_status == "completed",
+                Episode.ai_email_content.is_(None),
+                Episode.transcript_text.isnot(None),
+            ]
+
+            if since_hours > 0:
+                since_time = datetime.now(UTC) - timedelta(hours=since_hours)
+                conditions.append(Episode.published_date >= since_time)
+
+            stmt = (
+                select(Episode)
+                .where(and_(*conditions))
+                .options(joinedload(Episode.podcast))
+                .order_by(Episode.published_date.desc())
+            )
+
+            if limit and limit > 0:
+                stmt = stmt.limit(limit)
+
+            episodes = list(session.scalars(stmt).unique().all())
+            # Eagerly access transcript_text before session closes
+            for ep in episodes:
+                _ = ep.transcript_text
+            return episodes
 
     def get_episodes_pending_metadata(self, limit: int = 10) -> list[Episode]:
         """

@@ -31,6 +31,7 @@ Sequential mode (for small backfills):
 import argparse
 import json
 import logging
+import os
 import sys
 import tempfile
 import time
@@ -85,40 +86,12 @@ def get_client(config):
 
 def find_episodes_missing_email_content(config, limit=None, since_hours=0):
     """Query episodes that have transcripts but no ai_email_content."""
-    from sqlalchemy import and_, select
-
     from src.db.factory import create_repository
-    from src.db.models import Episode
 
     repository = create_repository(database_url=config.DATABASE_URL)
-
-    with repository._get_session() as session:
-        conditions = [
-            Episode.metadata_status == "completed",
-            Episode.ai_email_content.is_(None),
-            Episode.transcript_text.isnot(None),
-        ]
-
-        if since_hours > 0:
-            since_time = datetime.now(UTC) - timedelta(hours=since_hours)
-            conditions.append(Episode.published_date >= since_time)
-
-        stmt = (
-            select(Episode)
-            .where(and_(*conditions))
-            .order_by(Episode.published_date.desc())
-        )
-
-        if limit and limit > 0:
-            stmt = stmt.limit(limit)
-
-        episodes = session.execute(stmt).scalars().all()
-        # Eagerly load podcast relationship before session closes
-        for ep in episodes:
-            _ = ep.podcast.title if ep.podcast else None
-            _ = ep.transcript_text
-
-        return episodes
+    return repository.get_episodes_missing_email_content(
+        limit=limit, since_hours=since_hours
+    )
 
 
 def build_batch_request(episode) -> dict:
@@ -182,17 +155,24 @@ def cmd_batch_submit(args, config):
 
     if written == 0:
         logger.info("No requests to submit.")
+        os.remove(jsonl_path)
         return
 
-    # Upload JSONL file
-    logger.info("Uploading JSONL file to Gemini File API...")
-    uploaded_file = client.files.upload(
-        file=jsonl_path,
-        config=types.UploadFileConfig(
-            display_name="backfill-email-content", mime_type="jsonl"
-        ),
-    )
-    logger.info(f"Uploaded file: {uploaded_file.name}")
+    # Upload JSONL file and clean up temp file
+    try:
+        logger.info("Uploading JSONL file to Gemini File API...")
+        uploaded_file = client.files.upload(
+            file=jsonl_path,
+            config=types.UploadFileConfig(
+                display_name="backfill-email-content", mime_type="jsonl"
+            ),
+        )
+        logger.info(f"Uploaded file: {uploaded_file.name}")
+    finally:
+        try:
+            os.remove(jsonl_path)
+        except OSError:
+            logger.warning(f"Could not remove temp file: {jsonl_path}")
 
     # Submit batch job
     logger.info("Submitting batch job...")
@@ -317,8 +297,8 @@ def cmd_batch_apply(args, config):
                 if applied % 500 == 0:
                     logger.info(f"  Applied {applied} updates...")
 
-            except Exception as e:
-                logger.warning(f"Episode {episode_id}: failed to parse response: {e}")
+            except Exception:
+                logger.exception(f"Episode {episode_id}: failed to parse response")
                 failed += 1
 
     # Handle inline results
@@ -335,9 +315,9 @@ def cmd_batch_apply(args, config):
                         episode_id, ai_email_content=email_content.model_dump()
                     )
                     applied += 1
-                except Exception as e:
-                    logger.warning(
-                        f"Episode {episode_id}: failed to parse: {e}"
+                except Exception:
+                    logger.exception(
+                        f"Episode {episode_id}: failed to parse response"
                     )
                     failed += 1
             else:
@@ -411,6 +391,12 @@ def cmd_sequential(args, config):
         )
 
         try:
+            # Sequential mode uses the full metadata_extraction prompt with
+            # PodcastMetadata schema (hosts, guests, summary, keywords, email_content).
+            # We extract just email_content from the result. This differs from batch
+            # mode which uses EMAIL_CONTENT_PROMPT to produce EmailContent directly
+            # for cost/throughput reasons. The richer context here can produce
+            # slightly higher quality output, which is acceptable for small backfills.
             prompt = prompt_manager.build_prompt(
                 prompt_name="metadata_extraction",
                 transcript=episode.transcript_text,
