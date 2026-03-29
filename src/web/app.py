@@ -1032,6 +1032,7 @@ async def search_episodes(
 async def get_feed(
     cursor: str | None = None,
     days: int = 1,
+    tz: str | None = None,
     current_user: dict = Depends(get_current_user),
 ):
     """
@@ -1039,152 +1040,41 @@ async def get_feed(
 
     Args:
         cursor: ISO date string (YYYY-MM-DD) to paginate from. Defaults to today.
-        days: Number of calendar days to load per request.
+        days: Number of calendar days to load per request (1-30).
+        tz: IANA timezone string (e.g., "America/New_York"). Defaults to user's setting or UTC.
         current_user: Authenticated user from JWT cookie.
 
     Returns:
         Feed with day-grouped briefings and episodes, cursor for next page.
     """
-    from datetime import UTC, datetime, timedelta
+    from src.services.feed_service import get_feed as build_feed
 
     user_id = current_user["sub"]
 
-    # Parse cursor date (default: today UTC)
-    if cursor:
-        try:
-            cursor_date = datetime.fromisoformat(cursor).replace(tzinfo=UTC)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid cursor date format")
-    else:
-        cursor_date = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    # Resolve timezone: explicit param > user setting > UTC
+    user_timezone = tz
+    if not user_timezone:
+        user = await asyncio.to_thread(_repository.get_user, user_id)
+        if user and user.timezone:
+            user_timezone = user.timezone
 
-    # Calculate date range
-    end_date = cursor_date + timedelta(days=1)  # exclusive upper bound
-    start_date = cursor_date - timedelta(days=days - 1)
+    if days < 1 or days > 30:
+        raise HTTPException(status_code=400, detail="days must be between 1 and 30")
 
-    # Fetch episodes and briefings in parallel
-    episodes, briefings = await asyncio.gather(
-        asyncio.to_thread(_repository.get_feed_episodes_in_range, user_id, start_date, end_date),
-        asyncio.to_thread(_repository.get_daily_briefings_in_range, user_id, start_date, end_date),
-    )
+    try:
+        result = await asyncio.to_thread(
+            build_feed,
+            user_id=user_id,
+            repository=_repository,
+            config=config,
+            cursor=cursor,
+            days=days,
+            user_timezone=user_timezone,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-    # Group episodes by date
-    from collections import defaultdict
-    episodes_by_date = defaultdict(list)
-    for ep in episodes:
-        if ep.published_date:
-            day_key = ep.published_date.strftime("%Y-%m-%d")
-            episodes_by_date[day_key].append(ep)
-
-    # Index briefings by date
-    briefings_by_date = {}
-    for b in briefings:
-        day_key = b.briefing_date.strftime("%Y-%m-%d")
-        briefings_by_date[day_key] = b
-
-    # On-demand briefing generation for today
-    today_str = datetime.now(UTC).strftime("%Y-%m-%d")
-    if today_str not in briefings_by_date and today_str in episodes_by_date:
-        today_episodes = episodes_by_date[today_str]
-        if today_episodes:
-            try:
-                from src.services.briefing_generator import generate_digest_briefing
-                briefing_data = await asyncio.to_thread(
-                    generate_digest_briefing, today_episodes, config
-                )
-                if briefing_data:
-                    today_utc = datetime.now(UTC).replace(
-                        hour=0, minute=0, second=0, microsecond=0
-                    )
-                    db_briefing = await asyncio.to_thread(
-                        _repository.create_or_update_daily_briefing,
-                        user_id=user_id,
-                        briefing_date=today_utc,
-                        headline=briefing_data["headline"],
-                        briefing_text=briefing_data["briefing"],
-                        key_themes=briefing_data["key_themes"],
-                        episode_highlights=[
-                            h if isinstance(h, dict) else h.model_dump()
-                            for h in briefing_data["episode_highlights"]
-                        ],
-                        connection_insight=briefing_data.get("connection_insight"),
-                        episode_count=len(today_episodes),
-                        episode_ids=[str(ep.id) for ep in today_episodes],
-                    )
-                    briefings_by_date[today_str] = db_briefing
-            except Exception:
-                logger.exception("On-demand briefing generation failed")
-
-    # Build day groups
-    day_groups = []
-    current = cursor_date
-    while current >= start_date:
-        day_key = current.strftime("%Y-%m-%d")
-        day_episodes = episodes_by_date.get(day_key, [])
-        day_briefing = briefings_by_date.get(day_key)
-
-        # Skip empty days
-        if not day_episodes and not day_briefing:
-            current -= timedelta(days=1)
-            continue
-
-        # Format date label
-        today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
-        if current == today:
-            date_label = "Today"
-        elif current == today - timedelta(days=1):
-            date_label = "Yesterday"
-        else:
-            date_label = current.strftime("%A, %B %-d")
-
-        # Format briefing
-        briefing_resp = None
-        if day_briefing:
-            briefing_resp = {
-                "id": str(day_briefing.id),
-                "briefing_date": day_key,
-                "headline": day_briefing.headline,
-                "briefing_text": day_briefing.briefing_text,
-                "key_themes": day_briefing.key_themes,
-                "episode_highlights": day_briefing.episode_highlights,
-                "connection_insight": day_briefing.connection_insight,
-                "episode_count": day_briefing.episode_count,
-            }
-
-        # Format episodes
-        episode_list = []
-        for ep in day_episodes:
-            podcast = ep.podcast
-            episode_list.append({
-                "id": str(ep.id),
-                "title": ep.title,
-                "published_date": ep.published_date.isoformat() if ep.published_date else None,
-                "duration_seconds": ep.duration_seconds,
-                "episode_number": ep.episode_number,
-                "ai_summary": ep.ai_summary,
-                "ai_email_content": ep.ai_email_content,
-                "ai_keywords": ep.ai_keywords or [],
-                "podcast_id": str(podcast.id) if podcast else None,
-                "podcast_title": podcast.title if podcast else None,
-                "podcast_image_url": podcast.image_url if podcast else None,
-            })
-
-        day_groups.append({
-            "date": day_key,
-            "date_label": date_label,
-            "briefing": briefing_resp,
-            "episodes": episode_list,
-        })
-
-        current -= timedelta(days=1)
-
-    next_cursor = (start_date - timedelta(days=1)).strftime("%Y-%m-%d")
-
-    return {
-        "days": day_groups,
-        "has_more": True,
-        "next_cursor": next_cursor,
-    }
+    return result
 
 
 @app.get("/")

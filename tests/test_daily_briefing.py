@@ -1,6 +1,6 @@
 """Tests for the daily briefing model and feed repository methods."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
@@ -66,7 +66,7 @@ def subscribed_episodes(repository, sample_user, sample_podcast):
 class TestDailyBriefingCRUD:
 
     def test_create_briefing(self, repository, sample_user):
-        briefing_date = datetime(2026, 3, 28, tzinfo=UTC)
+        briefing_date = date(2026, 3, 28)
         briefing = repository.create_or_update_daily_briefing(
             user_id=sample_user.id,
             briefing_date=briefing_date,
@@ -85,7 +85,7 @@ class TestDailyBriefingCRUD:
         assert briefing.episode_count == 1
 
     def test_upsert_briefing(self, repository, sample_user):
-        briefing_date = datetime(2026, 3, 28, tzinfo=UTC)
+        briefing_date = date(2026, 3, 28)
         kwargs = dict(
             user_id=sample_user.id,
             briefing_date=briefing_date,
@@ -110,7 +110,7 @@ class TestDailyBriefingCRUD:
         assert b2.episode_count == 2
 
     def test_get_briefings_in_range(self, repository, sample_user):
-        base = datetime(2026, 3, 25, tzinfo=UTC)
+        base = date(2026, 3, 25)
         for i in range(5):
             repository.create_or_update_daily_briefing(
                 user_id=sample_user.id,

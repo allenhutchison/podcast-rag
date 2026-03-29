@@ -1,11 +1,12 @@
 """SQLAlchemy ORM models for podcast and episode data."""
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Optional
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -372,8 +373,8 @@ class DailyBriefing(Base):
         String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
 
-    # The date this briefing covers (stored as midnight UTC)
-    briefing_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    # The calendar date this briefing covers
+    briefing_date: Mapped[date] = mapped_column(Date, nullable=False)
 
     # Briefing content (mirrors DigestBriefing schema)
     headline: Mapped[str] = mapped_column(String(256), nullable=False)

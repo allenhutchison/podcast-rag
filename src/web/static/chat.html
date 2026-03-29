@@ -20,6 +20,19 @@
 
     <div id="app-header" data-active="chat"></div>
 
+    <!-- Chat action bar -->
+    <div class="bg-white border-b border-gray-200 px-4 sm:px-6 py-2">
+        <div class="max-w-7xl mx-auto flex justify-end">
+            <button
+                id="newChatBtn"
+                onclick="createNewConversation()"
+                class="px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm"
+            >
+                + New Chat
+            </button>
+        </div>
+    </div>
+
     <!-- Main Layout -->
     <div class="flex flex-1 overflow-hidden">
         <!-- Sidebar (collapsible on mobile) -->

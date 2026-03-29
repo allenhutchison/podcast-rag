@@ -8,7 +8,7 @@ import logging
 import os
 import shutil
 from abc import ABC, abstractmethod
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import String, and_, cast, create_engine, func, or_, select
@@ -1245,7 +1245,7 @@ class PodcastRepositoryInterface(ABC):
     def create_or_update_daily_briefing(
         self,
         user_id: str,
-        briefing_date: datetime,
+        briefing_date: "date",
         headline: str,
         briefing_text: str,
         key_themes: list[str],
@@ -1263,7 +1263,7 @@ class PodcastRepositoryInterface(ABC):
 
     @abstractmethod
     def get_daily_briefings_in_range(
-        self, user_id: str, start_date: datetime, end_date: datetime
+        self, user_id: str, start_date: "date", end_date: "date"
     ) -> list["DailyBriefing"]:
         """Get all briefings for a user within a date range, ordered by briefing_date desc."""
         pass
@@ -3404,7 +3404,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
     def create_or_update_daily_briefing(
         self,
         user_id: str,
-        briefing_date: datetime,
+        briefing_date: "date",
         headline: str,
         briefing_text: str,
         key_themes: list[str],
@@ -3414,6 +3414,17 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         episode_ids: list[str],
     ) -> DailyBriefing:
         """Create or update a daily briefing for a user on a given date."""
+        update_fields = dict(
+            headline=headline,
+            briefing_text=briefing_text,
+            key_themes=key_themes,
+            episode_highlights=episode_highlights,
+            connection_insight=connection_insight,
+            episode_count=episode_count,
+            episode_ids=episode_ids,
+            updated_at=datetime.now(UTC),
+        )
+
         with self._get_session() as session:
             existing = session.execute(
                 select(DailyBriefing).where(
@@ -3423,14 +3434,8 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             ).scalar_one_or_none()
 
             if existing:
-                existing.headline = headline
-                existing.briefing_text = briefing_text
-                existing.key_themes = key_themes
-                existing.episode_highlights = episode_highlights
-                existing.connection_insight = connection_insight
-                existing.episode_count = episode_count
-                existing.episode_ids = episode_ids
-                existing.updated_at = datetime.now(UTC)
+                for key, value in update_fields.items():
+                    setattr(existing, key, value)
                 session.commit()
                 session.refresh(existing)
                 return existing
@@ -3438,16 +3443,25 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             briefing = DailyBriefing(
                 user_id=user_id,
                 briefing_date=briefing_date,
-                headline=headline,
-                briefing_text=briefing_text,
-                key_themes=key_themes,
-                episode_highlights=episode_highlights,
-                connection_insight=connection_insight,
-                episode_count=episode_count,
-                episode_ids=episode_ids,
+                **update_fields,
             )
             session.add(briefing)
-            session.commit()
+            try:
+                session.commit()
+            except IntegrityError:
+                # Concurrent insert — reload and update instead
+                session.rollback()
+                existing = session.execute(
+                    select(DailyBriefing).where(
+                        DailyBriefing.user_id == user_id,
+                        DailyBriefing.briefing_date == briefing_date,
+                    )
+                ).scalar_one()
+                for key, value in update_fields.items():
+                    setattr(existing, key, value)
+                session.commit()
+                session.refresh(existing)
+                return existing
             session.refresh(briefing)
             return briefing
 

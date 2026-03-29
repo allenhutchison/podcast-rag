@@ -40,10 +40,12 @@
         <!-- Search Box -->
         <form id="searchForm" class="mb-4">
             <div class="relative">
+                <label for="searchInput" class="sr-only">Search your podcasts</label>
                 <input
                     type="text"
                     id="searchInput"
                     placeholder="Ask a question about your podcasts..."
+                    aria-label="Search your podcasts"
                     class="w-full px-4 py-3 pl-11 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-sm bg-white shadow-sm"
                     autocomplete="off"
                 >
@@ -55,11 +57,11 @@
 
         <!-- Email Digest Toggle -->
         <div id="digestToggleRow" class="flex items-center gap-3 mb-6 px-1 hidden">
-            <label class="toggle-switch">
-                <input type="checkbox" id="digestToggle" onchange="toggleDigest()">
+            <label class="toggle-switch" for="digestToggle">
+                <input type="checkbox" id="digestToggle" onchange="toggleDigest()" aria-label="Enable daily email briefing">
                 <span class="toggle-slider"></span>
             </label>
-            <span class="text-sm text-gray-600">Daily email briefing</span>
+            <label for="digestToggle" class="text-sm text-gray-600 cursor-pointer">Daily email briefing</label>
         </div>
 
         <!-- Feed Container -->
@@ -291,25 +293,30 @@
                 nextCursor = data.next_cursor;
                 hasMore = data.has_more;
 
-                // Auto-fetch next page if this one was empty (sparse days)
-                if (data.days.length === 0 && hasMore && emptyAttempts < MAX_EMPTY_ATTEMPTS) {
-                    emptyAttempts++;
-                    loading = false;
-                    loadFeed(nextCursor);
-                    return;
+                const feedContainer = document.getElementById('feedContainer');
+
+                // Reset empty attempts only when we got actual content
+                if (data.days.length > 0) {
+                    emptyAttempts = 0;
                 }
 
-                emptyAttempts = 0;
+                // Auto-fetch next page if this one was empty (sparse days), with cap
+                if (data.days.length === 0 && hasMore) {
+                    emptyAttempts++;
+                    if (emptyAttempts < MAX_EMPTY_ATTEMPTS) {
+                        loading = false;
+                        loadFeed(nextCursor);
+                        return;
+                    }
+                    // Exhausted retries
+                    if (feedContainer.children.length === 0) {
+                        document.getElementById('emptyState').classList.remove('hidden');
+                    }
+                }
 
-                // Show empty state if feed has no content at all
-                const feedContainer = document.getElementById('feedContainer');
+                // Show empty state if feed has no content and nothing more to load
                 if (feedContainer.children.length === 0 && !hasMore) {
                     document.getElementById('emptyState').classList.remove('hidden');
-                } else if (feedContainer.children.length === 0 && hasMore) {
-                    // Keep trying
-                    loading = false;
-                    loadFeed(nextCursor);
-                    return;
                 }
 
                 // Show load more button
@@ -367,18 +374,22 @@
         }
 
         async function toggleDigest() {
-            const enabled = document.getElementById('digestToggle').checked;
+            const checkbox = document.getElementById('digestToggle');
+            const enabled = checkbox.checked;
             try {
-                await fetch('/api/user/settings', {
+                const res = await fetch('/api/user/settings', {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'include',
                     body: JSON.stringify({ email_digest_enabled: enabled }),
                 });
+                if (!res.ok) {
+                    checkbox.checked = !enabled;
+                    console.error('Failed to update digest setting:', res.status);
+                }
             } catch (error) {
+                checkbox.checked = !enabled;
                 console.error('Failed to update digest setting:', error);
-                // Revert toggle on error
-                document.getElementById('digestToggle').checked = !enabled;
             }
         }
 

@@ -213,9 +213,7 @@ class EmailDigestWorker(WorkerInterface):
             try:
                 from datetime import UTC
 
-                briefing_date = datetime.now(UTC).replace(
-                    hour=0, minute=0, second=0, microsecond=0
-                )
+                briefing_date = datetime.now(UTC).date()
                 self.repository.create_or_update_daily_briefing(
                     user_id=user.id,
                     briefing_date=briefing_date,

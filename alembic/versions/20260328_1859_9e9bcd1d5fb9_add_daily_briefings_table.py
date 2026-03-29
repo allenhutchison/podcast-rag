@@ -22,7 +22,7 @@ def upgrade() -> None:
     op.create_table('daily_briefings',
     sa.Column('id', sa.String(length=36), nullable=False),
     sa.Column('user_id', sa.String(length=36), nullable=False),
-    sa.Column('briefing_date', sa.DateTime(), nullable=False),
+    sa.Column('briefing_date', sa.Date(), nullable=False),
     sa.Column('headline', sa.String(length=256), nullable=False),
     sa.Column('briefing_text', sa.Text(), nullable=False),
     sa.Column('key_themes', sa.JSON(), nullable=False),

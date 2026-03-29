@@ -332,11 +332,11 @@
             if (view === 'subscribed') {
                 myPodcastsBtn.className = 'px-4 py-2 text-sm font-medium bg-primary text-white';
                 browseAllBtn.className = 'px-4 py-2 text-sm font-medium bg-white text-gray-700 hover:bg-gray-50';
-                openChatBtn.title = 'Ask questions about your podcast episodes using AI';
+                if (openChatBtn) openChatBtn.title = 'Ask questions about your podcast episodes using AI';
             } else {
                 myPodcastsBtn.className = 'px-4 py-2 text-sm font-medium bg-white text-gray-700 hover:bg-gray-50';
                 browseAllBtn.className = 'px-4 py-2 text-sm font-medium bg-primary text-white';
-                openChatBtn.title = 'Ask questions about all podcast episodes using AI';
+                if (openChatBtn) openChatBtn.title = 'Ask questions about all podcast episodes using AI';
             }
 
             loadPodcasts();

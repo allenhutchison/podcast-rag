@@ -153,7 +153,7 @@ async function handleUrlParams() {
 
     // Load existing conversation if specified
     if (conversationId) {
-        await selectConversation(conversationId);
+        await loadConversation(conversationId);
     }
 
     // Auto-send initial query from feed search box
@@ -162,7 +162,7 @@ async function handleUrlParams() {
         // Clean up URL
         window.history.replaceState({}, '', window.location.pathname);
         // Small delay to ensure conversation is ready
-        setTimeout(() => sendMessage(), 100);
+        setTimeout(() => handleSubmit(), 100);
     }
 }
 
