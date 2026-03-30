@@ -634,11 +634,11 @@ class TestHealthEndpointExtended:
 class TestRootRedirect:
     """Tests for root URL redirect."""
 
-    def test_root_redirects_to_podcasts(self, client):
-        """Test root URL redirects to podcasts.html."""
+    def test_root_redirects_to_feed(self, client):
+        """Test root URL redirects to feed.html."""
         response = client.get("/", follow_redirects=False)
         assert response.status_code in [302, 307]
-        assert "/podcasts.html" in response.headers.get("location", "")
+        assert "/feed.html" in response.headers.get("location", "")
 
 
 class TestAPIRoutes:

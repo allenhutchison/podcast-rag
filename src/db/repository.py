@@ -8,14 +8,14 @@ import logging
 import os
 import shutil
 from abc import ABC, abstractmethod
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import String, and_, cast, create_engine, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, sessionmaker
 
-from .models import ChatMessage, Conversation, Episode, Podcast, User, UserSubscription
+from .models import ChatMessage, Conversation, DailyBriefing, Episode, Podcast, User, UserSubscription
 
 logger = logging.getLogger(__name__)
 
@@ -1238,6 +1238,69 @@ class PodcastRepositoryInterface(ABC):
 
         Args:
             user_id: The user's UUID.
+        """
+        pass
+
+    @abstractmethod
+    def create_or_update_daily_briefing(
+        self,
+        user_id: str,
+        briefing_date: "date",
+        headline: str,
+        briefing_text: str,
+        key_themes: list[str],
+        episode_highlights: list[dict],
+        connection_insight: str | None,
+        episode_count: int,
+        episode_ids: list[str],
+    ) -> "DailyBriefing":
+        """Create or update a daily briefing for a user on a given date.
+
+        Uses upsert semantics: if a briefing already exists for the (user_id, briefing_date)
+        pair, it is updated; otherwise a new one is created.
+        """
+        pass
+
+    @abstractmethod
+    def get_daily_briefings_in_range(
+        self, user_id: str, start_date: "date", end_date: "date"
+    ) -> list["DailyBriefing"]:
+        """Get all briefings for a user within a date range, ordered by briefing_date desc."""
+        pass
+
+    @abstractmethod
+    def get_feed_episodes_in_range(
+        self, user_id: str, start_date: datetime, end_date: datetime
+    ) -> list[Episode]:
+        """Get fully-processed episodes from subscribed podcasts in a date range.
+
+        Returns episodes with podcast eagerly loaded, ordered by published_date desc.
+        """
+        pass
+
+    @abstractmethod
+    def has_feed_episodes_before(self, user_id: str, before: datetime) -> bool:
+        """Check if any fully-processed episodes exist before the given UTC datetime."""
+        pass
+
+    @abstractmethod
+    def has_daily_briefings_before(self, user_id: str, before: "date") -> bool:
+        """Check if any daily briefings exist before the given date."""
+        pass
+
+    @abstractmethod
+    def claim_briefing_generation(
+        self, user_id: str, briefing_date: "date", episode_ids: list[str]
+    ) -> tuple["DailyBriefing | None", bool]:
+        """Atomically claim a briefing generation slot or return the existing fresh briefing.
+
+        If no briefing exists for this (user_id, briefing_date), inserts a placeholder
+        and returns (None, True) indicating the caller should generate.
+        If a briefing exists and its episode_ids match, returns (briefing, False).
+        If a briefing exists but is stale, returns (None, True).
+
+        Returns:
+            Tuple of (existing_briefing_or_None, should_generate).
         """
         pass
 
@@ -3363,6 +3426,183 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
     def mark_email_digest_sent(self, user_id: str) -> None:
         """Update user's last_email_digest_sent timestamp to now."""
         self.update_user(user_id, last_email_digest_sent=datetime.now(UTC))
+
+    def create_or_update_daily_briefing(
+        self,
+        user_id: str,
+        briefing_date: "date",
+        headline: str,
+        briefing_text: str,
+        key_themes: list[str],
+        episode_highlights: list[dict],
+        connection_insight: str | None,
+        episode_count: int,
+        episode_ids: list[str],
+    ) -> DailyBriefing:
+        """Create or update a daily briefing for a user on a given date."""
+        update_fields = dict(
+            headline=headline,
+            briefing_text=briefing_text,
+            key_themes=key_themes,
+            episode_highlights=episode_highlights,
+            connection_insight=connection_insight,
+            episode_count=episode_count,
+            episode_ids=episode_ids,
+            updated_at=datetime.now(UTC),
+        )
+
+        with self._get_session() as session:
+            existing = session.execute(
+                select(DailyBriefing).where(
+                    DailyBriefing.user_id == user_id,
+                    DailyBriefing.briefing_date == briefing_date,
+                )
+            ).scalar_one_or_none()
+
+            if existing:
+                for key, value in update_fields.items():
+                    setattr(existing, key, value)
+                session.commit()
+                session.refresh(existing)
+                return existing
+
+            briefing = DailyBriefing(
+                user_id=user_id,
+                briefing_date=briefing_date,
+                **update_fields,
+            )
+            session.add(briefing)
+            try:
+                session.commit()
+            except IntegrityError:
+                # Concurrent insert — reload and update instead
+                session.rollback()
+                existing = session.execute(
+                    select(DailyBriefing).where(
+                        DailyBriefing.user_id == user_id,
+                        DailyBriefing.briefing_date == briefing_date,
+                    )
+                ).scalar_one()
+                for key, value in update_fields.items():
+                    setattr(existing, key, value)
+                session.commit()
+                session.refresh(existing)
+                return existing
+            session.refresh(briefing)
+            return briefing
+
+    def get_daily_briefings_in_range(
+        self, user_id: str, start_date: date, end_date: date
+    ) -> list[DailyBriefing]:
+        """Get all briefings for a user within a date range, ordered by briefing_date desc."""
+        with self._get_session() as session:
+            stmt = (
+                select(DailyBriefing)
+                .where(
+                    DailyBriefing.user_id == user_id,
+                    DailyBriefing.briefing_date >= start_date,
+                    DailyBriefing.briefing_date < end_date,
+                )
+                .order_by(DailyBriefing.briefing_date.desc())
+            )
+            return list(session.scalars(stmt).all())
+
+    def get_feed_episodes_in_range(
+        self, user_id: str, start_date: datetime, end_date: datetime
+    ) -> list[Episode]:
+        """Get fully-processed episodes from subscribed podcasts in a date range."""
+        with self._get_session() as session:
+            stmt = (
+                select(Episode)
+                .options(joinedload(Episode.podcast))
+                .join(UserSubscription, Episode.podcast_id == UserSubscription.podcast_id)
+                .where(
+                    UserSubscription.user_id == user_id,
+                    Episode.published_date >= start_date,
+                    Episode.published_date < end_date,
+                    Episode.ai_summary.isnot(None),
+                    Episode.metadata_status == "completed",
+                )
+                .order_by(Episode.published_date.desc())
+            )
+            return list(session.scalars(stmt).unique().all())
+
+    def has_feed_episodes_before(self, user_id: str, before: datetime) -> bool:
+        """Check if any fully-processed episodes exist before the given UTC datetime."""
+        with self._get_session() as session:
+            stmt = (
+                select(Episode.id)
+                .join(UserSubscription, Episode.podcast_id == UserSubscription.podcast_id)
+                .where(
+                    UserSubscription.user_id == user_id,
+                    Episode.published_date < before,
+                    Episode.ai_summary.isnot(None),
+                    Episode.metadata_status == "completed",
+                )
+                .limit(1)
+            )
+            return session.execute(stmt).first() is not None
+
+    def has_daily_briefings_before(self, user_id: str, before: date) -> bool:
+        """Check if any daily briefings exist before the given date."""
+        with self._get_session() as session:
+            stmt = (
+                select(DailyBriefing.id)
+                .where(
+                    DailyBriefing.user_id == user_id,
+                    DailyBriefing.briefing_date < before,
+                )
+                .limit(1)
+            )
+            return session.execute(stmt).first() is not None
+
+    def claim_briefing_generation(
+        self, user_id: str, briefing_date: date, episode_ids: list[str]
+    ) -> tuple[DailyBriefing | None, bool]:
+        """Atomically claim a briefing generation slot or return fresh briefing."""
+        sorted_ids = sorted(str(eid) for eid in episode_ids)
+
+        with self._get_session() as session:
+            existing = session.execute(
+                select(DailyBriefing).where(
+                    DailyBriefing.user_id == user_id,
+                    DailyBriefing.briefing_date == briefing_date,
+                )
+            ).scalar_one_or_none()
+
+            if existing:
+                existing_ids = sorted(str(eid) for eid in (existing.episode_ids or []))
+                if existing_ids == sorted_ids and existing.episode_count == len(episode_ids):
+                    # Fresh — no generation needed
+                    return existing, False
+                # Stale — caller should regenerate
+                return None, True
+
+            # No briefing exists — insert a placeholder to claim the slot
+            placeholder = DailyBriefing(
+                user_id=user_id,
+                briefing_date=briefing_date,
+                headline="Generating...",
+                briefing_text="",
+                key_themes=[],
+                episode_highlights=[],
+                episode_count=len(episode_ids),
+                episode_ids=sorted_ids,
+            )
+            session.add(placeholder)
+            try:
+                session.commit()
+                return None, True
+            except IntegrityError:
+                # Another request already claimed it
+                session.rollback()
+                existing = session.execute(
+                    select(DailyBriefing).where(
+                        DailyBriefing.user_id == user_id,
+                        DailyBriefing.briefing_date == briefing_date,
+                    )
+                ).scalar_one()
+                return existing, False
 
     def get_recent_processed_episodes(self, limit: int = 5) -> list[Episode]:
         """Get the most recently processed episodes from the database.

@@ -14,6 +14,7 @@ import re
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -44,6 +45,14 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+
+def _utc_iso(dt: datetime | None) -> str | None:
+    """Format a datetime as UTC-aware ISO string, or None."""
+    if dt is None:
+        return None
+    return dt.replace(tzinfo=UTC).isoformat()
+
 
 # Initialize configuration
 config = Config()
@@ -898,7 +907,7 @@ async def get_podcast_detail(
             {
                 "id": str(ep.id),
                 "title": ep.title,
-                "published_date": ep.published_date.isoformat() if ep.published_date else None,
+                "published_date": _utc_iso(ep.published_date),
                 "duration_seconds": ep.duration_seconds,
                 "episode_number": ep.episode_number,
                 "season_number": ep.season_number,
@@ -937,7 +946,7 @@ async def get_episode_detail(
             "id": str(episode.id),
             "title": episode.title,
             "description": episode.description,
-            "published_date": episode.published_date.isoformat() if episode.published_date else None,
+            "published_date": _utc_iso(episode.published_date),
             "duration_seconds": episode.duration_seconds,
             "episode_number": episode.episode_number,
             "season_number": episode.season_number,
@@ -1014,7 +1023,7 @@ async def search_episodes(
             {
                 "id": str(ep.id),
                 "title": ep.title,
-                "published_date": ep.published_date.isoformat() if ep.published_date else None,
+                "published_date": _utc_iso(ep.published_date),
                 "duration_seconds": ep.duration_seconds,
                 "ai_summary": (ep.ai_summary[:200] + "...") if ep.ai_summary and len(ep.ai_summary) > 200 else ep.ai_summary,
                 "podcast": {
@@ -1028,16 +1037,59 @@ async def search_episodes(
     }
 
 
-# Redirect root to podcasts page (replacing old global chat interface)
-@app.get("/")
-async def root():
+@app.get("/api/feed")
+async def get_feed(
+    cursor: str | None = None,
+    days: int = 1,
+    tz: str | None = None,
+    current_user: dict = Depends(get_current_user),
+):
     """
-    Redirect the root URL to the podcasts library page.
+    Get a reverse-chronological feed of episodes and briefings.
+
+    Args:
+        cursor: ISO date string (YYYY-MM-DD) to paginate from. Defaults to today.
+        days: Number of calendar days to load per request (1-30).
+        tz: IANA timezone string (e.g., "America/New_York"). Defaults to user's setting or UTC.
+        current_user: Authenticated user from JWT cookie.
 
     Returns:
-        RedirectResponse: HTTP redirect to "/podcasts.html" (status code 302).
+        Feed with day-grouped briefings and episodes, cursor for next page.
     """
-    return RedirectResponse(url="/podcasts.html", status_code=302)
+    from src.services.feed_service import get_feed as build_feed
+
+    user_id = current_user["sub"]
+
+    # Resolve timezone: explicit param > user setting > UTC
+    user_timezone = tz
+    if not user_timezone:
+        user = await asyncio.to_thread(_repository.get_user, user_id)
+        if user and user.timezone:
+            user_timezone = user.timezone
+
+    if days < 1 or days > 30:
+        raise HTTPException(status_code=400, detail="days must be between 1 and 30")
+
+    try:
+        result = await asyncio.to_thread(
+            build_feed,
+            user_id=user_id,
+            repository=_repository,
+            config=config,
+            cursor=cursor,
+            days=days,
+            user_timezone=user_timezone,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return result
+
+
+@app.get("/")
+async def root():
+    """Redirect the root URL to the feed page."""
+    return RedirectResponse(url="/feed.html", status_code=302)
 
 
 # Mount static files (must be last to avoid route conflicts)

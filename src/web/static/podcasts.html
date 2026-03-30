@@ -57,38 +57,21 @@
 </head>
 <body class="bg-gray-50 min-h-screen flex flex-col">
 
-    <!-- Header -->
-    <header class="bg-white border-b border-gray-200 px-4 sm:px-6 py-4 shadow-sm">
-        <div class="max-w-6xl mx-auto flex justify-between items-center gap-2">
-            <div class="min-w-0">
-                <h1 class="text-2xl font-bold text-gray-900">Podcasts</h1>
-                <p class="text-sm text-gray-600 mt-1 hidden sm:block">Browse your podcast library</p>
-            </div>
-            <div class="flex items-center gap-2 sm:gap-4 flex-shrink-0">
-                <button
-                    id="addPodcastBtn"
-                    onclick="openAddPodcastModal()"
-                    class="px-3 sm:px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-colors font-medium text-sm h-10 flex items-center justify-center whitespace-nowrap"
-                >
-                    <span class="hidden sm:inline">+ Add Podcast</span>
-                    <span class="sm:hidden">+ Add</span>
-                </button>
-                <a
-                    id="openChatBtn"
-                    href="/chat.html?scope=all"
-                    class="px-3 sm:px-4 py-2.5 bg-primary text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-colors font-medium text-sm h-10 flex items-center justify-center whitespace-nowrap"
-                    title="Ask questions about your podcast episodes using AI"
-                >
-                    <span class="hidden sm:inline">AI Podcast Chat</span>
-                    <span class="sm:hidden">AI Chat</span>
-                </a>
-                <div id="userInfo" class="border-l pl-2 sm:pl-4 border-gray-200"></div>
-            </div>
-        </div>
-    </header>
+    <div id="app-header" data-active="subscriptions"></div>
 
     <!-- Main Content -->
     <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-8">
+        <!-- Action Bar -->
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-bold text-gray-900">Manage Subscriptions</h2>
+            <button
+                id="addPodcastBtn"
+                onclick="openAddPodcastModal()"
+                class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm"
+            >
+                + Add Podcast
+            </button>
+        </div>
         <!-- View Toggle and Controls -->
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
             <!-- Stats Bar (first on mobile, left on desktop) -->
@@ -294,6 +277,7 @@
     <!-- Footer -->
     <div id="app-footer"></div>
 
+    <script src="/nav.js"></script>
     <script src="/footer.js"></script>
     <script src="/auth.js?v=1"></script>
     <script>
@@ -348,11 +332,11 @@
             if (view === 'subscribed') {
                 myPodcastsBtn.className = 'px-4 py-2 text-sm font-medium bg-primary text-white';
                 browseAllBtn.className = 'px-4 py-2 text-sm font-medium bg-white text-gray-700 hover:bg-gray-50';
-                openChatBtn.title = 'Ask questions about your podcast episodes using AI';
+                if (openChatBtn) openChatBtn.title = 'Ask questions about your podcast episodes using AI';
             } else {
                 myPodcastsBtn.className = 'px-4 py-2 text-sm font-medium bg-white text-gray-700 hover:bg-gray-50';
                 browseAllBtn.className = 'px-4 py-2 text-sm font-medium bg-primary text-white';
-                openChatBtn.title = 'Ask questions about all podcast episodes using AI';
+                if (openChatBtn) openChatBtn.title = 'Ask questions about all podcast episodes using AI';
             }
 
             loadPodcasts();
