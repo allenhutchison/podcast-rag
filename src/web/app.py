@@ -1104,7 +1104,7 @@ async def generate_feed_briefing(
     Returns:
         The generated briefing, or null if generation failed or no episodes exist.
     """
-    from src.services.feed_service import generate_and_persist_briefing
+    from src.services.feed_service import BRIEFING_PENDING, generate_and_persist_briefing
 
     user_id = current_user["sub"]
 
@@ -1114,7 +1114,7 @@ async def generate_feed_briefing(
         if user and user.timezone:
             user_timezone = user.timezone
 
-    briefing = await asyncio.to_thread(
+    result = await asyncio.to_thread(
         generate_and_persist_briefing,
         user_id=user_id,
         repository=_repository,
@@ -1122,7 +1122,14 @@ async def generate_feed_briefing(
         user_timezone=user_timezone,
     )
 
-    return {"briefing": briefing}
+    if result == BRIEFING_PENDING:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=202,
+            content={"status": "pending", "briefing": None},
+        )
+
+    return {"status": "ready", "briefing": result}
 
 
 @app.get("/")

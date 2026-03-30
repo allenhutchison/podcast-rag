@@ -93,8 +93,16 @@ def get_feed(
     today_local = datetime.now(tz).date()
     if start_local <= today_local <= cursor_date and today_local in episodes_by_date:
         today_episodes = episodes_by_date[today_local]
-        if today_episodes and today_local not in briefings_by_date:
-            briefing_pending = True
+        if today_episodes:
+            existing = briefings_by_date.get(today_local)
+            if existing is None:
+                briefing_pending = True
+            else:
+                # Check staleness
+                current_ids = sorted(str(ep.id) for ep in today_episodes)
+                existing_ids = sorted(str(eid) for eid in (existing.episode_ids or []))
+                if existing.episode_count != len(today_episodes) or existing_ids != current_ids:
+                    briefing_pending = True
 
     # Build day groups
     day_groups = []
@@ -171,16 +179,22 @@ def get_feed(
     }
 
 
+# Sentinel value indicating another request is generating the briefing
+BRIEFING_PENDING = "pending"
+
+
 def generate_and_persist_briefing(
     user_id: str,
     repository: PodcastRepositoryInterface,
     config: Config,
     user_timezone: str | None = None,
-) -> dict | None:
+) -> dict | str | None:
     """Generate today's briefing and persist it. Called asynchronously.
 
-    Returns the briefing response dict, or None if generation failed or
-    no episodes exist.
+    Returns:
+        - dict: the generated briefing response
+        - BRIEFING_PENDING: another request owns the claim
+        - None: no episodes or generation failed
     """
     try:
         tz = ZoneInfo(user_timezone) if user_timezone else timezone.utc
@@ -207,7 +221,7 @@ def generate_and_persist_briefing(
     if existing and not should_generate:
         if existing.headline and existing.headline != "Generating...":
             return _briefing_to_response(existing, today_local)
-        return None  # Another request is generating
+        return BRIEFING_PENDING  # Another request is generating
 
     if not should_generate:
         return None
@@ -232,16 +246,21 @@ def generate_and_persist_briefing(
                 episode_ids=episode_ids,
             )
             return _briefing_to_response(db_briefing, today_local)
+        else:
+            # Generation returned nothing — release claim so retries can work
+            repository.release_briefing_claim(user_id, today_local)
     except (KeyError, ValueError, TypeError) as e:
         logger.error(
             "Briefing generation/parsing failed for user %s on %s: %s",
             user_id, today_local, e, exc_info=True,
         )
+        repository.release_briefing_claim(user_id, today_local)
     except Exception:
         logger.exception(
             "Unexpected error generating briefing for user %s on %s",
             user_id, today_local,
         )
+        repository.release_briefing_claim(user_id, today_local)
 
     return None
 

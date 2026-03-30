@@ -351,7 +351,6 @@ class UserSubscription(Base):
         UniqueConstraint("user_id", "podcast_id", name="uq_user_podcast_subscription"),
         Index("ix_user_subscriptions_user_id", "user_id"),
         Index("ix_user_subscriptions_podcast_id", "podcast_id"),
-        Index("ix_user_subscriptions_user_podcast", "user_id", "podcast_id"),
     )
 
     def __repr__(self) -> str:

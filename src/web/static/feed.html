@@ -217,6 +217,8 @@
             const placeholder = document.createElement('div');
             placeholder.id = 'briefingPlaceholder';
             placeholder.className = 'bg-blue-50 rounded-lg border border-blue-200 p-5 mb-4';
+            placeholder.setAttribute('role', 'status');
+            placeholder.setAttribute('aria-live', 'polite');
             placeholder.innerHTML = `
                 <div class="flex items-center gap-2 mb-2">
                     <span class="text-sm font-semibold text-blue-600 uppercase tracking-wide">Daily Briefing</span>
@@ -239,13 +241,19 @@
                     method: 'POST',
                     credentials: 'include',
                 });
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
                 const data = await response.json();
                 const placeholder = document.getElementById('briefingPlaceholder');
 
+                if (response.status === 202 && data.status === 'pending') {
+                    // Another request is generating — retry after a delay
+                    setTimeout(generateBriefingInBackground, 5000);
+                    return;
+                }
+
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
                 if (data.briefing && placeholder) {
-                    // Replace placeholder with real briefing card
                     const card = renderBriefingCard(data.briefing);
                     placeholder.replaceWith(card);
                 } else if (placeholder) {

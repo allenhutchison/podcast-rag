@@ -1305,6 +1305,15 @@ class PodcastRepositoryInterface(ABC):
         pass
 
     @abstractmethod
+    def release_briefing_claim(self, user_id: str, briefing_date: "date") -> None:
+        """Release a briefing generation claim by deleting the placeholder row.
+
+        Called when generation fails so subsequent attempts can retry.
+        Only deletes rows where headline is the placeholder value.
+        """
+        pass
+
+    @abstractmethod
     def get_recent_processed_episodes(self, limit: int = 5) -> list[Episode]:
         """Get the most recently processed episodes from the database.
 
@@ -3603,6 +3612,22 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                     )
                 ).scalar_one()
                 return existing, False
+
+    def release_briefing_claim(self, user_id: str, briefing_date: date) -> None:
+        """Release a briefing generation claim by deleting the placeholder row."""
+        with self._get_session() as session:
+            stmt = (
+                select(DailyBriefing)
+                .where(
+                    DailyBriefing.user_id == user_id,
+                    DailyBriefing.briefing_date == briefing_date,
+                    DailyBriefing.headline == "Generating...",
+                )
+            )
+            placeholder = session.execute(stmt).scalar_one_or_none()
+            if placeholder:
+                session.delete(placeholder)
+                session.commit()
 
     def get_recent_processed_episodes(self, limit: int = 5) -> list[Episode]:
         """Get the most recently processed episodes from the database.
