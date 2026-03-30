@@ -320,13 +320,16 @@
                         await loadFeed(nextCursor);
                         return;
                     }
-                    // Exhausted retries
-                    if (feedContainer.children.length === 0) {
-                        document.getElementById('emptyState').classList.remove('hidden');
+                    // Exhausted retries but more content exists — show load more
+                    if (feedContainer.children.length > 0) {
+                        document.getElementById('loadMoreContainer').classList.remove('hidden');
+                    } else {
+                        // Let user manually continue
+                        document.getElementById('loadMoreContainer').classList.remove('hidden');
                     }
                 }
 
-                // Show empty state if feed has no content and nothing more to load
+                // Show empty state only when nothing loaded and nothing more to load
                 if (feedContainer.children.length === 0 && !hasMore) {
                     document.getElementById('emptyState').classList.remove('hidden');
                 }

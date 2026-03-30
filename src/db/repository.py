@@ -1279,6 +1279,16 @@ class PodcastRepositoryInterface(ABC):
         pass
 
     @abstractmethod
+    def has_feed_episodes_before(self, user_id: str, before: datetime) -> bool:
+        """Check if any fully-processed episodes exist before the given UTC datetime."""
+        pass
+
+    @abstractmethod
+    def has_daily_briefings_before(self, user_id: str, before: "date") -> bool:
+        """Check if any daily briefings exist before the given date."""
+        pass
+
+    @abstractmethod
     def get_recent_processed_episodes(self, limit: int = 5) -> list[Episode]:
         """Get the most recently processed episodes from the database.
 
@@ -3500,6 +3510,35 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 .order_by(Episode.published_date.desc())
             )
             return list(session.scalars(stmt).unique().all())
+
+    def has_feed_episodes_before(self, user_id: str, before: datetime) -> bool:
+        """Check if any fully-processed episodes exist before the given UTC datetime."""
+        with self._get_session() as session:
+            stmt = (
+                select(Episode.id)
+                .join(UserSubscription, Episode.podcast_id == UserSubscription.podcast_id)
+                .where(
+                    UserSubscription.user_id == user_id,
+                    Episode.published_date < before,
+                    Episode.ai_summary.isnot(None),
+                    Episode.metadata_status == "completed",
+                )
+                .limit(1)
+            )
+            return session.execute(stmt).first() is not None
+
+    def has_daily_briefings_before(self, user_id: str, before: date) -> bool:
+        """Check if any daily briefings exist before the given date."""
+        with self._get_session() as session:
+            stmt = (
+                select(DailyBriefing.id)
+                .where(
+                    DailyBriefing.user_id == user_id,
+                    DailyBriefing.briefing_date < before,
+                )
+                .limit(1)
+            )
+            return session.execute(stmt).first() is not None
 
     def get_recent_processed_episodes(self, limit: int = 5) -> list[Episode]:
         """Get the most recently processed episodes from the database.

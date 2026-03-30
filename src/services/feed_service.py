@@ -109,8 +109,16 @@ def get_feed(
                         episode_ids=[str(ep.id) for ep in today_episodes],
                     )
                     briefings_by_date[today_local] = db_briefing
+            except (KeyError, ValueError, TypeError) as e:
+                logger.error(
+                    "Briefing generation/parsing failed for user %s on %s: %s",
+                    user_id, today_local, e, exc_info=True,
+                )
             except Exception:
-                logger.exception("On-demand briefing generation failed")
+                logger.exception(
+                    "Unexpected error generating briefing for user %s on %s",
+                    user_id, today_local,
+                )
 
     # Build day groups
     day_groups = []
@@ -145,7 +153,7 @@ def get_feed(
                 {
                     "id": str(ep.id),
                     "title": ep.title,
-                    "published_date": ep.published_date.isoformat()
+                    "published_date": ep.published_date.replace(tzinfo=UTC).isoformat()
                     if ep.published_date
                     else None,
                     "duration_seconds": ep.duration_seconds,
@@ -170,19 +178,14 @@ def get_feed(
 
         current -= timedelta(days=1)
 
-    # Determine has_more by checking if any older content exists before start_local
+    # Determine has_more with lightweight existence checks (limit 1)
     next_cursor_date = start_local - timedelta(days=1)
-    epoch = date(2000, 1, 1)
-    epoch_utc = datetime.combine(epoch, datetime.min.time(), tzinfo=tz).astimezone(UTC)
     start_boundary_utc = datetime.combine(start_local, datetime.min.time(), tzinfo=tz).astimezone(UTC)
 
-    older_episodes = repository.get_feed_episodes_in_range(
-        user_id, epoch_utc, start_boundary_utc
+    has_more = (
+        repository.has_feed_episodes_before(user_id, start_boundary_utc)
+        or repository.has_daily_briefings_before(user_id, start_local)
     )
-    older_briefings = repository.get_daily_briefings_in_range(
-        user_id, epoch, start_local
-    )
-    has_more = bool(older_episodes or older_briefings)
 
     return {
         "days": day_groups,

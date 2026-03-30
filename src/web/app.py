@@ -14,6 +14,7 @@ import re
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -44,6 +45,14 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+
+def _utc_iso(dt: datetime | None) -> str | None:
+    """Format a datetime as UTC-aware ISO string, or None."""
+    if dt is None:
+        return None
+    return dt.replace(tzinfo=UTC).isoformat()
+
 
 # Initialize configuration
 config = Config()
@@ -898,7 +907,7 @@ async def get_podcast_detail(
             {
                 "id": str(ep.id),
                 "title": ep.title,
-                "published_date": ep.published_date.isoformat() if ep.published_date else None,
+                "published_date": _utc_iso(ep.published_date),
                 "duration_seconds": ep.duration_seconds,
                 "episode_number": ep.episode_number,
                 "season_number": ep.season_number,
@@ -937,7 +946,7 @@ async def get_episode_detail(
             "id": str(episode.id),
             "title": episode.title,
             "description": episode.description,
-            "published_date": episode.published_date.isoformat() if episode.published_date else None,
+            "published_date": _utc_iso(episode.published_date),
             "duration_seconds": episode.duration_seconds,
             "episode_number": episode.episode_number,
             "season_number": episode.season_number,
@@ -1014,7 +1023,7 @@ async def search_episodes(
             {
                 "id": str(ep.id),
                 "title": ep.title,
-                "published_date": ep.published_date.isoformat() if ep.published_date else None,
+                "published_date": _utc_iso(ep.published_date),
                 "duration_seconds": ep.duration_seconds,
                 "ai_summary": (ep.ai_summary[:200] + "...") if ep.ai_summary and len(ep.ai_summary) > 200 else ep.ai_summary,
                 "podcast": {
