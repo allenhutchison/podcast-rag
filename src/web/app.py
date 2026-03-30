@@ -1037,6 +1037,18 @@ async def search_episodes(
     }
 
 
+async def _resolve_user_timezone(
+    tz: str | None, user_id: str, repository: PodcastRepositoryInterface
+) -> str | None:
+    """Resolve timezone: explicit param > user setting > None (UTC fallback)."""
+    if tz:
+        return tz
+    user = await asyncio.to_thread(repository.get_user, user_id)
+    if user and user.timezone:
+        return user.timezone
+    return None
+
+
 @app.get("/api/feed")
 async def get_feed(
     cursor: str | None = None,
@@ -1063,13 +1075,7 @@ async def get_feed(
     from src.services.feed_service import get_feed as build_feed
 
     user_id = current_user["sub"]
-
-    # Resolve timezone: explicit param > user setting > UTC
-    user_timezone = tz
-    if not user_timezone:
-        user = await asyncio.to_thread(_repository.get_user, user_id)
-        if user and user.timezone:
-            user_timezone = user.timezone
+    user_timezone = await _resolve_user_timezone(tz, user_id, _repository)
 
     if days < 1 or days > 30:
         raise HTTPException(status_code=400, detail="days must be between 1 and 30")
@@ -1107,12 +1113,7 @@ async def generate_feed_briefing(
     from src.services.feed_service import BRIEFING_PENDING, generate_and_persist_briefing
 
     user_id = current_user["sub"]
-
-    user_timezone = tz
-    if not user_timezone:
-        user = await asyncio.to_thread(_repository.get_user, user_id)
-        if user and user.timezone:
-            user_timezone = user.timezone
+    user_timezone = await _resolve_user_timezone(tz, user_id, _repository)
 
     result = await asyncio.to_thread(
         generate_and_persist_briefing,

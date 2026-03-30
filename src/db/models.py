@@ -223,6 +223,7 @@ class Episode(Base):
         Index("ix_episodes_file_search_status", "file_search_status"),
         Index("ix_episodes_published_date", "published_date"),
         Index("ix_episodes_published_metadata", "published_date", "metadata_status"),
+        Index("ix_episodes_metadata_published", "metadata_status", "published_date"),
     )
 
     def __repr__(self) -> str:

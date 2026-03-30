@@ -22,7 +22,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     op.create_index('ix_episodes_published_metadata', 'episodes', ['published_date', 'metadata_status'], unique=False)
+    op.create_index('ix_episodes_metadata_published', 'episodes', ['metadata_status', 'published_date'], unique=False)
 
 
 def downgrade() -> None:
+    op.drop_index('ix_episodes_metadata_published', table_name='episodes')
     op.drop_index('ix_episodes_published_metadata', table_name='episodes')

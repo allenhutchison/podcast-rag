@@ -3615,19 +3615,17 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
 
     def release_briefing_claim(self, user_id: str, briefing_date: date) -> None:
         """Release a briefing generation claim by deleting the placeholder row."""
+        from sqlalchemy import delete
+
         with self._get_session() as session:
-            stmt = (
-                select(DailyBriefing)
-                .where(
+            session.execute(
+                delete(DailyBriefing).where(
                     DailyBriefing.user_id == user_id,
                     DailyBriefing.briefing_date == briefing_date,
                     DailyBriefing.headline == "Generating...",
                 )
             )
-            placeholder = session.execute(stmt).scalar_one_or_none()
-            if placeholder:
-                session.delete(placeholder)
-                session.commit()
+            session.commit()
 
     def get_recent_processed_episodes(self, limit: int = 5) -> list[Episode]:
         """Get the most recently processed episodes from the database.
