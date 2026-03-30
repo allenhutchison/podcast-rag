@@ -211,9 +211,15 @@ class EmailDigestWorker(WorkerInterface):
         # Persist briefing for web feed display
         if briefing:
             try:
-                from datetime import UTC
+                from datetime import UTC, timezone
+                from zoneinfo import ZoneInfo
 
-                briefing_date = datetime.now(UTC).date()
+                # Use user's timezone so the briefing is stored under the correct local day
+                try:
+                    user_tz = ZoneInfo(user.timezone) if user.timezone else timezone.utc
+                except (KeyError, ValueError):
+                    user_tz = timezone.utc
+                briefing_date = datetime.now(user_tz).date()
                 self.repository.create_or_update_daily_briefing(
                     user_id=user.id,
                     briefing_date=briefing_date,

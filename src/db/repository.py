@@ -3466,7 +3466,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             return briefing
 
     def get_daily_briefings_in_range(
-        self, user_id: str, start_date: datetime, end_date: datetime
+        self, user_id: str, start_date: date, end_date: date
     ) -> list[DailyBriefing]:
         """Get all briefings for a user within a date range, ordered by briefing_date desc."""
         with self._get_session() as session:

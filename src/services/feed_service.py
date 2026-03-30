@@ -170,18 +170,17 @@ def get_feed(
 
         current -= timedelta(days=1)
 
-    # Determine has_more by checking if older content exists
+    # Determine has_more by checking if any older content exists before start_local
     next_cursor_date = start_local - timedelta(days=1)
-    next_cursor_start = next_cursor_date
-    next_cursor_end = start_local
-    next_start_utc = datetime.combine(next_cursor_start, datetime.min.time(), tzinfo=tz).astimezone(UTC)
-    next_end_utc = datetime.combine(next_cursor_end, datetime.min.time(), tzinfo=tz).astimezone(UTC)
+    epoch = date(2000, 1, 1)
+    epoch_utc = datetime.combine(epoch, datetime.min.time(), tzinfo=tz).astimezone(UTC)
+    start_boundary_utc = datetime.combine(start_local, datetime.min.time(), tzinfo=tz).astimezone(UTC)
 
     older_episodes = repository.get_feed_episodes_in_range(
-        user_id, next_start_utc, next_end_utc
+        user_id, epoch_utc, start_boundary_utc
     )
     older_briefings = repository.get_daily_briefings_in_range(
-        user_id, next_cursor_start, next_cursor_end
+        user_id, epoch, start_local
     )
     has_more = bool(older_episodes or older_briefings)
 

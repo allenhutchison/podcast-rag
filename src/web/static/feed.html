@@ -73,6 +73,15 @@
             <p class="text-sm text-gray-500 mt-2">Loading your feed...</p>
         </div>
 
+        <!-- Error State -->
+        <div id="feedError" class="hidden text-center py-8">
+            <p class="text-red-600 font-medium mb-2">Something went wrong loading your feed.</p>
+            <p id="feedErrorDetail" class="text-sm text-gray-500 mb-4"></p>
+            <button onclick="retryFeed()" class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm">
+                Try Again
+            </button>
+        </div>
+
         <!-- Empty State -->
         <div id="emptyState" class="hidden text-center py-16">
             <div class="text-5xl mb-4">&#x1F399;</div>
@@ -300,12 +309,15 @@
                     emptyAttempts = 0;
                 }
 
+                // Hide any previous error
+                document.getElementById('feedError').classList.add('hidden');
+
                 // Auto-fetch next page if this one was empty (sparse days), with cap
                 if (data.days.length === 0 && hasMore) {
                     emptyAttempts++;
                     if (emptyAttempts < MAX_EMPTY_ATTEMPTS) {
                         loading = false;
-                        loadFeed(nextCursor);
+                        await loadFeed(nextCursor);
                         return;
                     }
                     // Exhausted retries
@@ -325,10 +337,18 @@
                 }
             } catch (error) {
                 console.error('Failed to load feed:', error);
+                const feedError = document.getElementById('feedError');
+                document.getElementById('feedErrorDetail').textContent = error.message || 'Please check your connection.';
+                feedError.classList.remove('hidden');
             } finally {
                 document.getElementById('loadingState').classList.add('hidden');
                 loading = false;
             }
+        }
+
+        function retryFeed() {
+            document.getElementById('feedError').classList.add('hidden');
+            loadFeed(nextCursor);
         }
 
         function loadMore() {
