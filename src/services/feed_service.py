@@ -1,7 +1,8 @@
 """Feed service for building the reverse-chronological feed.
 
 Handles pagination, date grouping, timezone-aware day boundaries,
-on-demand briefing generation, and response shaping.
+and response shaping. Briefing generation is triggered asynchronously
+and never blocks the feed response.
 """
 
 import logging
@@ -27,6 +28,11 @@ def get_feed(
 ) -> dict:
     """Build a feed response with day-grouped briefings and episodes.
 
+    Returns immediately with available data. If today's briefing is missing
+    or stale, the response includes briefing_pending=true so the client
+    can poll or show a placeholder. Briefing generation is handled separately
+    by trigger_briefing_generation().
+
     Args:
         user_id: The authenticated user's ID.
         repository: Database repository.
@@ -36,7 +42,7 @@ def get_feed(
         user_timezone: IANA timezone string (e.g., "America/New_York"). Defaults to UTC.
 
     Returns:
-        Dict with days (list of day groups), has_more (bool), and next_cursor (str).
+        Dict with days, has_more, next_cursor, and briefing_pending flag.
     """
     # Resolve timezone
     try:
@@ -78,52 +84,17 @@ def get_feed(
     # Index briefings by date
     briefings_by_date: dict[date, object] = {}
     for b in briefings:
-        briefings_by_date[b.briefing_date] = b
+        # Skip placeholder briefings (headline="Generating...")
+        if b.headline and b.headline != "Generating...":
+            briefings_by_date[b.briefing_date] = b
 
-    # On-demand briefing generation for today (create or refresh if stale)
+    # Check if today's briefing is missing or stale
+    briefing_pending = False
     today_local = datetime.now(tz).date()
     if start_local <= today_local <= cursor_date and today_local in episodes_by_date:
         today_episodes = episodes_by_date[today_local]
-        episode_ids = [str(ep.id) for ep in today_episodes]
-
-        # Atomically claim generation slot or get fresh briefing
-        existing, should_generate = repository.claim_briefing_generation(
-            user_id, today_local, episode_ids
-        )
-
-        if existing and not should_generate:
-            briefings_by_date[today_local] = existing
-        elif should_generate and today_episodes:
-            try:
-                from src.services.briefing_generator import generate_digest_briefing
-
-                briefing_data = generate_digest_briefing(today_episodes, config)
-                if briefing_data:
-                    db_briefing = repository.create_or_update_daily_briefing(
-                        user_id=user_id,
-                        briefing_date=today_local,
-                        headline=briefing_data["headline"],
-                        briefing_text=briefing_data["briefing"],
-                        key_themes=briefing_data["key_themes"],
-                        episode_highlights=[
-                            h if isinstance(h, dict) else h.model_dump()
-                            for h in briefing_data["episode_highlights"]
-                        ],
-                        connection_insight=briefing_data.get("connection_insight"),
-                        episode_count=len(today_episodes),
-                        episode_ids=episode_ids,
-                    )
-                    briefings_by_date[today_local] = db_briefing
-            except (KeyError, ValueError, TypeError) as e:
-                logger.error(
-                    "Briefing generation/parsing failed for user %s on %s: %s",
-                    user_id, today_local, e, exc_info=True,
-                )
-            except Exception:
-                logger.exception(
-                    "Unexpected error generating briefing for user %s on %s",
-                    user_id, today_local,
-                )
+        if today_episodes and today_local not in briefings_by_date:
+            briefing_pending = True
 
     # Build day groups
     day_groups = []
@@ -196,6 +167,96 @@ def get_feed(
         "days": day_groups,
         "has_more": has_more,
         "next_cursor": next_cursor_date.isoformat(),
+        "briefing_pending": briefing_pending,
+    }
+
+
+def generate_and_persist_briefing(
+    user_id: str,
+    repository: PodcastRepositoryInterface,
+    config: Config,
+    user_timezone: str | None = None,
+) -> dict | None:
+    """Generate today's briefing and persist it. Called asynchronously.
+
+    Returns the briefing response dict, or None if generation failed or
+    no episodes exist.
+    """
+    try:
+        tz = ZoneInfo(user_timezone) if user_timezone else timezone.utc
+    except (KeyError, ValueError):
+        tz = timezone.utc
+
+    today_local = datetime.now(tz).date()
+
+    # Get today's episodes
+    start_utc = datetime.combine(today_local, datetime.min.time(), tzinfo=tz).astimezone(UTC)
+    end_utc = datetime.combine(today_local + timedelta(days=1), datetime.min.time(), tzinfo=tz).astimezone(UTC)
+
+    episodes = repository.get_feed_episodes_in_range(user_id, start_utc, end_utc)
+    if not episodes:
+        return None
+
+    episode_ids = [str(ep.id) for ep in episodes]
+
+    # Claim generation slot
+    existing, should_generate = repository.claim_briefing_generation(
+        user_id, today_local, episode_ids
+    )
+
+    if existing and not should_generate:
+        if existing.headline and existing.headline != "Generating...":
+            return _briefing_to_response(existing, today_local)
+        return None  # Another request is generating
+
+    if not should_generate:
+        return None
+
+    try:
+        from src.services.briefing_generator import generate_digest_briefing
+
+        briefing_data = generate_digest_briefing(episodes, config)
+        if briefing_data:
+            db_briefing = repository.create_or_update_daily_briefing(
+                user_id=user_id,
+                briefing_date=today_local,
+                headline=briefing_data["headline"],
+                briefing_text=briefing_data["briefing"],
+                key_themes=briefing_data["key_themes"],
+                episode_highlights=[
+                    h if isinstance(h, dict) else h.model_dump()
+                    for h in briefing_data["episode_highlights"]
+                ],
+                connection_insight=briefing_data.get("connection_insight"),
+                episode_count=len(episodes),
+                episode_ids=episode_ids,
+            )
+            return _briefing_to_response(db_briefing, today_local)
+    except (KeyError, ValueError, TypeError) as e:
+        logger.error(
+            "Briefing generation/parsing failed for user %s on %s: %s",
+            user_id, today_local, e, exc_info=True,
+        )
+    except Exception:
+        logger.exception(
+            "Unexpected error generating briefing for user %s on %s",
+            user_id, today_local,
+        )
+
+    return None
+
+
+def _briefing_to_response(briefing, briefing_date: date) -> dict:
+    """Convert a DailyBriefing to a response dict."""
+    return {
+        "id": str(briefing.id),
+        "briefing_date": briefing_date.isoformat(),
+        "headline": briefing.headline,
+        "briefing_text": briefing.briefing_text,
+        "key_themes": briefing.key_themes,
+        "episode_highlights": briefing.episode_highlights,
+        "connection_insight": briefing.connection_insight,
+        "episode_count": briefing.episode_count,
     }
 
 

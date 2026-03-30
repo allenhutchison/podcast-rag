@@ -222,6 +222,7 @@ class Episode(Base):
         Index("ix_episodes_transcript_status", "transcript_status"),
         Index("ix_episodes_file_search_status", "file_search_status"),
         Index("ix_episodes_published_date", "published_date"),
+        Index("ix_episodes_published_metadata", "published_date", "metadata_status"),
     )
 
     def __repr__(self) -> str:
@@ -350,6 +351,7 @@ class UserSubscription(Base):
         UniqueConstraint("user_id", "podcast_id", name="uq_user_podcast_subscription"),
         Index("ix_user_subscriptions_user_id", "user_id"),
         Index("ix_user_subscriptions_podcast_id", "podcast_id"),
+        Index("ix_user_subscriptions_user_podcast", "user_id", "podcast_id"),
     )
 
     def __repr__(self) -> str:
