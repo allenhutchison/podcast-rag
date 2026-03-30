@@ -84,17 +84,16 @@ def get_feed(
     today_local = datetime.now(tz).date()
     if start_local <= today_local <= cursor_date and today_local in episodes_by_date:
         today_episodes = episodes_by_date[today_local]
-        current_episode_ids = sorted(str(ep.id) for ep in today_episodes)
+        episode_ids = [str(ep.id) for ep in today_episodes]
 
-        # Check if existing briefing is stale (different episodes)
-        existing_briefing = briefings_by_date.get(today_local)
-        needs_generation = existing_briefing is None
-        if existing_briefing and (
-            existing_briefing.episode_count != len(today_episodes)
-            or sorted(str(eid) for eid in (existing_briefing.episode_ids or [])) != current_episode_ids
-        ):
-            needs_generation = True
-        if today_episodes and needs_generation:
+        # Atomically claim generation slot or get fresh briefing
+        existing, should_generate = repository.claim_briefing_generation(
+            user_id, today_local, episode_ids
+        )
+
+        if existing and not should_generate:
+            briefings_by_date[today_local] = existing
+        elif should_generate and today_episodes:
             try:
                 from src.services.briefing_generator import generate_digest_briefing
 
@@ -112,7 +111,7 @@ def get_feed(
                         ],
                         connection_insight=briefing_data.get("connection_insight"),
                         episode_count=len(today_episodes),
-                        episode_ids=[str(ep.id) for ep in today_episodes],
+                        episode_ids=episode_ids,
                     )
                     briefings_by_date[today_local] = db_briefing
             except (KeyError, ValueError, TypeError) as e:

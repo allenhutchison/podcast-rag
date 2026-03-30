@@ -1289,6 +1289,22 @@ class PodcastRepositoryInterface(ABC):
         pass
 
     @abstractmethod
+    def claim_briefing_generation(
+        self, user_id: str, briefing_date: "date", episode_ids: list[str]
+    ) -> tuple["DailyBriefing | None", bool]:
+        """Atomically claim a briefing generation slot or return the existing fresh briefing.
+
+        If no briefing exists for this (user_id, briefing_date), inserts a placeholder
+        and returns (None, True) indicating the caller should generate.
+        If a briefing exists and its episode_ids match, returns (briefing, False).
+        If a briefing exists but is stale, returns (None, True).
+
+        Returns:
+            Tuple of (existing_briefing_or_None, should_generate).
+        """
+        pass
+
+    @abstractmethod
     def get_recent_processed_episodes(self, limit: int = 5) -> list[Episode]:
         """Get the most recently processed episodes from the database.
 
@@ -3539,6 +3555,54 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 .limit(1)
             )
             return session.execute(stmt).first() is not None
+
+    def claim_briefing_generation(
+        self, user_id: str, briefing_date: date, episode_ids: list[str]
+    ) -> tuple[DailyBriefing | None, bool]:
+        """Atomically claim a briefing generation slot or return fresh briefing."""
+        sorted_ids = sorted(str(eid) for eid in episode_ids)
+
+        with self._get_session() as session:
+            existing = session.execute(
+                select(DailyBriefing).where(
+                    DailyBriefing.user_id == user_id,
+                    DailyBriefing.briefing_date == briefing_date,
+                )
+            ).scalar_one_or_none()
+
+            if existing:
+                existing_ids = sorted(str(eid) for eid in (existing.episode_ids or []))
+                if existing_ids == sorted_ids and existing.episode_count == len(episode_ids):
+                    # Fresh — no generation needed
+                    return existing, False
+                # Stale — caller should regenerate
+                return None, True
+
+            # No briefing exists — insert a placeholder to claim the slot
+            placeholder = DailyBriefing(
+                user_id=user_id,
+                briefing_date=briefing_date,
+                headline="Generating...",
+                briefing_text="",
+                key_themes=[],
+                episode_highlights=[],
+                episode_count=len(episode_ids),
+                episode_ids=sorted_ids,
+            )
+            session.add(placeholder)
+            try:
+                session.commit()
+                return None, True
+            except IntegrityError:
+                # Another request already claimed it
+                session.rollback()
+                existing = session.execute(
+                    select(DailyBriefing).where(
+                        DailyBriefing.user_id == user_id,
+                        DailyBriefing.briefing_date == briefing_date,
+                    )
+                ).scalar_one()
+                return existing, False
 
     def get_recent_processed_episodes(self, limit: int = 5) -> list[Episode]:
         """Get the most recently processed episodes from the database.

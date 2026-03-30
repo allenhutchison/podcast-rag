@@ -376,11 +376,12 @@
                 });
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const data = await response.json();
-                window.location.href = `/chat.html?conversation=${data.id}&initial_query=${encodeURIComponent(query)}`;
+                sessionStorage.setItem('chatInitialQuery', query);
+                window.location.href = `/chat.html?conversation=${data.id}`;
             } catch (error) {
                 console.error('Failed to create conversation:', error);
-                // Fallback: just go to chat with the query
-                window.location.href = `/chat.html?scope=all&initial_query=${encodeURIComponent(query)}`;
+                sessionStorage.setItem('chatInitialQuery', query);
+                window.location.href = `/chat.html?scope=all`;
             }
         });
 
@@ -398,9 +399,17 @@
             }
         }
 
+        let digestUpdateInFlight = false;
+
         async function toggleDigest() {
             const checkbox = document.getElementById('digestToggle');
+            if (digestUpdateInFlight) {
+                checkbox.checked = !checkbox.checked; // revert immediate toggle
+                return;
+            }
             const enabled = checkbox.checked;
+            digestUpdateInFlight = true;
+            checkbox.disabled = true;
             try {
                 const res = await fetch('/api/user/settings', {
                     method: 'PATCH',
@@ -415,6 +424,9 @@
             } catch (error) {
                 checkbox.checked = !enabled;
                 console.error('Failed to update digest setting:', error);
+            } finally {
+                digestUpdateInFlight = false;
+                checkbox.disabled = false;
             }
         }
 

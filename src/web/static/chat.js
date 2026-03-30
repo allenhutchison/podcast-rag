@@ -145,7 +145,6 @@ async function handleUrlParams() {
     const podcastId = params.get('podcast_id');
     const episodeId = params.get('episode_id');
     const conversationId = params.get('conversation');
-    const initialQuery = params.get('initial_query');
 
     if (scope) {
         await setScope(scope, podcastId, episodeId);
@@ -156,12 +155,11 @@ async function handleUrlParams() {
         await loadConversation(conversationId);
     }
 
-    // Auto-send initial query from feed search box
+    // Auto-send initial query from feed search box (stored in sessionStorage)
+    const initialQuery = sessionStorage.getItem('chatInitialQuery');
     if (initialQuery) {
+        sessionStorage.removeItem('chatInitialQuery');
         messageInput.value = initialQuery;
-        // Clean up URL
-        window.history.replaceState({}, '', window.location.pathname);
-        // Small delay to ensure conversation is ready
         setTimeout(() => handleSubmit(), 100);
     }
 }
