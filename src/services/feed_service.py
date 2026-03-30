@@ -80,15 +80,21 @@ def get_feed(
     for b in briefings:
         briefings_by_date[b.briefing_date] = b
 
-    # On-demand briefing generation for today
+    # On-demand briefing generation for today (create or refresh if stale)
     today_local = datetime.now(tz).date()
-    if (
-        start_local <= today_local <= cursor_date
-        and today_local not in briefings_by_date
-        and today_local in episodes_by_date
-    ):
+    if start_local <= today_local <= cursor_date and today_local in episodes_by_date:
         today_episodes = episodes_by_date[today_local]
-        if today_episodes:
+        current_episode_ids = sorted(str(ep.id) for ep in today_episodes)
+
+        # Check if existing briefing is stale (different episodes)
+        existing_briefing = briefings_by_date.get(today_local)
+        needs_generation = existing_briefing is None
+        if existing_briefing and (
+            existing_briefing.episode_count != len(today_episodes)
+            or sorted(str(eid) for eid in (existing_briefing.episode_ids or [])) != current_episode_ids
+        ):
+            needs_generation = True
+        if today_episodes and needs_generation:
             try:
                 from src.services.briefing_generator import generate_digest_briefing
 

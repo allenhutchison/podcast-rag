@@ -289,6 +289,8 @@
             try {
                 const params = new URLSearchParams({ days: '1' });
                 if (cursor) params.set('cursor', cursor);
+                const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                if (browserTz) params.set('tz', browserTz);
 
                 const response = await fetch(`/api/feed?${params}`, { credentials: 'include' });
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
