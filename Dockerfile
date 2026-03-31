@@ -19,11 +19,17 @@ FROM python:3.12-slim
 # Install system dependencies
 # - ffmpeg: Required for Whisper audio processing
 # - curl: For health checks
+# - gnupg: Required for Doppler CLI installation
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     ffmpeg \
     curl \
+    gnupg \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Doppler CLI for runtime secret injection
+RUN curl -sLf --retry 3 --tlsv1.2 --proto "=https" \
+    "https://cli.doppler.com/install.sh" | sh
 
 # Create non-root user
 RUN useradd -m -u 1000 -s /bin/bash podcast && \
@@ -43,6 +49,9 @@ COPY --chown=podcast:podcast . .
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/
 RUN /bin/uv sync --frozen --no-dev --group encoding --group web
 
+# Copy entrypoint script
+COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+
 # Switch to non-root user
 USER podcast
 
@@ -55,6 +64,9 @@ ENV PATH="/app/.venv/bin:$PATH" \
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import sys; sys.exit(0)"
+
+# Entrypoint wraps CMD with doppler when DOPPLER_TOKEN is set
+ENTRYPOINT ["docker-entrypoint.sh"]
 
 # Default command (can be overridden in docker-compose)
 CMD ["python", "src/scheduler.py"]

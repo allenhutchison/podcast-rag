@@ -20,12 +20,18 @@ RUN uv sync --frozen --no-dev --group web --no-install-project
 # Final stage
 FROM python:3.12-slim
 
-# Install only curl for health checks
-# Note: ffmpeg removed (not needed for web queries, saves ~100MB)
+# Install system dependencies
+# - curl: For health checks
+# - gnupg: Required for Doppler CLI installation
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     curl \
+    gnupg \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Doppler CLI for runtime secret injection
+RUN curl -sLf --retry 3 --tlsv1.2 --proto "=https" \
+    "https://cli.doppler.com/install.sh" | sh
 
 # Create non-root user
 RUN useradd -m -u 1000 -s /bin/bash podcast && \
@@ -42,8 +48,8 @@ COPY --from=builder --chown=podcast:podcast /app/.venv /app/.venv
 # Note: prompts are now in src/prompts/, so only src/ is needed
 COPY --chown=podcast:podcast src/ ./src/
 
-# Note: The web app requires a database connection for episode metadata lookups.
-# Configure DATABASE_URL environment variable at runtime.
+# Copy entrypoint script
+COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 # Switch to non-root user
 USER podcast
@@ -60,6 +66,9 @@ EXPOSE 8080
 # Health check for Cloud Run
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
+
+# Entrypoint wraps CMD with doppler when DOPPLER_TOKEN is set
+ENTRYPOINT ["docker-entrypoint.sh"]
 
 # Start web server
 CMD ["uvicorn", "src.web.app:app", "--host", "0.0.0.0", "--port", "8080"]
