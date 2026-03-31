@@ -1305,6 +1305,15 @@ class PodcastRepositoryInterface(ABC):
         pass
 
     @abstractmethod
+    def release_briefing_claim(self, user_id: str, briefing_date: "date") -> None:
+        """Release a briefing generation claim by deleting the placeholder row.
+
+        Called when generation fails so subsequent attempts can retry.
+        Only deletes rows where headline is the placeholder value.
+        """
+        pass
+
+    @abstractmethod
     def get_recent_processed_episodes(self, limit: int = 5) -> list[Episode]:
         """Get the most recently processed episodes from the database.
 
@@ -3575,7 +3584,15 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 if existing_ids == sorted_ids and existing.episode_count == len(episode_ids):
                     # Fresh — no generation needed
                     return existing, False
-                # Stale — caller should regenerate
+                # Stale — atomically claim by transitioning to placeholder
+                existing.headline = "Generating..."
+                existing.briefing_text = ""
+                existing.key_themes = []
+                existing.episode_highlights = []
+                existing.episode_count = len(episode_ids)
+                existing.episode_ids = sorted_ids
+                existing.updated_at = datetime.now(UTC)
+                session.commit()
                 return None, True
 
             # No briefing exists — insert a placeholder to claim the slot
@@ -3603,6 +3620,20 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                     )
                 ).scalar_one()
                 return existing, False
+
+    def release_briefing_claim(self, user_id: str, briefing_date: date) -> None:
+        """Release a briefing generation claim by deleting the placeholder row."""
+        from sqlalchemy import delete
+
+        with self._get_session() as session:
+            session.execute(
+                delete(DailyBriefing).where(
+                    DailyBriefing.user_id == user_id,
+                    DailyBriefing.briefing_date == briefing_date,
+                    DailyBriefing.headline == "Generating...",
+                )
+            )
+            session.commit()
 
     def get_recent_processed_episodes(self, limit: int = 5) -> list[Episode]:
         """Get the most recently processed episodes from the database.

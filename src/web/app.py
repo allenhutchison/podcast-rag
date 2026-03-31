@@ -1047,6 +1047,10 @@ async def get_feed(
     """
     Get a reverse-chronological feed of episodes and briefings.
 
+    Returns immediately with available data. If today's briefing is pending,
+    the response includes briefing_pending=true so the client can trigger
+    generation via POST /api/feed/briefing.
+
     Args:
         cursor: ISO date string (YYYY-MM-DD) to paginate from. Defaults to today.
         days: Number of calendar days to load per request (1-30).
@@ -1056,16 +1060,10 @@ async def get_feed(
     Returns:
         Feed with day-grouped briefings and episodes, cursor for next page.
     """
-    from src.services.feed_service import get_feed as build_feed
+    from src.services.feed_service import get_feed as build_feed, resolve_user_timezone
 
     user_id = current_user["sub"]
-
-    # Resolve timezone: explicit param > user setting > UTC
-    user_timezone = tz
-    if not user_timezone:
-        user = await asyncio.to_thread(_repository.get_user, user_id)
-        if user and user.timezone:
-            user_timezone = user.timezone
+    user_timezone = await asyncio.to_thread(resolve_user_timezone, tz, user_id, _repository)
 
     if days < 1 or days > 30:
         raise HTTPException(status_code=400, detail="days must be between 1 and 30")
@@ -1084,6 +1082,68 @@ async def get_feed(
         raise HTTPException(status_code=400, detail=str(e))
 
     return result
+
+
+@app.post("/api/feed/briefing")
+@limiter.limit(config.WEB_RATE_LIMIT)
+async def generate_feed_briefing(
+    request: Request,
+    tz: str | None = None,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Generate today's briefing. Called by the frontend when briefing_pending is true.
+
+    This is the expensive Gemini API call. The result is persisted to the database
+    so subsequent feed loads return it instantly.
+
+    Returns:
+        The generated briefing, or null if generation failed or no episodes exist.
+    """
+    from src.services.feed_service import (
+        BRIEFING_PENDING,
+        BriefingGenerationError,
+        generate_and_persist_briefing,
+        resolve_user_timezone,
+    )
+
+    user_id = current_user["sub"]
+
+    try:
+        user_timezone = await asyncio.to_thread(resolve_user_timezone, tz, user_id, _repository)
+        result = await asyncio.to_thread(
+            generate_and_persist_briefing,
+            user_id=user_id,
+            repository=_repository,
+            config=config,
+            user_timezone=user_timezone,
+        )
+    except ValueError as e:
+        logger.error("Briefing generation bad input for user %s: %s", user_id, e, exc_info=True)
+        raise HTTPException(status_code=400, detail=str(e))
+    except BriefingGenerationError:
+        logger.exception("Briefing generation failed for user %s", user_id)
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=503,
+            content={"status": "error", "briefing": None},
+        )
+    except Exception:
+        logger.exception("Unexpected error in briefing endpoint for user %s", user_id)
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=503,
+            content={"status": "error", "briefing": None},
+        )
+
+    if result == BRIEFING_PENDING:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=202,
+            content={"status": "pending", "briefing": None},
+        )
+
+    return {"status": "ready", "briefing": result}
 
 
 @app.get("/")

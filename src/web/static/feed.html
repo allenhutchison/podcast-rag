@@ -208,6 +208,64 @@
             return card;
         }
 
+        function showBriefingPlaceholder() {
+            // Insert placeholder after the first day separator (Today)
+            const container = document.getElementById('feedContainer');
+            const firstSeparator = container.querySelector('.my-6');
+            if (!firstSeparator) return;
+
+            const placeholder = document.createElement('div');
+            placeholder.id = 'briefingPlaceholder';
+            placeholder.className = 'bg-blue-50 rounded-lg border border-blue-200 p-5 mb-4';
+            placeholder.setAttribute('role', 'status');
+            placeholder.setAttribute('aria-live', 'polite');
+            placeholder.innerHTML = `
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="text-sm font-semibold text-blue-600 uppercase tracking-wide">Daily Briefing</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="inline-block w-4 h-4 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin"></div>
+                    <span class="text-sm text-blue-600">Generating your briefing...</span>
+                </div>
+            `;
+            firstSeparator.after(placeholder);
+        }
+
+        async function generateBriefingInBackground() {
+            try {
+                const params = new URLSearchParams();
+                const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                if (browserTz) params.set('tz', browserTz);
+
+                const response = await fetch(`/api/feed/briefing?${params}`, {
+                    method: 'POST',
+                    credentials: 'include',
+                });
+
+                const data = await response.json();
+                const placeholder = document.getElementById('briefingPlaceholder');
+
+                if (response.status === 202 && data.status === 'pending') {
+                    // Another request is generating — retry after a delay
+                    setTimeout(generateBriefingInBackground, 5000);
+                    return;
+                }
+
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                if (data.briefing && placeholder) {
+                    const card = renderBriefingCard(data.briefing);
+                    placeholder.replaceWith(card);
+                } else if (placeholder) {
+                    placeholder.remove();
+                }
+            } catch (error) {
+                console.error('Failed to generate briefing:', error);
+                const placeholder = document.getElementById('briefingPlaceholder');
+                if (placeholder) placeholder.remove();
+            }
+        }
+
         function renderEpisodeCard(ep) {
             const card = document.createElement('a');
             card.href = `/episode.html?id=${encodeURIComponent(ep.id)}`;
@@ -299,6 +357,12 @@
 
                 for (const day of data.days) {
                     renderDayGroup(day);
+                }
+
+                // If briefing is pending, show placeholder and generate in background
+                if (data.briefing_pending) {
+                    showBriefingPlaceholder();
+                    generateBriefingInBackground();
                 }
 
                 nextCursor = data.next_cursor;
