@@ -1097,7 +1097,9 @@ async def get_feed(
 
 
 @app.post("/api/feed/briefing")
+@limiter.limit(config.WEB_RATE_LIMIT)
 async def generate_feed_briefing(
+    request: Request,
     tz: str | None = None,
     current_user: dict = Depends(get_current_user),
 ):
