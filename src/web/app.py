@@ -1100,12 +1100,17 @@ async def generate_feed_briefing(
     Returns:
         The generated briefing, or null if generation failed or no episodes exist.
     """
-    from src.services.feed_service import BRIEFING_PENDING, generate_and_persist_briefing, resolve_user_timezone
+    from src.services.feed_service import (
+        BRIEFING_PENDING,
+        BriefingGenerationError,
+        generate_and_persist_briefing,
+        resolve_user_timezone,
+    )
 
     user_id = current_user["sub"]
-    user_timezone = await asyncio.to_thread(resolve_user_timezone, tz, user_id, _repository)
 
     try:
+        user_timezone = await asyncio.to_thread(resolve_user_timezone, tz, user_id, _repository)
         result = await asyncio.to_thread(
             generate_and_persist_briefing,
             user_id=user_id,
@@ -1116,8 +1121,15 @@ async def generate_feed_briefing(
     except ValueError as e:
         logger.error("Briefing generation bad input for user %s: %s", user_id, e, exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception:
+    except BriefingGenerationError:
         logger.exception("Briefing generation failed for user %s", user_id)
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=503,
+            content={"status": "error", "briefing": None},
+        )
+    except Exception:
+        logger.exception("Unexpected error in briefing endpoint for user %s", user_id)
         from fastapi.responses import JSONResponse
         return JSONResponse(
             status_code=503,

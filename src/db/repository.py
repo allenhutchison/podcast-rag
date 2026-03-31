@@ -3584,7 +3584,15 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 if existing_ids == sorted_ids and existing.episode_count == len(episode_ids):
                     # Fresh — no generation needed
                     return existing, False
-                # Stale — caller should regenerate
+                # Stale — atomically claim by transitioning to placeholder
+                existing.headline = "Generating..."
+                existing.briefing_text = ""
+                existing.key_themes = []
+                existing.episode_highlights = []
+                existing.episode_count = len(episode_ids)
+                existing.episode_ids = sorted_ids
+                existing.updated_at = datetime.now(UTC)
+                session.commit()
                 return None, True
 
             # No briefing exists — insert a placeholder to claim the slot

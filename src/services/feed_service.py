@@ -18,6 +18,10 @@ logger = logging.getLogger(__name__)
 MAX_DAYS = 30
 
 
+class BriefingGenerationError(Exception):
+    """Raised when briefing generation fails after claiming the slot."""
+
+
 def resolve_user_timezone(
     tz: str | None, user_id: str, repository: PodcastRepositoryInterface
 ) -> str | None:
@@ -270,18 +274,21 @@ def generate_and_persist_briefing(
         else:
             # Generation returned nothing — release claim so retries can work
             repository.release_briefing_claim(user_id, today_local)
+            return None
     except (KeyError, ValueError, TypeError) as e:
         logger.error(
             "Briefing generation/parsing failed for user %s on %s: %s",
             user_id, today_local, e, exc_info=True,
         )
         repository.release_briefing_claim(user_id, today_local)
-    except Exception:
+        raise BriefingGenerationError(f"Briefing parsing failed: {e}") from e
+    except Exception as e:
         logger.exception(
             "Unexpected error generating briefing for user %s on %s",
             user_id, today_local,
         )
         repository.release_briefing_claim(user_id, today_local)
+        raise BriefingGenerationError(f"Briefing generation failed: {e}") from e
 
     return None
 
