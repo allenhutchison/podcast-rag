@@ -1037,18 +1037,6 @@ async def search_episodes(
     }
 
 
-async def _resolve_user_timezone(
-    tz: str | None, user_id: str, repository: PodcastRepositoryInterface
-) -> str | None:
-    """Resolve timezone: explicit param > user setting > None (UTC fallback)."""
-    if tz:
-        return tz
-    user = await asyncio.to_thread(repository.get_user, user_id)
-    if user and user.timezone:
-        return user.timezone
-    return None
-
-
 @app.get("/api/feed")
 async def get_feed(
     cursor: str | None = None,
@@ -1072,10 +1060,10 @@ async def get_feed(
     Returns:
         Feed with day-grouped briefings and episodes, cursor for next page.
     """
-    from src.services.feed_service import get_feed as build_feed
+    from src.services.feed_service import get_feed as build_feed, resolve_user_timezone
 
     user_id = current_user["sub"]
-    user_timezone = await _resolve_user_timezone(tz, user_id, _repository)
+    user_timezone = await asyncio.to_thread(resolve_user_timezone, tz, user_id, _repository)
 
     if days < 1 or days > 30:
         raise HTTPException(status_code=400, detail="days must be between 1 and 30")
@@ -1112,18 +1100,29 @@ async def generate_feed_briefing(
     Returns:
         The generated briefing, or null if generation failed or no episodes exist.
     """
-    from src.services.feed_service import BRIEFING_PENDING, generate_and_persist_briefing
+    from src.services.feed_service import BRIEFING_PENDING, generate_and_persist_briefing, resolve_user_timezone
 
     user_id = current_user["sub"]
-    user_timezone = await _resolve_user_timezone(tz, user_id, _repository)
+    user_timezone = await asyncio.to_thread(resolve_user_timezone, tz, user_id, _repository)
 
-    result = await asyncio.to_thread(
-        generate_and_persist_briefing,
-        user_id=user_id,
-        repository=_repository,
-        config=config,
-        user_timezone=user_timezone,
-    )
+    try:
+        result = await asyncio.to_thread(
+            generate_and_persist_briefing,
+            user_id=user_id,
+            repository=_repository,
+            config=config,
+            user_timezone=user_timezone,
+        )
+    except ValueError as e:
+        logger.error("Briefing generation bad input for user %s: %s", user_id, e, exc_info=True)
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        logger.exception("Briefing generation failed for user %s", user_id)
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=503,
+            content={"status": "error", "briefing": None},
+        )
 
     if result == BRIEFING_PENDING:
         from fastapi.responses import JSONResponse

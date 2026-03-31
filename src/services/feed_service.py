@@ -18,6 +18,27 @@ logger = logging.getLogger(__name__)
 MAX_DAYS = 30
 
 
+def resolve_user_timezone(
+    tz: str | None, user_id: str, repository: PodcastRepositoryInterface
+) -> str | None:
+    """Resolve timezone: explicit param > user setting > None (UTC fallback).
+
+    Args:
+        tz: Explicitly provided IANA timezone string.
+        user_id: User ID to look up stored timezone preference.
+        repository: Database repository.
+
+    Returns:
+        IANA timezone string, or None to use UTC.
+    """
+    if tz:
+        return tz
+    user = repository.get_user(user_id)
+    if user and user.timezone:
+        return user.timezone
+    return None
+
+
 def get_feed(
     user_id: str,
     repository: PodcastRepositoryInterface,
