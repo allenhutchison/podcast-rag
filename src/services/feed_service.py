@@ -123,11 +123,14 @@ def get_feed(
             if existing is None:
                 briefing_pending = True
             else:
-                # Check staleness
-                current_ids = sorted(str(ep.id) for ep in today_episodes)
-                existing_ids = sorted(str(eid) for eid in (existing.episode_ids or []))
-                if existing.episode_count != len(today_episodes) or existing_ids != current_ids:
-                    briefing_pending = True
+                # Don't regenerate if the briefing was created within the last 24 hours
+                briefing_age = datetime.now(UTC) - existing.created_at.replace(tzinfo=UTC)
+                if briefing_age > timedelta(hours=24):
+                    # Check staleness only if older than 24 hours
+                    current_ids = sorted(str(ep.id) for ep in today_episodes)
+                    existing_ids = sorted(str(eid) for eid in (existing.episode_ids or []))
+                    if existing.episode_count != len(today_episodes) or existing_ids != current_ids:
+                        briefing_pending = True
 
     # Build day groups
     day_groups = []
@@ -153,6 +156,9 @@ def get_feed(
                 "episode_highlights": day_briefing.episode_highlights,
                 "connection_insight": day_briefing.connection_insight,
                 "episode_count": day_briefing.episode_count,
+                "created_at": day_briefing.created_at.replace(tzinfo=UTC).isoformat()
+                if day_briefing.created_at
+                else None,
             }
 
         episode_list = []
@@ -238,6 +244,16 @@ def generate_and_persist_briefing(
 
     episode_ids = [str(ep.id) for ep in episodes]
 
+    # Check for existing recent briefing before claiming generation slot
+    existing_briefings = repository.get_daily_briefings_in_range(
+        user_id, today_local, today_local + timedelta(days=1)
+    )
+    for b in existing_briefings:
+        if b.briefing_date == today_local and b.headline and b.headline != "Generating...":
+            briefing_age = datetime.now(UTC) - b.created_at.replace(tzinfo=UTC)
+            if briefing_age <= timedelta(hours=24):
+                return _briefing_to_response(b, today_local)
+
     # Claim generation slot
     existing, should_generate = repository.claim_briefing_generation(
         user_id, today_local, episode_ids
@@ -304,6 +320,9 @@ def _briefing_to_response(briefing, briefing_date: date) -> dict:
         "episode_highlights": briefing.episode_highlights,
         "connection_insight": briefing.connection_insight,
         "episode_count": briefing.episode_count,
+        "created_at": briefing.created_at.replace(tzinfo=UTC).isoformat()
+        if briefing.created_at
+        else None,
     }
 
 

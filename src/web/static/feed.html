@@ -148,14 +148,28 @@
             `;
             container.appendChild(separator);
 
-            // Briefing card
-            if (day.briefing) {
-                container.appendChild(renderBriefingCard(day.briefing));
+            // Interleave briefing among episodes in reverse-chronological order.
+            // Episodes published after the briefing appear above it, making it
+            // clear the briefing doesn't cover those newer episodes.
+            const briefingTime = day.briefing?.created_at ? new Date(day.briefing.created_at) : null;
+            let briefingInserted = !day.briefing; // skip if no briefing
+
+            for (const ep of day.episodes) {
+                // Insert briefing before the first episode older than it
+                if (!briefingInserted && briefingTime) {
+                    const epTime = ep.published_date ? new Date(ep.published_date) : null;
+                    if (!epTime || epTime <= briefingTime) {
+                        container.appendChild(renderBriefingCard(day.briefing));
+                        briefingInserted = true;
+                    }
+                }
+                container.appendChild(renderEpisodeCard(ep));
             }
 
-            // Episode cards
-            for (const ep of day.episodes) {
-                container.appendChild(renderEpisodeCard(ep));
+            // If briefing is newer than all episodes (or no episodes), append at end
+            // This shouldn't normally happen, but handles edge cases
+            if (!briefingInserted) {
+                container.appendChild(renderBriefingCard(day.briefing));
             }
         }
 
