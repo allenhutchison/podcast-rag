@@ -124,9 +124,12 @@ def get_feed(
                 briefing_pending = True
             else:
                 # Don't regenerate if the briefing was created within the last 24 hours
-                briefing_age = datetime.now(UTC) - existing.created_at.replace(tzinfo=UTC)
-                if briefing_age > timedelta(hours=24):
-                    # Check staleness only if older than 24 hours
+                if not existing.created_at:
+                    check_staleness = True
+                else:
+                    briefing_age = datetime.now(UTC) - existing.created_at.replace(tzinfo=UTC)
+                    check_staleness = briefing_age > timedelta(hours=24)
+                if check_staleness:
                     current_ids = sorted(str(ep.id) for ep in today_episodes)
                     existing_ids = sorted(str(eid) for eid in (existing.episode_ids or []))
                     if existing.episode_count != len(today_episodes) or existing_ids != current_ids:
@@ -250,9 +253,10 @@ def generate_and_persist_briefing(
     )
     for b in existing_briefings:
         if b.briefing_date == today_local and b.headline and b.headline != "Generating...":
-            briefing_age = datetime.now(UTC) - b.created_at.replace(tzinfo=UTC)
-            if briefing_age <= timedelta(hours=24):
-                return _briefing_to_response(b, today_local)
+            if b.created_at:
+                briefing_age = datetime.now(UTC) - b.created_at.replace(tzinfo=UTC)
+                if briefing_age <= timedelta(hours=24):
+                    return _briefing_to_response(b, today_local)
 
     # Claim generation slot
     existing, should_generate = repository.claim_briefing_generation(

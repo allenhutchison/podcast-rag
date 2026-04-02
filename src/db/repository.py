@@ -3449,6 +3449,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         episode_ids: list[str],
     ) -> DailyBriefing:
         """Create or update a daily briefing for a user on a given date."""
+        now = datetime.now(UTC)
         update_fields = dict(
             headline=headline,
             briefing_text=briefing_text,
@@ -3457,7 +3458,8 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             connection_insight=connection_insight,
             episode_count=episode_count,
             episode_ids=episode_ids,
-            updated_at=datetime.now(UTC),
+            created_at=now,
+            updated_at=now,
         )
 
         with self._get_session() as session:

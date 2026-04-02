@@ -268,8 +268,44 @@
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
                 if (data.briefing && placeholder) {
+                    // Remove placeholder and insert briefing in chronological position
                     const card = renderBriefingCard(data.briefing);
-                    placeholder.replaceWith(card);
+                    const briefingTime = data.briefing.created_at ? new Date(data.briefing.created_at) : null;
+                    placeholder.remove();
+
+                    // Find today's day separator and insert among its episode cards
+                    const container = document.getElementById('feedContainer');
+                    const todaySeparator = container.querySelector('.my-6');
+                    if (todaySeparator && briefingTime) {
+                        let insertBefore = null;
+                        let sibling = todaySeparator.nextElementSibling;
+                        while (sibling && !sibling.classList.contains('my-6')) {
+                            if (sibling.tagName === 'A' && sibling.dataset.publishedDate) {
+                                const epTime = new Date(sibling.dataset.publishedDate);
+                                if (epTime <= briefingTime) {
+                                    insertBefore = sibling;
+                                    break;
+                                }
+                            }
+                            sibling = sibling.nextElementSibling;
+                        }
+                        if (insertBefore) {
+                            insertBefore.before(card);
+                        } else {
+                            // Briefing is older than all episodes — append after last item in group
+                            let lastInGroup = todaySeparator;
+                            let s = todaySeparator.nextElementSibling;
+                            while (s && !s.classList.contains('my-6')) {
+                                lastInGroup = s;
+                                s = s.nextElementSibling;
+                            }
+                            lastInGroup.after(card);
+                        }
+                    } else {
+                        // Fallback: insert right after the first separator
+                        if (todaySeparator) todaySeparator.after(card);
+                        else container.appendChild(card);
+                    }
                 } else if (placeholder) {
                     placeholder.remove();
                 }
@@ -284,6 +320,7 @@
             const card = document.createElement('a');
             card.href = `/episode.html?id=${encodeURIComponent(ep.id)}`;
             card.className = 'block bg-white rounded-lg border border-gray-200 p-5 mb-3 hover:border-gray-300 hover:shadow-sm transition-all';
+            if (ep.published_date) card.dataset.publishedDate = ep.published_date;
 
             const ec = ep.ai_email_content;
             const duration = formatDuration(ep.duration_seconds);
