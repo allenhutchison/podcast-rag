@@ -137,6 +137,94 @@ class TestDailyBriefingCRUD:
         assert results[-1].headline == "Day 1"
 
 
+class TestClaimBriefingGeneration:
+
+    def test_claim_no_existing_briefing(self, repository, sample_user):
+        """When no briefing exists, should claim the slot."""
+        today = date.today()
+        existing, should_generate = repository.claim_briefing_generation(
+            sample_user.id, today, ["ep-1", "ep-2"]
+        )
+        assert existing is None
+        assert should_generate is True
+
+    def test_claim_fresh_briefing_returns_existing(self, repository, sample_user):
+        """When briefing exists with matching episodes, return it."""
+        today = date.today()
+        repository.create_or_update_daily_briefing(
+            user_id=sample_user.id,
+            briefing_date=today,
+            headline="Fresh",
+            briefing_text="Text",
+            key_themes=["t1"],
+            episode_highlights=[],
+            connection_insight=None,
+            episode_count=2,
+            episode_ids=["ep-1", "ep-2"],
+        )
+        existing, should_generate = repository.claim_briefing_generation(
+            sample_user.id, today, ["ep-1", "ep-2"]
+        )
+        assert existing is not None
+        assert existing.headline == "Fresh"
+        assert should_generate is False
+
+    def test_claim_stale_briefing_outside_cooldown(self, repository, sample_user):
+        """When briefing is stale and older than 24h, should regenerate."""
+        today = date.today()
+        briefing = repository.create_or_update_daily_briefing(
+            user_id=sample_user.id,
+            briefing_date=today,
+            headline="Old",
+            briefing_text="Text",
+            key_themes=[],
+            episode_highlights=[],
+            connection_insight=None,
+            episode_count=1,
+            episode_ids=["ep-1"],
+        )
+        # Manually backdate created_at to 25 hours ago
+        from src.db.models import DailyBriefing
+        from sqlalchemy import update as sa_update
+
+        with repository._get_session() as session:
+            session.execute(
+                sa_update(DailyBriefing)
+                .where(DailyBriefing.id == briefing.id)
+                .values(created_at=datetime.now(UTC) - timedelta(hours=25))
+            )
+            session.commit()
+
+        # Different episode IDs → stale + outside cooldown → should regenerate
+        existing, should_generate = repository.claim_briefing_generation(
+            sample_user.id, today, ["ep-1", "ep-2", "ep-3"]
+        )
+        assert existing is None
+        assert should_generate is True
+
+    def test_claim_stale_briefing_within_cooldown(self, repository, sample_user):
+        """When briefing is stale but within 24h cooldown, return existing."""
+        today = date.today()
+        repository.create_or_update_daily_briefing(
+            user_id=sample_user.id,
+            briefing_date=today,
+            headline="Recent",
+            briefing_text="Text",
+            key_themes=[],
+            episode_highlights=[],
+            connection_insight=None,
+            episode_count=1,
+            episode_ids=["ep-1"],
+        )
+        # created_at is now (within 24h) but episode IDs differ → cooldown wins
+        existing, should_generate = repository.claim_briefing_generation(
+            sample_user.id, today, ["ep-1", "ep-2", "ep-3"]
+        )
+        assert existing is not None
+        assert existing.headline == "Recent"
+        assert should_generate is False
+
+
 class TestFeedEpisodes:
 
     def test_get_feed_episodes_in_range(self, repository, sample_user, subscribed_episodes):

@@ -1296,8 +1296,11 @@ class PodcastRepositoryInterface(ABC):
 
         If no briefing exists for this (user_id, briefing_date), inserts a placeholder
         and returns (None, True) indicating the caller should generate.
-        If a briefing exists and its episode_ids match, returns (briefing, False).
-        If a briefing exists but is stale, returns (None, True).
+        If a briefing exists and was created within the last 24 hours, returns
+        (briefing, False) regardless of episode changes (cooldown).
+        If a briefing exists, is older than 24 hours, and its episode_ids match,
+        returns (briefing, False).
+        If a briefing exists, is older than 24 hours, and is stale, returns (None, True).
 
         Returns:
             Tuple of (existing_briefing_or_None, should_generate).
@@ -3582,6 +3585,14 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             ).scalar_one_or_none()
 
             if existing:
+                # If a real briefing (not placeholder) was created < 24h ago,
+                # honour cooldown regardless of episode changes.
+                is_real = existing.headline and existing.headline != "Generating..."
+                if is_real and existing.created_at:
+                    age = datetime.now(UTC) - existing.created_at.replace(tzinfo=UTC)
+                    if age <= timedelta(hours=24):
+                        return existing, False
+
                 existing_ids = sorted(str(eid) for eid in (existing.episode_ids or []))
                 if existing_ids == sorted_ids and existing.episode_count == len(episode_ids):
                     # Fresh — no generation needed

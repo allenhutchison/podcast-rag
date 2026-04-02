@@ -247,18 +247,7 @@ def generate_and_persist_briefing(
 
     episode_ids = [str(ep.id) for ep in episodes]
 
-    # Check for existing recent briefing before claiming generation slot
-    existing_briefings = repository.get_daily_briefings_in_range(
-        user_id, today_local, today_local + timedelta(days=1)
-    )
-    for b in existing_briefings:
-        if b.briefing_date == today_local and b.headline and b.headline != "Generating...":
-            if b.created_at:
-                briefing_age = datetime.now(UTC) - b.created_at.replace(tzinfo=UTC)
-                if briefing_age <= timedelta(hours=24):
-                    return _briefing_to_response(b, today_local)
-
-    # Claim generation slot
+    # Claim generation slot (includes 24-hour cooldown check atomically)
     existing, should_generate = repository.claim_briefing_generation(
         user_id, today_local, episode_ids
     )

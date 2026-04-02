@@ -135,6 +135,18 @@
 
         // -- Rendering --
 
+        function insertAfterLastInGroup(separator, card) {
+            // Walk siblings from the separator to find the last element
+            // before the next day separator, and insert after it.
+            let lastInGroup = separator;
+            let s = separator.nextElementSibling;
+            while (s && !s.classList.contains('my-6')) {
+                lastInGroup = s;
+                s = s.nextElementSibling;
+            }
+            lastInGroup.after(card);
+        }
+
         function renderDayGroup(day) {
             const container = document.getElementById('feedContainer');
 
@@ -292,19 +304,11 @@
                         if (insertBefore) {
                             insertBefore.before(card);
                         } else {
-                            // Briefing is older than all episodes — append after last item in group
-                            let lastInGroup = todaySeparator;
-                            let s = todaySeparator.nextElementSibling;
-                            while (s && !s.classList.contains('my-6')) {
-                                lastInGroup = s;
-                                s = s.nextElementSibling;
-                            }
-                            lastInGroup.after(card);
+                            insertAfterLastInGroup(todaySeparator, card);
                         }
                     } else {
-                        // Fallback: insert right after the first separator
-                        if (todaySeparator) todaySeparator.after(card);
-                        else container.appendChild(card);
+                        // No created_at — append after last item in the day group
+                        insertAfterLastInGroup(todaySeparator || container.lastElementChild, card);
                     }
                 } else if (placeholder) {
                     placeholder.remove();
