@@ -135,6 +135,16 @@
 
         // -- Rendering --
 
+        // Unified date comparison: null dates sort after all dated entries
+        // (treated as +Infinity), so undated episodes/briefings appear last.
+        function isOlderOrEqual(dateA, dateB) {
+            // Returns true if dateA <= dateB.
+            // null is treated as +Infinity (sorts last).
+            if (!dateA) return false; // +Infinity is never <= anything
+            if (!dateB) return true;  // anything <= +Infinity
+            return dateA <= dateB;
+        }
+
         function insertAfterLastInGroup(separator, card) {
             // Walk siblings from the separator to find the last element
             // before the next day separator, and insert after it.
@@ -170,7 +180,7 @@
                 // Insert briefing before the first episode older than it
                 if (!briefingInserted && briefingTime) {
                     const epTime = ep.published_date ? new Date(ep.published_date) : null;
-                    if (!epTime || epTime <= briefingTime) {
+                    if (isOlderOrEqual(epTime, briefingTime)) {
                         container.appendChild(renderBriefingCard(day.briefing));
                         briefingInserted = true;
                     }
@@ -292,9 +302,9 @@
                         let insertBefore = null;
                         let sibling = todaySeparator.nextElementSibling;
                         while (sibling && !sibling.classList.contains('my-6')) {
-                            if (sibling.tagName === 'A' && sibling.dataset.publishedDate) {
-                                const epTime = new Date(sibling.dataset.publishedDate);
-                                if (epTime <= briefingTime) {
+                            if (sibling.tagName === 'A') {
+                                const epTime = sibling.dataset.publishedDate ? new Date(sibling.dataset.publishedDate) : null;
+                                if (isOlderOrEqual(epTime, briefingTime)) {
                                     insertBefore = sibling;
                                     break;
                                 }

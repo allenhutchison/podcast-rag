@@ -224,6 +224,24 @@ class TestClaimBriefingGeneration:
         assert existing.headline == "Recent"
         assert should_generate is False
 
+    def test_claim_generating_placeholder_prevents_duplicate_generation(self, repository, sample_user):
+        """When a 'Generating...' placeholder exists, second caller should not generate."""
+        today = date.today()
+        # First caller claims the slot
+        existing, should_generate = repository.claim_briefing_generation(
+            sample_user.id, today, ["ep-1"]
+        )
+        assert existing is None
+        assert should_generate is True
+
+        # Second caller tries to claim with same or different episodes
+        existing2, should_generate2 = repository.claim_briefing_generation(
+            sample_user.id, today, ["ep-1", "ep-2"]
+        )
+        assert existing2 is not None
+        assert existing2.headline == "Generating..."
+        assert should_generate2 is False
+
 
 class TestFeedEpisodes:
 
