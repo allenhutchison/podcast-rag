@@ -201,41 +201,59 @@ class EmailDigestWorker(WorkerInterface):
             # later in the day at their preferred delivery time
             return False
 
-        # Generate analyst briefing (failures never block email delivery)
+        # Use atomic CAS to claim briefing generation slot, avoiding duplicate
+        # Gemini calls and last-write-wins races with the web feed path.
         briefing = None
         try:
-            briefing = generate_digest_briefing(episodes, self.config)
-        except Exception:
-            logger.exception("Briefing generation failed, sending without briefing")
+            from datetime import timezone
 
-        # Persist briefing for web feed display
-        if briefing:
             try:
-                from datetime import UTC, timezone
-                from zoneinfo import ZoneInfo
+                user_tz = ZoneInfo(user.timezone) if user.timezone else timezone.utc
+            except (KeyError, ValueError):
+                user_tz = timezone.utc
+            briefing_date = datetime.now(user_tz).date()
+            episode_ids = [str(ep.id) for ep in episodes]
 
-                # Use user's timezone so the briefing is stored under the correct local day
+            existing, should_generate = self.repository.claim_briefing_generation(
+                user_id=user.id,
+                briefing_date=briefing_date,
+                episode_ids=episode_ids,
+            )
+
+            if should_generate:
                 try:
-                    user_tz = ZoneInfo(user.timezone) if user.timezone else timezone.utc
-                except (KeyError, ValueError):
-                    user_tz = timezone.utc
-                briefing_date = datetime.now(user_tz).date()
-                self.repository.create_or_update_daily_briefing(
-                    user_id=user.id,
-                    briefing_date=briefing_date,
-                    headline=briefing["headline"],
-                    briefing_text=briefing["briefing"],
-                    key_themes=briefing["key_themes"],
-                    episode_highlights=[
-                        h if isinstance(h, dict) else h.model_dump()
-                        for h in briefing["episode_highlights"]
-                    ],
-                    connection_insight=briefing.get("connection_insight"),
-                    episode_count=len(episodes),
-                    episode_ids=[str(ep.id) for ep in episodes],
-                )
-            except Exception:
-                logger.exception("Failed to persist briefing for user %s", user.id)
+                    briefing = generate_digest_briefing(episodes, self.config)
+                    if briefing:
+                        self.repository.create_or_update_daily_briefing(
+                            user_id=user.id,
+                            briefing_date=briefing_date,
+                            headline=briefing["headline"],
+                            briefing_text=briefing["briefing"],
+                            key_themes=briefing["key_themes"],
+                            episode_highlights=[
+                                h if isinstance(h, dict) else h.model_dump()
+                                for h in briefing["episode_highlights"]
+                            ],
+                            connection_insight=briefing.get("connection_insight"),
+                            episode_count=len(episodes),
+                            episode_ids=episode_ids,
+                        )
+                    else:
+                        self.repository.release_briefing_claim(user.id, briefing_date)
+                except Exception:
+                    logger.exception("Briefing generation failed for user %s", user.id)
+                    self.repository.release_briefing_claim(user.id, briefing_date)
+            elif existing and existing.headline and existing.headline != "Generating...":
+                # Another path already generated a valid briefing — reuse it
+                briefing = {
+                    "headline": existing.headline,
+                    "briefing": existing.briefing_text,
+                    "key_themes": existing.key_themes or [],
+                    "episode_highlights": existing.episode_highlights or [],
+                    "connection_insight": existing.connection_insight,
+                }
+        except Exception:
+            logger.exception("Briefing claim/generation failed for user %s", user.id)
 
         # Generate and send email
         subject = f"Your Daily Podcast Digest - {len(episodes)} new episode{'s' if len(episodes) > 1 else ''}"

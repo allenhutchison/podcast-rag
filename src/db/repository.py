@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import String, and_, cast, create_engine, func, or_, select
+from sqlalchemy import String, and_, cast, create_engine, func, or_, select, update as sa_update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, sessionmaker
 
@@ -1296,8 +1296,11 @@ class PodcastRepositoryInterface(ABC):
 
         If no briefing exists for this (user_id, briefing_date), inserts a placeholder
         and returns (None, True) indicating the caller should generate.
-        If a briefing exists and its episode_ids match, returns (briefing, False).
-        If a briefing exists but is stale, returns (None, True).
+        If a briefing exists and was created within the last 24 hours, returns
+        (briefing, False) regardless of episode changes (cooldown).
+        If a briefing exists, is older than 24 hours, and its episode_ids match,
+        returns (briefing, False).
+        If a briefing exists, is older than 24 hours, and is stale, returns (None, True).
 
         Returns:
             Tuple of (existing_briefing_or_None, should_generate).
@@ -3449,6 +3452,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         episode_ids: list[str],
     ) -> DailyBriefing:
         """Create or update a daily briefing for a user on a given date."""
+        now = datetime.now(UTC)
         update_fields = dict(
             headline=headline,
             briefing_text=briefing_text,
@@ -3457,7 +3461,8 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             connection_insight=connection_insight,
             episode_count=episode_count,
             episode_ids=episode_ids,
-            updated_at=datetime.now(UTC),
+            created_at=now,
+            updated_at=now,
         )
 
         with self._get_session() as session:
@@ -3570,6 +3575,8 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
     ) -> tuple[DailyBriefing | None, bool]:
         """Atomically claim a briefing generation slot or return fresh briefing."""
         sorted_ids = sorted(str(eid) for eid in episode_ids)
+        now = datetime.now(UTC)
+        cooldown_cutoff = now - timedelta(hours=24)
 
         with self._get_session() as session:
             existing = session.execute(
@@ -3580,20 +3587,49 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             ).scalar_one_or_none()
 
             if existing:
+                # If a real briefing (not placeholder) was created < 24h ago,
+                # honour cooldown regardless of episode changes.
+                is_real = existing.headline and existing.headline != "Generating..."
+                if is_real and existing.created_at:
+                    if existing.created_at.replace(tzinfo=UTC) > cooldown_cutoff:
+                        return existing, False
+
                 existing_ids = sorted(str(eid) for eid in (existing.episode_ids or []))
                 if existing_ids == sorted_ids and existing.episode_count == len(episode_ids):
                     # Fresh — no generation needed
                     return existing, False
-                # Stale — atomically claim by transitioning to placeholder
-                existing.headline = "Generating..."
-                existing.briefing_text = ""
-                existing.key_themes = []
-                existing.episode_highlights = []
-                existing.episode_count = len(episode_ids)
-                existing.episode_ids = sorted_ids
-                existing.updated_at = datetime.now(UTC)
+
+                # Stale — atomic compare-and-swap: only claim if headline
+                # hasn't already been set to "Generating..." by another request.
+                result = session.execute(
+                    sa_update(DailyBriefing)
+                    .where(
+                        DailyBriefing.id == existing.id,
+                        DailyBriefing.headline != "Generating...",
+                    )
+                    .values(
+                        headline="Generating...",
+                        briefing_text="",
+                        key_themes=[],
+                        episode_highlights=[],
+                        episode_count=len(episode_ids),
+                        episode_ids=sorted_ids,
+                        updated_at=now,
+                    )
+                )
                 session.commit()
-                return None, True
+
+                if result.rowcount == 1:
+                    return None, True
+
+                # Another request already claimed it — re-fetch
+                session.expire(existing)
+                existing = session.execute(
+                    select(DailyBriefing).where(
+                        DailyBriefing.id == existing.id,
+                    )
+                ).scalar_one()
+                return existing, False
 
             # No briefing exists — insert a placeholder to claim the slot
             placeholder = DailyBriefing(

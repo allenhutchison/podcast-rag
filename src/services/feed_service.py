@@ -123,11 +123,17 @@ def get_feed(
             if existing is None:
                 briefing_pending = True
             else:
-                # Check staleness
-                current_ids = sorted(str(ep.id) for ep in today_episodes)
-                existing_ids = sorted(str(eid) for eid in (existing.episode_ids or []))
-                if existing.episode_count != len(today_episodes) or existing_ids != current_ids:
-                    briefing_pending = True
+                # Don't regenerate if the briefing was created within the last 24 hours
+                if not existing.created_at:
+                    check_staleness = True
+                else:
+                    briefing_age = datetime.now(UTC) - existing.created_at.replace(tzinfo=UTC)
+                    check_staleness = briefing_age > timedelta(hours=24)
+                if check_staleness:
+                    current_ids = sorted(str(ep.id) for ep in today_episodes)
+                    existing_ids = sorted(str(eid) for eid in (existing.episode_ids or []))
+                    if existing.episode_count != len(today_episodes) or existing_ids != current_ids:
+                        briefing_pending = True
 
     # Build day groups
     day_groups = []
@@ -153,6 +159,9 @@ def get_feed(
                 "episode_highlights": day_briefing.episode_highlights,
                 "connection_insight": day_briefing.connection_insight,
                 "episode_count": day_briefing.episode_count,
+                "created_at": day_briefing.created_at.replace(tzinfo=UTC).isoformat()
+                if day_briefing.created_at
+                else None,
             }
 
         episode_list = []
@@ -238,7 +247,7 @@ def generate_and_persist_briefing(
 
     episode_ids = [str(ep.id) for ep in episodes]
 
-    # Claim generation slot
+    # Claim generation slot (includes 24-hour cooldown check atomically)
     existing, should_generate = repository.claim_briefing_generation(
         user_id, today_local, episode_ids
     )
@@ -304,6 +313,9 @@ def _briefing_to_response(briefing, briefing_date: date) -> dict:
         "episode_highlights": briefing.episode_highlights,
         "connection_insight": briefing.connection_insight,
         "episode_count": briefing.episode_count,
+        "created_at": briefing.created_at.replace(tzinfo=UTC).isoformat()
+        if briefing.created_at
+        else None,
     }
 
 
