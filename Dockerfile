@@ -51,7 +51,8 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/
 RUN /bin/uv sync --frozen --no-dev --group encoding --group web
 
 # Copy entrypoint script
-COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod 755 /usr/local/bin/docker-entrypoint.sh
 
 # Switch to non-root user
 USER podcast
