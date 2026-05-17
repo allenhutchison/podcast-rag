@@ -74,7 +74,7 @@ dev = [
     {include-group = "encoding"},
     {include-group = "web"},
     "pytest>=9.0.1",
-    "pytest-cov>=4.1.0",
+    "pytest-cov>=7.1.0",
     "poethepoet>=0.38.0",
 ]
 
