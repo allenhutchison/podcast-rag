@@ -117,6 +117,10 @@ services:
       - PODCAST_DOWNLOAD_DIRECTORY=/data/podcasts
       - PYTHONUNBUFFERED=1
       - PORT=8080
+      # Only trust X-Forwarded-* headers from the cloudflared sidecar
+      # (Docker bridge networks live in 172.16.0.0/12) or the host
+      # loopback. Overrides the image default of '*'.
+      - UVICORN_FORWARDED_ALLOW_IPS=127.0.0.1,172.16.0.0/12
 
     # Volume mounts (shared with encoding backend)
     volumes:
