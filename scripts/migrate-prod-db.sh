@@ -87,8 +87,16 @@ if ! "${COMPOSE[@]}" ps --status running --services 2>/dev/null | grep -qx "$DB_
     exit 1
 fi
 echo "    Waiting for PostgreSQL to accept connections..."
+MAX_WAIT_SECONDS="${MAX_WAIT_SECONDS:-120}"
+elapsed=0
 until "${COMPOSE[@]}" exec -T "$DB_SERVICE" pg_isready -U "$LOCAL_DB_USER" -d postgres >/dev/null 2>&1; do
     sleep 1
+    elapsed=$((elapsed + 1))
+    if (( elapsed >= MAX_WAIT_SECONDS )); then
+        echo "ERROR: '$DB_SERVICE' (user '$LOCAL_DB_USER') not ready after ${MAX_WAIT_SECONDS}s." >&2
+        echo "       Check 'docker compose logs $DB_SERVICE' for details." >&2
+        exit 1
+    fi
 done
 echo "    PostgreSQL is ready."
 
