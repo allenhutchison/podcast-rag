@@ -194,8 +194,12 @@ services:
       # Run:  doppler run -- docker compose up -d   (or set it in .env).
       TUNNEL_TOKEN: "${CLOUDFLARE_TUNNEL_TOKEN}"
 
+    # Wait until the web app is responding to /health, not just running —
+    # otherwise the tunnel can start forwarding before the app is ready and
+    # produce transient 502s.
     depends_on:
-      - podcast-rag-web
+      podcast-rag-web:
+        condition: service_healthy
 
     networks:
       - podcast-rag-net
