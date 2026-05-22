@@ -19,6 +19,10 @@
 #
 set -euo pipefail
 
+# Backups contain production data; restrict permissions on the directory
+# and every file this script creates (mkdir, the gzip output, etc.).
+umask 077
+
 # ── Resolve repo root so `docker compose` finds docker-compose.yml ─────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
