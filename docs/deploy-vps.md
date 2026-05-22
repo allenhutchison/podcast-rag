@@ -13,7 +13,7 @@ After the migration the VPS runs four containers as one Docker Compose stack:
 | `podcast-rag-web` | FastAPI web app (replaces Cloud Run) |
 | `cloudflared` | Cloudflare Tunnel — public HTTPS ingress, outbound-only |
 
-```
+```text
 Internet ──HTTPS──> Cloudflare edge ──tunnel──> cloudflared ─┐
                                                              │ podcast-rag-net
         ┌────────────────────────────────────────────────────┤ (internal)
@@ -49,7 +49,7 @@ Add these to the `prod` config before starting:
 final value, using a Doppler secret reference so the password has one source of
 truth:
 
-```
+```dotenv
 DATABASE_URL = postgresql://podcast_rag:${LOCAL_DB_PASSWORD}@podcast-rag-db:5432/podcast_rag
 ```
 
