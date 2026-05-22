@@ -1,10 +1,56 @@
 version: '3.8'
 
 services:
+  # Local PostgreSQL — replaces the Supabase-hosted database.
+  podcast-rag-db:
+    image: postgres:17
+    container_name: podcast-rag-db
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_USER: podcast_rag
+      POSTGRES_DB: podcast_rag
+      # Substituted from the environment at "docker compose up" time.
+      # Run:  doppler run -- docker compose up -d   (or set it in .env).
+      POSTGRES_PASSWORD: "${LOCAL_DB_PASSWORD}"
+
+    # Published to localhost only, for host-side admin tooling (alembic,
+    # psql, verification scripts). App containers reach the DB over
+    # podcast-rag-net by the service name, not this port.
+    ports:
+      - "127.0.0.1:5432:5432"
+
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+    networks:
+      - podcast-rag-net
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U podcast_rag -d podcast_rag"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   podcast-rag:
     image: allenhutchison/podcast-rag:latest
     container_name: podcast-rag
     restart: unless-stopped
+
+    # Start only once the local database is accepting connections
+    depends_on:
+      podcast-rag-db:
+        condition: service_healthy
+
+    networks:
+      - podcast-rag-net
 
     # Environment variables
     env_file:
@@ -51,9 +97,18 @@ services:
     container_name: podcast-rag-web
     restart: unless-stopped
 
-    # Port mapping
+    # Start only once the local database is accepting connections
+    depends_on:
+      podcast-rag-db:
+        condition: service_healthy
+
+    networks:
+      - podcast-rag-net
+
+    # Port mapping — localhost only. Public traffic arrives via the
+    # cloudflared service, which reaches this container over podcast-rag-net.
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
 
     # Environment variables
     env_file:
@@ -102,6 +157,9 @@ services:
     profiles:
       - manual  # Only start manually with --profile manual
 
+    networks:
+      - podcast-rag-net
+
     env_file:
       - .env
     environment:
@@ -119,3 +177,41 @@ services:
       options:
         max-size: "5m"
         max-file: "2"
+
+  # Cloudflare Tunnel — terminates TLS at Cloudflare's edge and forwards
+  # public traffic to podcast-rag-web. Outbound-only: no inbound ports.
+  # Ingress rules (hostname -> http://podcast-rag-web:8080) are managed
+  # in the Cloudflare Zero Trust dashboard for this token's tunnel.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: podcast-rag-cloudflared
+    restart: unless-stopped
+
+    command: tunnel --no-autoupdate run
+
+    environment:
+      # Substituted from the environment at "docker compose up" time.
+      # Run:  doppler run -- docker compose up -d   (or set it in .env).
+      TUNNEL_TOKEN: "${CLOUDFLARE_TUNNEL_TOKEN}"
+
+    depends_on:
+      - podcast-rag-web
+
+    networks:
+      - podcast-rag-net
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  # Persistent storage for the local PostgreSQL data directory
+  pgdata:
+    driver: local
+
+networks:
+  # Internal network shared by the database, pipeline, web, and tunnel
+  podcast-rag-net:
+    driver: bridge

@@ -73,4 +73,10 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
 ENTRYPOINT ["docker-entrypoint.sh"]
 
 # Start web server
-CMD ["uvicorn", "src.web.app:app", "--host", "0.0.0.0", "--port", "8080"]
+# --proxy-headers + --forwarded-allow-ips=* make uvicorn trust the
+# X-Forwarded-Proto/For headers set by the upstream proxy (Cloudflare
+# Tunnel / cloudflared, or Cloud Run). Without this the app would build
+# http:// OAuth redirect URIs, mishandle Secure cookies, and see every
+# request as coming from the proxy's IP for rate limiting.
+CMD ["uvicorn", "src.web.app:app", "--host", "0.0.0.0", "--port", "8080", \
+     "--proxy-headers", "--forwarded-allow-ips", "*"]
