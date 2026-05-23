@@ -84,7 +84,7 @@ ENTRYPOINT ["docker-entrypoint.sh"]
 # to supply those headers. Default '*' keeps the image working on Cloud
 # Run (where the upstream IP is dynamic) and behind any reverse proxy on
 # an isolated network. Override at deploy time with a tighter allowlist
-# when the proxy IP/CIDR is known — see docker-compose.yml.
+# when the proxy IP/CIDR is known — see docs/deploy-vps.md.
 ENV UVICORN_FORWARDED_ALLOW_IPS=*
 
 CMD ["uvicorn", "src.web.app:app", "--host", "0.0.0.0", "--port", "8080", \

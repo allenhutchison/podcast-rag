@@ -26,16 +26,14 @@
 #
 set -euo pipefail
 
-# ── Resolve repo root so `docker compose` finds docker-compose.yml ─────────
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(dirname "$SCRIPT_DIR")"
-cd "$REPO_ROOT"
+# Compose-project-agnostic: queries the local DB via raw `docker exec`
+# against the fixed container name, so it works regardless of which
+# compose stack (this repo or homelab/) owns the container.
 
-DB_SERVICE="podcast-rag-db"
+DB_CONTAINER="podcast-rag-db"
 LOCAL_DB_USER="podcast_rag"
 LOCAL_DB_NAME="podcast_rag"
 PG_IMAGE="postgres:17"
-COMPOSE=(docker compose)
 
 # ── Resolve the production (source) DATABASE_URL ──────────────────────────
 SRC_URL="${1:-}"
@@ -53,7 +51,7 @@ SRC_URL="${SRC_URL//:6543/:5432}"
 # ── Query helpers (-t tuples only, -A unaligned, -q quiet) ────────────────
 src_q() { docker run --rm "$PG_IMAGE" psql "$SRC_URL" -tAqc "$1"; }
 tgt_q() {
-    "${COMPOSE[@]}" exec -T "$DB_SERVICE" \
+    docker exec -i "$DB_CONTAINER" \
         psql -U "$LOCAL_DB_USER" -d "$LOCAL_DB_NAME" -tAqc "$1"
 }
 

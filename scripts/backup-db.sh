@@ -2,10 +2,14 @@
 #
 # backup-db.sh — Back up the local PostgreSQL database.
 #
-# Dumps the local Dockerized database (the `podcast-rag-db` service) to a
+# Dumps the local PostgreSQL container named `podcast-rag-db` to a
 # timestamped, gzip-compressed file and prunes old backups. This replaces
 # the managed backups Supabase provided before the migration, so it should
 # run on a schedule (see the cron example below).
+#
+# Compose-project-agnostic: uses raw `docker exec` against the fixed
+# container name, so it doesn't care which compose stack started the
+# container (this repo's, or homelab/'s on bubba).
 #
 # Usage:
 #   ./scripts/backup-db.sh
@@ -15,7 +19,7 @@
 #   RETENTION_DAYS  Delete backups older than this many days (default: 14)
 #
 # Cron example (nightly at 03:15 — note the cd, cron has a minimal PATH):
-#   15 3 * * * cd /opt/podcast-rag && /opt/podcast-rag/scripts/backup-db.sh >> /var/log/podcast-rag-backup.log 2>&1
+#   15 3 * * * cd /home/allen/src/podcast-rag && /home/allen/src/podcast-rag/scripts/backup-db.sh >> /var/log/podcast-rag-backup.log 2>&1
 #
 set -euo pipefail
 
@@ -23,12 +27,11 @@ set -euo pipefail
 # and every file this script creates (mkdir, the gzip output, etc.).
 umask 077
 
-# ── Resolve repo root so `docker compose` finds docker-compose.yml ─────────
+# ── Resolve repo root (only used to default BACKUP_DIR) ──────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
-cd "$REPO_ROOT"
 
-DB_SERVICE="podcast-rag-db"
+DB_CONTAINER="podcast-rag-db"
 LOCAL_DB_USER="podcast_rag"
 LOCAL_DB_NAME="podcast_rag"
 BACKUP_DIR="${BACKUP_DIR:-$REPO_ROOT/backups}"
@@ -41,7 +44,7 @@ OUT_FILE="$BACKUP_DIR/podcast_rag_${TS}.sql.gz"
 
 # ── Dump (pipefail makes a pg_dump failure fail the whole pipeline) ───────
 echo "==> Backing up '$LOCAL_DB_NAME' to $OUT_FILE ..."
-docker compose exec -T "$DB_SERVICE" \
+docker exec "$DB_CONTAINER" \
     pg_dump --no-owner --no-privileges -U "$LOCAL_DB_USER" "$LOCAL_DB_NAME" \
     | gzip > "$OUT_FILE"
 

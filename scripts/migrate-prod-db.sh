@@ -3,7 +3,12 @@
 # migrate-prod-db.sh — One-time production clone.
 #
 # Dumps the Supabase-hosted production database and restores it into the
-# local Dockerized PostgreSQL (the `podcast-rag-db` service) on the VPS.
+# local PostgreSQL container named `podcast-rag-db` on the VPS.
+#
+# Compose-project-agnostic: the script uses raw `docker exec` against the
+# fixed container name, so it doesn't care whether the container was started
+# by this repo's docker-compose.yml or by the homelab repo's compose stack
+# (which is the case on bubba).
 #
 # Unlike scripts/sync-dev-db.sh (a dev convenience that suppresses errors),
 # this script FAILS LOUDLY: any pg_dump or psql error aborts the run, so a
@@ -17,23 +22,16 @@
 #
 # Prerequisites:
 #   - The podcast-rag-db container is running and healthy
-#     (doppler run -- docker compose up -d podcast-rag-db)
 #   - Doppler CLI configured with access to the `prod` config
 #   - Docker available (the postgres:17 image is used for pg_dump)
 #
 set -euo pipefail
 
-# ── Resolve repo root so `docker compose` finds docker-compose.yml ─────────
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(dirname "$SCRIPT_DIR")"
-cd "$REPO_ROOT"
-
 # ── Configuration ─────────────────────────────────────────────────────────
-DB_SERVICE="podcast-rag-db"      # docker-compose service name
+DB_CONTAINER="podcast-rag-db"
 LOCAL_DB_USER="podcast_rag"
 LOCAL_DB_NAME="podcast_rag"
 PG_IMAGE="postgres:17"
-COMPOSE=(docker compose)
 
 umask 077
 DUMP_FILE="$(mktemp /tmp/podcast-rag-prod-dump.XXXXXX.sql)"
@@ -67,7 +65,7 @@ echo "    Production URL resolved (credentials hidden)."
 # ── Confirm: this destroys the local podcast_rag database ─────────────────
 echo ""
 echo "    This will DROP and recreate the local '$LOCAL_DB_NAME' database"
-echo "    in the '$DB_SERVICE' container and replace it with a fresh clone"
+echo "    in the '$DB_CONTAINER' container and replace it with a fresh clone"
 echo "    of production. Any existing local data will be lost."
 echo ""
 if ! $ASSUME_YES; then
@@ -80,21 +78,22 @@ if ! $ASSUME_YES; then
 fi
 
 # ── Ensure the local database container is up and healthy ─────────────────
-echo "==> Checking the $DB_SERVICE container..."
-if ! "${COMPOSE[@]}" ps --status running --services 2>/dev/null | grep -qx "$DB_SERVICE"; then
-    echo "ERROR: '$DB_SERVICE' is not running." >&2
-    echo "       Start it with: doppler run -- docker compose up -d $DB_SERVICE" >&2
+echo "==> Checking the $DB_CONTAINER container..."
+if ! docker inspect "$DB_CONTAINER" --format '{{.State.Running}}' 2>/dev/null | grep -qx "true"; then
+    echo "ERROR: container '$DB_CONTAINER' is not running." >&2
+    echo "       Start it from the compose stack that defines it (on bubba:" >&2
+    echo "       ~/src/homelab/nodes/bubba.sh up -d podcast-rag-db)." >&2
     exit 1
 fi
 echo "    Waiting for PostgreSQL to accept connections..."
 MAX_WAIT_SECONDS="${MAX_WAIT_SECONDS:-120}"
 elapsed=0
-until "${COMPOSE[@]}" exec -T "$DB_SERVICE" pg_isready -U "$LOCAL_DB_USER" -d postgres >/dev/null 2>&1; do
+until docker exec "$DB_CONTAINER" pg_isready -U "$LOCAL_DB_USER" -d postgres >/dev/null 2>&1; do
     sleep 1
     elapsed=$((elapsed + 1))
     if (( elapsed >= MAX_WAIT_SECONDS )); then
-        echo "ERROR: '$DB_SERVICE' (user '$LOCAL_DB_USER') not ready after ${MAX_WAIT_SECONDS}s." >&2
-        echo "       Check 'docker compose logs $DB_SERVICE' for details." >&2
+        echo "ERROR: '$DB_CONTAINER' (user '$LOCAL_DB_USER') not ready after ${MAX_WAIT_SECONDS}s." >&2
+        echo "       Check 'docker logs $DB_CONTAINER' for details." >&2
         exit 1
     fi
 done
@@ -102,7 +101,7 @@ echo "    PostgreSQL is ready."
 
 # Helper: run psql inside the db container against the maintenance database.
 psql_admin() {
-    "${COMPOSE[@]}" exec -T "$DB_SERVICE" \
+    docker exec -i "$DB_CONTAINER" \
         psql -v ON_ERROR_STOP=1 -U "$LOCAL_DB_USER" -d postgres "$@"
 }
 
@@ -137,7 +136,7 @@ psql_admin -c "CREATE DATABASE $LOCAL_DB_NAME OWNER $LOCAL_DB_USER;" >/dev/null
 echo "==> Restoring into the local database..."
 # ON_ERROR_STOP + --single-transaction: any error aborts the whole restore
 # and leaves the database empty rather than half-populated.
-"${COMPOSE[@]}" exec -T "$DB_SERVICE" \
+docker exec -i "$DB_CONTAINER" \
     psql -v ON_ERROR_STOP=1 --single-transaction \
     -U "$LOCAL_DB_USER" -d "$LOCAL_DB_NAME" < "$DUMP_FILE"
 
