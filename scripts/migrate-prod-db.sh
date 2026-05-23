@@ -100,14 +100,23 @@ done
 echo "    PostgreSQL is ready."
 
 # Helper: run psql inside the db container against the maintenance database.
+# No -i — callers pass SQL via -c, not via stdin. (`docker exec -i` would
+# eat any surrounding heredoc/loop stdin; see verify-db-clone.sh::tgt_q.)
 psql_admin() {
-    docker exec -i "$DB_CONTAINER" \
+    docker exec "$DB_CONTAINER" \
         psql -v ON_ERROR_STOP=1 -U "$LOCAL_DB_USER" -d postgres "$@"
 }
 
 # ── Dump the production database ───────────────────────────────────────────
 echo "==> Dumping production database..."
-DUMP_ARGS=(--no-owner --no-privileges --clean --if-exists)
+# -n public restricts the dump to the public schema. Supabase preloads
+# extensions (hypopg, supabase_vault, etc.) and schemas (auth, storage,
+# realtime, graphql, …) that don't exist in stock postgres:17 and aren't
+# used by this app. Without the filter the restore aborts inside the
+# --single-transaction on the first missing extension. Confirmed safe:
+# `grep -E 'uuid_generate|gen_random|hypopg|...' src/ alembic/` is empty,
+# and no public column default references an extension function.
+DUMP_ARGS=(--no-owner --no-privileges --clean --if-exists -n public)
 if $SCHEMA_ONLY; then
     DUMP_ARGS+=(--schema-only)
     echo "    (schema only — no data)"

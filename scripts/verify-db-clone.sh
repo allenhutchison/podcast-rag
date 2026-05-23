@@ -51,7 +51,11 @@ SRC_URL="${SRC_URL//:6543/:5432}"
 # ── Query helpers (-t tuples only, -A unaligned, -q quiet) ────────────────
 src_q() { docker run --rm "$PG_IMAGE" psql "$SRC_URL" -tAqc "$1"; }
 tgt_q() {
-    docker exec -i "$DB_CONTAINER" \
+    # NOTE: no -i. This function is called inside a `while read … done <<<`
+    # loop, and `docker exec -i` would inherit and consume the remaining
+    # heredoc on each call, silently skipping every table after the first.
+    # We're passing SQL via -c, so we don't need stdin here.
+    docker exec "$DB_CONTAINER" \
         psql -U "$LOCAL_DB_USER" -d "$LOCAL_DB_NAME" -tAqc "$1"
 }
 
