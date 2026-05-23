@@ -31,7 +31,7 @@ dependencies = [
     # Podcast feed parsing
     "feedparser>=6.0.0",
     # HTTP client for downloads
-    "requests>=2.31.0",
+    "requests>=2.34.2",
     "aiohttp>=3.9.0",
     "psycopg2-binary>=2.9.11",
     "resend>=2.27.0",
