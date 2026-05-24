@@ -27,7 +27,7 @@ dependencies = [
     "google-genai>=0.2.0",
     # Database dependencies
     "sqlalchemy>=2.0.0",
-    "alembic>=1.13.0",
+    "alembic>=1.18.4",
     # Podcast feed parsing
     "feedparser>=6.0.0",
     # HTTP client for downloads
