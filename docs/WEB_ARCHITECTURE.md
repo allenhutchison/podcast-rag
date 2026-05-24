@@ -364,7 +364,7 @@ get_podcast_citations(session_id)
 Compute is now self-hosted on the VPS (sunk cost). Per-query cost is
 dominated by Gemini API calls from the three agents:
 
-```
+```text
 PodcastSearchAgent:     ~$0.001
 WebSearchAgent:         ~$0.001
 SynthesizerAgent:       ~$0.001

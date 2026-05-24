@@ -208,7 +208,7 @@ cloudflared pointing at the bubba web container, smoke-test through a
 3. **Pause/delete the Supabase project** when you no longer want the
    rollback bridge. Deleting closes it permanently — see *Rollback* below.
 
-Status of the initial bubba cutover (2026-05-23): all four Phase 5 items
+Status of the initial bubba cutover (2026-05-23): all three Phase 5 items
 above were completed the same evening. Supabase was deleted, the
 extra Doppler `staging` config was deleted (only `prod` and `dev` remain),
 and the Cloud Run service + OAuth redirect URIs were removed.
