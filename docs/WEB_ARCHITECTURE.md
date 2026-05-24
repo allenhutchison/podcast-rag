@@ -24,10 +24,11 @@ The web application uses Google ADK (Agent Development Kit) to orchestrate paral
 │  └─────────────────────────────────┬─────────────────────────────────────┘  │
 └─────────────────────────────────────┼────────────────────────────────────────┘
                                       │
-                                      │ HTTP/SSE (Port 8080)
+                                      │ HTTPS  (Cloudflare edge → cloudflared
+                                      │  tunnel → http://podcast-rag-web:8080)
                                       │
 ┌─────────────────────────────────────▼────────────────────────────────────────┐
-│                  Google Cloud Run (Serverless Container)                      │
+│        Local Container (Docker Compose, bubba) — podcast-rag-web              │
 │                                                                              │
 │  ┌────────────────────────────────────────────────────────────────────────┐ │
 │  │  FastAPI Application (src/web/app.py)                                  │ │
@@ -94,7 +95,7 @@ The web application uses Google ADK (Agent Development Kit) to orchestrate paral
 │                                                                              │
 │  ┌────────────────────────────────────────────────────────────────────────┐ │
 │  │  Environment Variables                                                 │ │
-│  │  • GEMINI_API_KEY (from Secret Manager)                               │ │
+│  │  • GEMINI_API_KEY (from Doppler)                                      │ │
 │  │  • GEMINI_MODEL (gemini-2.0-flash required for web search)            │ │
 │  │  • GEMINI_FILE_SEARCH_STORE_NAME (podcast-transcripts)                │ │
 │  │  • ADK_PARALLEL_TIMEOUT (60s default)                                 │ │
@@ -285,10 +286,10 @@ get_podcast_citations(session_id)
 - **Pydantic**: Request/response validation
 
 ### Infrastructure
-- **Docker**: Multi-stage build, ~500MB image
-- **Cloud Run**: Serverless, auto-scaling, scale-to-zero
-- **Cloud Build**: CI/CD from GitHub
-- **Secret Manager**: API key storage
+- **Docker Compose**: Web + pipeline + local PostgreSQL + cloudflared, on a single VPS (bubba). Compose stack lives in the `homelab` repo.
+- **Cloudflare Tunnel**: Public HTTPS ingress, outbound-only — no inbound ports on the VPS.
+- **GitHub Actions** (`docker-release.yml`): Builds and pushes `allenhutchison/podcast-rag-web:latest` to Docker Hub on every `v*` tag. Watchtower on the VPS picks up new tags.
+- **Doppler**: Runtime secret injection (API keys, `DATABASE_URL`). Only a `DOPPLER_TOKEN` lives on the host.
 
 ### External Services
 - **Gemini API**: LLM for all agents
@@ -298,9 +299,9 @@ get_podcast_citations(session_id)
 ## Performance Characteristics
 
 ### Cold Start
-- **Time**: 3-8 seconds
-- **Factors**: Python interpreter, ADK initialization, dependency loading
-- **Optimization**: Minimal dependencies, multi-stage build
+- **Time**: only on container restart (no scale-to-zero on the VPS — the container is always-on).
+- **Factors**: Python interpreter, ADK initialization, dependency loading.
+- **Optimization**: Minimal dependencies, multi-stage build.
 
 ### Query Latency
 - **SSE Connection**: ~100ms
@@ -315,10 +316,9 @@ get_podcast_citations(session_id)
 - **Network**: ~10-100KB per query
 
 ### Scalability
-- **Concurrent requests**: Limited by Gemini API quotas
-- **Max instances**: 10 (configurable)
-- **Scale to zero**: Yes (saves costs)
-- **Stateless**: Session storage is per-instance (not shared)
+- **Concurrent requests**: Limited by Gemini API quotas.
+- **Process model**: Single uvicorn process on the VPS; sized to host resources, not to autoscaling.
+- **Stateless**: Session storage is per-instance (not shared).
 
 ## Security Considerations
 
@@ -337,27 +337,21 @@ get_podcast_citations(session_id)
 - Default: 10 requests/minute per IP
 
 ### API Key Protection
-- **Storage**: Google Secret Manager
-- **Access**: Cloud Run service account only
-- **Never exposed**: Not sent to frontend
+- **Storage**: Doppler (`prod` config of the `podcast-rag` project).
+- **Access**: Containers carry a `DOPPLER_TOKEN`; the entrypoint wraps `CMD` with `doppler run --` so secrets land in the inner process env only.
+- **Never exposed**: Not sent to frontend.
 
 ### HTTPS
-- **Cloud Run**: Automatic HTTPS with managed certificates
-- **Custom domain**: Supported with SSL
+- **TLS termination**: Cloudflare edge — `https://podcasts.hutchison.org` terminates at Cloudflare and reaches the container over an outbound `cloudflared` tunnel.
+- **uvicorn**: Started with `--proxy-headers` so OAuth redirect URIs and Secure cookies see `https`.
 
 ## Monitoring & Observability
 
 ### Logging
-- **Application logs**: Python logging to stdout
-- **Cloud Logging**: Automatic collection
-- **Log levels**: INFO, WARNING, ERROR
-- **Debug logging**: Agent events, citation counts, tool calls
-
-### Metrics (Cloud Run)
-- **Request count**: Automatic
-- **Request latency**: P50, P95, P99
-- **CPU/Memory usage**: Real-time graphs
-- **Error rate**: 5xx responses
+- **Application logs**: Python logging to stdout, captured by Docker's `json-file` driver (size-bounded by the compose `logging:` block).
+- **Aggregation**: Dozzle on the homelab Tailscale network surfaces logs at `https://dozzle.llama-codlet.ts.net`.
+- **Log levels**: INFO, WARNING, ERROR.
+- **Debug logging**: Agent events, citation counts, tool calls.
 
 ### Health Checks
 - **Endpoint**: `/health`
@@ -367,29 +361,17 @@ get_podcast_citations(session_id)
 
 ## Cost Breakdown
 
-### Per Query (Estimate)
-```
-Gemini API (parallel agents):
-  PodcastSearchAgent:     ~$0.001
-  WebSearchAgent:         ~$0.001
-  SynthesizerAgent:       ~$0.001
-  Subtotal:               ~$0.003
+Compute is now self-hosted on the VPS (sunk cost). Per-query cost is
+dominated by Gemini API calls from the three agents:
 
-Cloud Run:
-  Request:                $0.0000004
-  CPU-seconds (5s):       $0.00012
-  Memory GB-sec (2.5GB):  $0.0000063
-  Subtotal:               ~$0.0001
-
-Total per query:          ~$0.003 (0.3 cents)
+```text
+PodcastSearchAgent:     ~$0.001
+WebSearchAgent:         ~$0.001
+SynthesizerAgent:       ~$0.001
+Total per query:        ~$0.003 (0.3 cents)
 ```
 
-### Monthly (1,000 queries)
-```
-Gemini API:  $3.00
-Cloud Run:   $0.10
-Total:       ~$3.10/month
-```
+At 1,000 queries/month: ~$3 of Gemini spend.
 
 ## Future Enhancements
 

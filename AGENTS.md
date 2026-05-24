@@ -73,7 +73,7 @@ User Query → Vector Search → Context Retrieval → Prompt Formatting → AI 
 ├── docs/                   # Documentation
 │   ├── docker.md           # Docker deployment guide
 │   ├── web-app.md          # Web application guide
-│   ├── deploy-quick-start.md  # Cloud Run quick start
+│   ├── deploy-vps.md       # VPS deployment + cutover runbook (current)
 │   └── faster-whisper-benchmark.md  # Benchmark analysis
 │
 ├── tests/                  # pytest test suite
@@ -321,7 +321,7 @@ Check current branch with: `git branch --show-current`
 - **Web App Guide:** `docs/web-app.md`
 - **Web Architecture:** `docs/WEB_ARCHITECTURE.md`
 - **Docker Deployment:** `docs/docker.md`
-- **Cloud Run Quick Start:** `docs/deploy-quick-start.md`
+- **VPS Deployment & Cutover:** `docs/deploy-vps.md`
 - **License:** Apache 2.0 (`LICENSE`)
 
 ## Code Modification Guidelines

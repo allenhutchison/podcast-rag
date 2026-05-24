@@ -194,16 +194,24 @@ cloudflared pointing at the bubba web container, smoke-test through a
 1. **Schedule local backups** (replaces Supabase's managed backups):
    ```bash
    crontab -e
-   # 15 3 * * * cd /home/allen/src/podcast-rag && /home/allen/src/podcast-rag/scripts/backup-db.sh >> /var/log/podcast-rag-backup.log 2>&1
+   # 15 3 * * * /home/allen/src/podcast-rag/scripts/backup-db.sh >> /home/allen/src/podcast-rag/backups/backup.log 2>&1
    ```
-   Decide on and set up off-box backup destination (rsync to another host,
-   object storage, etc.) — bubba is now a single point of failure for the DB.
-2. **Retire Cloud Run:** delete the Cloud Run service and its Cloud Build
-   trigger, then delete `cloudbuild.yaml` from the repo. Remove the temporary
+   The log file lives next to the dumps because `/var/log/` isn't writable
+   by an unprivileged user. The bubba VM itself is snapshotted nightly by
+   Proxmox Backup Service to a NAS, so the gzipped dumps automatically
+   land off-box via the VM snapshot. The local pg_dump is still worth
+   running: it's application-consistent (unlike a VM snapshot of a live
+   data directory) and restores faster than a full VM rollback.
+2. **Retire Cloud Run:** delete the Cloud Run service, the Cloud Build
+   trigger, and `cloudbuild.yaml` from the repo. Remove the temporary
    `vps-test` OAuth redirect URI from Google Cloud Console.
-3. **Update docs:** `AGENTS.md`, `docs/deploy-quick-start.md`, and
-   `docs/WEB_ARCHITECTURE.md` still describe the Cloud Run deployment.
-4. **After ~2 weeks** of stable operation, delete or pause the Supabase project.
+3. **Pause/delete the Supabase project** when you no longer want the
+   rollback bridge. Deleting closes it permanently — see *Rollback* below.
+
+Status of the initial bubba cutover (2026-05-23): all three Phase 5 items
+above were completed the same evening. Supabase was deleted, the
+extra Doppler `staging` config was deleted (only `prod` and `dev` remain),
+and the Cloud Run service + OAuth redirect URIs were removed.
 
 ---
 
@@ -211,18 +219,19 @@ cloudflared pointing at the bubba web container, smoke-test through a
 
 Because the pipeline is stopped and Supabase is untouched after its final dump,
 nothing is written to the local DB until Phase 4 step 5 — so rollback is clean
-within the window:
+within the window. Rollback options decay as you progress through Phase 5:
 
-- **Verification fails (step 3):** abort the cutover. Restart the pipeline
-  (`./nodes/bubba.sh start podcast-rag`) and re-enable Cloud Run. Investigate,
-  fix `migrate-prod-db.sh`, and retry.
-- **App breaks after cutover:** revert `DATABASE_URL` in Doppler back to the
-  Supabase URL, `./nodes/bubba.sh up -d`, and re-point the tunnel /
-  re-enable Cloud Run. Any writes made to the local DB after step 5 are lost on
-  this path — so run the smoke tests promptly.
-
-Supabase is kept as a **point-in-time standby for ~2 weeks**. It is a snapshot,
-not a live replica: a rollback after the window loses post-cutover data.
+- **During the maintenance window, verification fails (step 3):** abort the
+  cutover. Restart the pipeline (`./nodes/bubba.sh start podcast-rag`) and
+  re-enable Cloud Run. Investigate, fix `migrate-prod-db.sh`, and retry.
+- **App breaks after cutover, Supabase still alive:** revert `DATABASE_URL`
+  in Doppler back to the Supabase URL, `./nodes/bubba.sh up -d`, re-point
+  the tunnel / re-enable Cloud Run. Any writes made to the local DB after
+  step 5 are lost on this path — so run the smoke tests promptly.
+- **App breaks after Supabase has been deleted:** restore from the most
+  recent `scripts/backup-db.sh` dump (see *Operations*). There is no
+  source-of-truth to fall back to once Supabase is gone — backups become
+  the only recovery story.
 
 ---
 

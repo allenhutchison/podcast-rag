@@ -18,8 +18,9 @@
 #   BACKUP_DIR      Destination directory   (default: ./backups)
 #   RETENTION_DAYS  Delete backups older than this many days (default: 14)
 #
-# Cron example (nightly at 03:15 — note the cd, cron has a minimal PATH):
-#   15 3 * * * cd /home/allen/src/podcast-rag && /home/allen/src/podcast-rag/scripts/backup-db.sh >> /var/log/podcast-rag-backup.log 2>&1
+# Cron example (nightly at 03:15). The log destination is next to the
+# dumps because /var/log/ isn't writable by an unprivileged user:
+#   15 3 * * * /home/allen/src/podcast-rag/scripts/backup-db.sh >> /home/allen/src/podcast-rag/backups/backup.log 2>&1
 #
 set -euo pipefail
 

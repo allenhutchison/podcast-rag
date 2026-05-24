@@ -117,30 +117,9 @@ Run both the encoding backend and web service together using docker-compose:
 - Podcast directory: Source audio files (read-only)
 - Database: Episode metadata and File Search references
 
-### Cloud Run Deployment (Web Service Only)
+### VPS Deployment (Database + Web on a single host)
 
-Deploy the web interface to Google Cloud Run for public access:
-
-1. **Build and push web image** (or use pre-built from Docker Hub):
-   ```bash
-   gcloud builds submit --tag gcr.io/YOUR_PROJECT/podcast-rag-web
-   ```
-
-2. **Deploy to Cloud Run**:
-   ```bash
-   gcloud run deploy podcast-rag-web \
-     --image gcr.io/YOUR_PROJECT/podcast-rag-web \
-     --platform managed \
-     --region us-central1 \
-     --allow-unauthenticated \
-     --set-env-vars GEMINI_API_KEY=your_key,GEMINI_FILE_SEARCH_STORE_NAME=podcast-transcripts
-   ```
-
-3. **Access your deployment**:
-   - Cloud Run provides a public URL
-   - Web service connects to your Gemini File Search store
-
-**Note**: Cloud Run deployment uses `Dockerfile.web` which excludes ffmpeg (~100MB) for faster startup. The homelab encoding backend must run separately to process podcasts.
+The full stack — local PostgreSQL, encoding backend, web app, and a Cloudflare Tunnel for public HTTPS ingress — runs as one Docker Compose stack on a single VPS. See [`docs/deploy-vps.md`](docs/deploy-vps.md) for the runbook (Phase 1 stand-up, Phase 4 cutover from a hosted database, Phase 5 ongoing operations).
 
 ### Building Images Yourself
 
@@ -169,7 +148,7 @@ docker build -t podcast-rag-web -f Dockerfile.web .
 | Image | Base | Size | Contains | Use Case |
 |-------|------|------|----------|----------|
 | `podcast-rag` | python:3.12-slim | ~1.5GB | ffmpeg, whisper, all dependencies | Homelab encoding backend |
-| `podcast-rag-web` | python:3.12-slim | ~500MB | Web server, no ffmpeg | Cloud Run or homelab web UI |
+| `podcast-rag-web` | python:3.12-slim | ~500MB | Web server, no ffmpeg | VPS web UI behind Cloudflare Tunnel |
 
 Both images:
 - Use multi-stage builds for smaller size

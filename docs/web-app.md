@@ -1,13 +1,13 @@
 # Podcast RAG Web Application
 
-A streaming chat interface for querying podcast transcripts with parallel web search, powered by Google ADK multi-agent architecture. Built with FastAPI and designed for deployment on Google Cloud Run.
+A streaming chat interface for querying podcast transcripts with parallel web search, powered by Google ADK multi-agent architecture. Built with FastAPI and deployed as a Docker Compose service on a single VPS behind a Cloudflare Tunnel — see [`deploy-vps.md`](deploy-vps.md) for the runbook.
 
 ## Features
 
 - **Multi-Agent Architecture**: Parallel podcast and web search using Google ADK
 - **Streaming Responses**: Word-by-word streaming using Server-Sent Events (SSE)
 - **Dual Source Citations**: Citations from both podcast transcripts and web sources
-- **Fast & Lightweight**: ~500MB Docker image, optimized for Cloud Run
+- **Fast & Lightweight**: ~500MB Docker image (multi-stage build, no ffmpeg).
 - **Mobile Responsive**: Clean, minimal design with Tailwind CSS
 - **Rate Limiting**: Built-in request rate limiting
 
@@ -85,7 +85,6 @@ src/
 │   └── synthesizer.py      # SynthesizerAgent for combining results
 
 Dockerfile.web              # Optimized Docker image for web app
-cloudbuild.yaml             # Google Cloud Build configuration
 ```
 
 ## Agent Details
@@ -184,47 +183,9 @@ docker run -p 8080:8080 \
   - Multi-stage build
   - Non-root user
 
-## Google Cloud Run Deployment
+## Deployment
 
-### Prerequisites
-
-1. **Google Cloud Project** with billing enabled
-2. **APIs enabled:**
-   - Cloud Run API
-   - Cloud Build API
-   - Container Registry API
-3. **gcloud CLI** installed and authenticated
-
-### Manual Deployment
-
-```bash
-# Set variables
-export PROJECT_ID="your-project-id"
-export SERVICE_NAME="podcast-rag-web"
-export REGION="us-central1"
-
-# Build and push image
-docker build -f Dockerfile.web -t gcr.io/$PROJECT_ID/$SERVICE_NAME .
-docker push gcr.io/$PROJECT_ID/$SERVICE_NAME
-
-# Deploy to Cloud Run
-gcloud run deploy $SERVICE_NAME \
-  --image gcr.io/$PROJECT_ID/$SERVICE_NAME \
-  --platform managed \
-  --region $REGION \
-  --allow-unauthenticated \
-  --memory 512Mi \
-  --cpu 1 \
-  --max-instances 10 \
-  --set-env-vars GEMINI_API_KEY="your-key",GEMINI_MODEL="gemini-2.0-flash",GEMINI_FILE_SEARCH_STORE_NAME="podcast-transcripts"
-
-# Get the service URL
-gcloud run services describe $SERVICE_NAME --region $REGION --format 'value(status.url)'
-```
-
-### Automated Deployment with Cloud Build
-
-See [deploy-quick-start.md](deploy-quick-start.md) for Cloud Build trigger setup.
+The web app runs as a Docker Compose service alongside the encoding pipeline and a local PostgreSQL database, behind a Cloudflare Tunnel. See [`deploy-vps.md`](deploy-vps.md) for the standup + cutover runbook. CI is in `.github/workflows/docker-release.yml`: every `v*` tag builds and pushes `allenhutchison/podcast-rag-web:latest` to Docker Hub, which Watchtower picks up on the VPS.
 
 ## Configuration
 
@@ -235,19 +196,18 @@ See [deploy-quick-start.md](deploy-quick-start.md) for Cloud Build trigger setup
 | `GEMINI_API_KEY` | Yes | - | Gemini API key |
 | `GEMINI_MODEL` | No | `gemini-2.0-flash` | Gemini model (must be 2.0+ for web search) |
 | `GEMINI_FILE_SEARCH_STORE_NAME` | No | `podcast-transcripts` | File Search store name |
-| `PORT` | No | `8080` | Server port (auto-set in Cloud Run) |
+| `PORT` | No | `8080` | Server port (set by Docker Compose) |
 | `WEB_ALLOWED_ORIGINS` | No | `*` | CORS allowed origins (comma-separated) |
 | `WEB_STREAMING_DELAY` | No | `0.05` | Delay between streamed tokens (seconds) |
 | `WEB_RATE_LIMIT` | No | `10/minute` | Rate limit for API endpoints |
 | `ADK_PARALLEL_TIMEOUT` | No | `60` | Timeout for agent execution (seconds) |
 
-### Cloud Run Settings
+### Container Resource Limits
 
-- **Memory:** 512Mi (adjust if needed)
-- **CPU:** 1 vCPU
-- **Max instances:** 10 (adjust based on expected traffic)
-- **Min instances:** 0 (save costs with scale-to-zero)
-- **Timeout:** 300s (for long queries)
+Set in `homelab/compose/docker-compose.podcast-rag.yml` (`deploy.resources`):
+- **Memory:** 1G limit, 256M reservation.
+- **CPU:** 1.0 limit, 0.25 reservation.
+- The container is always-on (no scale-to-zero); adjust limits to match VPS capacity.
 
 ## API Reference
 
@@ -320,7 +280,7 @@ Query the podcast archive with parallel web search and streaming response.
 
 ### `GET /health`
 
-Health check endpoint for Cloud Run.
+Health check endpoint (used by Docker healthcheck + cloudflared origin probe).
 
 **Response:**
 ```json
@@ -346,12 +306,8 @@ Citations show source type and metadata:
 
 ## Cost Estimates
 
-### Cloud Run Pricing (as of 2024)
-
-- **Free tier:** 2 million requests/month
-- **Beyond free tier:** ~$0.40 per million requests
-- **Memory:** $0.0000025/GB-second
-- **CPU:** $0.00002400/vCPU-second
+Compute is now self-hosted on the VPS (sunk cost). Marginal per-query
+spend is dominated by the Gemini API calls from the three agents.
 
 ### Gemini API Pricing
 
@@ -382,7 +338,7 @@ python scripts/file_search_utils.py --action list
 
 ### Slow responses
 - ADK orchestration adds latency for parallel search
-- Consider increasing Cloud Run memory (512Mi -> 1Gi)
+- Consider increasing the container memory limit in `homelab/compose/docker-compose.podcast-rag.yml`
 - Check `ADK_PARALLEL_TIMEOUT` setting
 
 ### No web citations appearing
@@ -394,14 +350,14 @@ python scripts/file_search_utils.py --action list
 - **Rate limiting:** Built-in with slowapi
 - **Session validation:** Session IDs are validated and sanitized
 - **Query sanitization:** Prompt injection mitigation in podcast search
-- **API key security:** Store in Secret Manager, never commit to git
+- **API key security:** Fetched at runtime from Doppler (`prod` config), never committed to git
 - **CORS:** Configurable via `WEB_ALLOWED_ORIGINS`
 
 ## Resources
 
 - **Main README:** [README.md](../README.md)
 - **Docker Deployment:** [docker.md](docker.md)
-- **Cloud Run Docs:** https://cloud.google.com/run/docs
+- **VPS Deployment & Cutover Runbook:** [deploy-vps.md](deploy-vps.md)
 - **Google ADK Docs:** https://ai.google.dev/adk
 - **FastAPI Docs:** https://fastapi.tiangolo.com
 

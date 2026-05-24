@@ -4,11 +4,11 @@ This document lists all environment variables used by Podcast RAG. You can set t
 - A `.env` file in the project root
 - A secrets manager like [Doppler](https://www.doppler.com/), 1Password, or HashiCorp Vault
 - Shell environment variables
-- Container orchestration (Docker Compose, Kubernetes, Cloud Run)
+- Container orchestration (Docker Compose, Kubernetes)
 
 ## Doppler Integration
 
-When using Doppler with Cloud Run, you can sync all secrets as a single JSON environment variable named `ENV`. The application automatically parses this JSON blob and loads the values:
+Containers carry only a `DOPPLER_TOKEN`; the entrypoint wraps the start command with `doppler run --` so secrets land in the inner process env at runtime. The pattern also supports an `ENV` JSON blob if you prefer to sync all secrets as a single JSON environment variable — the application parses it and loads the values:
 
 ```bash
 # Doppler syncs secrets as:
