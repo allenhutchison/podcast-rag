@@ -2,6 +2,9 @@
 *.out
 *.log
 
+# Local pg_dump output (scripts/backup-db.sh)
+backups/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
