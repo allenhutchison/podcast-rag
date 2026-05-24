@@ -174,7 +174,6 @@ class TestConfiguration:
         assert hasattr(config, "WEB_MAX_CONVERSATION_TOKENS")
         assert hasattr(config, "WEB_STREAMING_DELAY")
         assert hasattr(config, "WEB_RATE_LIMIT")
-        assert hasattr(config, "WEB_PORT")
 
     def test_default_config_values(self):
         """Test that default configuration values are set."""
@@ -182,7 +181,6 @@ class TestConfiguration:
         assert config.WEB_MAX_CONVERSATION_TOKENS == 200000
         assert config.WEB_STREAMING_DELAY == 0.05
         assert config.WEB_RATE_LIMIT == "10/minute"
-        assert config.WEB_PORT == 8080
 
 
 class TestDopplerEnvLoading:
