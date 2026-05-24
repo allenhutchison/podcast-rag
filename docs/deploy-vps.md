@@ -194,10 +194,14 @@ cloudflared pointing at the bubba web container, smoke-test through a
 1. **Schedule local backups** (replaces Supabase's managed backups):
    ```bash
    crontab -e
-   # 15 3 * * * cd /home/allen/src/podcast-rag && /home/allen/src/podcast-rag/scripts/backup-db.sh >> /var/log/podcast-rag-backup.log 2>&1
+   # 15 3 * * * /home/allen/src/podcast-rag/scripts/backup-db.sh >> /home/allen/src/podcast-rag/backups/backup.log 2>&1
    ```
-   Decide on and set up off-box backup destination (rsync to another host,
-   object storage, etc.) — bubba is now a single point of failure for the DB.
+   The log file lives next to the dumps because `/var/log/` isn't writable
+   by an unprivileged user. The bubba VM itself is snapshotted nightly by
+   Proxmox Backup Service to a NAS, so the gzipped dumps automatically
+   land off-box via the VM snapshot. The local pg_dump is still worth
+   running: it's application-consistent (unlike a VM snapshot of a live
+   data directory) and restores faster than a full VM rollback.
 2. **Retire Cloud Run:** delete the Cloud Run service, the Cloud Build
    trigger, and `cloudbuild.yaml` from the repo. Remove the temporary
    `vps-test` OAuth redirect URI from Google Cloud Console.
