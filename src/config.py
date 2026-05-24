@@ -91,7 +91,6 @@ class Config:
         self.WEB_MAX_CONVERSATION_TOKENS = int(os.getenv("MAX_CONVERSATION_TOKENS", "200000"))
         self.WEB_STREAMING_DELAY = float(os.getenv("STREAMING_DELAY", "0.05"))
         self.WEB_RATE_LIMIT = os.getenv("RATE_LIMIT", "10/minute")
-        self.WEB_PORT = int(os.getenv("PORT", "8080"))
 
         # Web app base URL (used for email links and OAuth redirect)
         web_base_url = os.getenv("WEB_BASE_URL", "")
@@ -136,15 +135,10 @@ class Config:
         self.DATABASE_URL = os.getenv(
             "DATABASE_URL", "sqlite:///./podcast_rag.db"
         )
-        self.DB_POOL_SIZE = int(os.getenv("DB_POOL_SIZE", "3"))  # Supabase-optimized
-        self.DB_MAX_OVERFLOW = int(os.getenv("DB_MAX_OVERFLOW", "2"))  # Supabase-optimized
+        self.DB_POOL_SIZE = int(os.getenv("DB_POOL_SIZE", "3"))
+        self.DB_MAX_OVERFLOW = int(os.getenv("DB_MAX_OVERFLOW", "2"))
         self.DB_POOL_PRE_PING = os.getenv("DB_POOL_PRE_PING", "true").lower() == "true"
         self.DB_ECHO = os.getenv("DB_ECHO", "false").lower() == "true"
-
-        # Supabase configuration (for future features)
-        self.SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-        self.SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
-        self.SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 
         # Podcast download configuration
         self.PODCAST_MAX_CONCURRENT_DOWNLOADS = int(
