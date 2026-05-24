@@ -23,7 +23,7 @@ classifiers = [
 # Core dependencies shared by all services
 dependencies = [
     "python-dotenv>=1.0.0",
-    "pydantic>=2.0.0",
+    "pydantic>=2.13.4",
     "google-genai>=0.2.0",
     # Database dependencies
     "sqlalchemy>=2.0.0",
