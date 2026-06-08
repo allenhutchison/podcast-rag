@@ -59,7 +59,7 @@ encoding = [
 # Web service dependencies
 web = [
     "fastapi>=0.115.0",
-    "uvicorn[standard]>=0.30.0",
+    "uvicorn[standard]>=0.49.0",
     "sse-starlette>=3.4.4",
     "tiktoken>=0.13.0",
     "slowapi>=0.1.9",
