@@ -24,7 +24,7 @@ classifiers = [
 dependencies = [
     "python-dotenv>=1.0.0",
     "pydantic>=2.13.4",
-    "google-genai>=0.2.0",
+    "google-genai>=2.8.0",
     # Database dependencies
     "sqlalchemy>=2.0.0",
     "alembic>=1.18.4",
