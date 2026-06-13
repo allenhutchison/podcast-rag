@@ -28,6 +28,12 @@ jobs:
 
       - name: Install system dependencies
         run: |
+          # The GitHub-hosted runner image preconfigures Microsoft apt repos
+          # (azure-cli, prod) that intermittently return 403 and break
+          # `apt-get update`. We don't need them to install ffmpeg, so remove
+          # them first to keep CI resilient to that upstream breakage.
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list \
+                     /etc/apt/sources.list.d/azure-cli.list
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
