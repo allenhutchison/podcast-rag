@@ -33,7 +33,7 @@ dependencies = [
     # HTTP client for downloads
     "requests>=2.34.2",
     "aiohttp>=3.9.0",
-    "psycopg2-binary>=2.9.11",
+    "psycopg2-binary>=2.9.12",
     "resend>=2.30.1",
 ]
 
