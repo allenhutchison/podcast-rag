@@ -20,13 +20,22 @@ def mock_config():
 def briefing_data():
     return {
         "headline": "AI and Geopolitics Today",
-        "briefing": "Today's episodes cover AI regulation and Iran negotiations.",
+        "briefing": (
+            "Today's listening landscape is dominated by a single, unsettling question: "
+            "Who holds the kill switch? Whether it's the U.S. government's ban on frontier "
+            "models or the Trump administration's high-stakes gamble with Tehran, the theme "
+            "of 2026 is becoming clear: control is the ultimate currency."
+        ),
         "key_themes": ["AI governance", "Geopolitics"],
         "episode_highlights": [
             {
                 "podcast_name": "Hard Fork",
                 "episode_title": "AI Future Debate",
-                "analysis": "A key episode on superintelligence timelines.",
+                "analysis": (
+                    "Daniel Cocotello's AI 2027 scenario predicting superintelligence via "
+                    "recursive self-improvement by 2028 is a terrifyingly plausible "
+                    "counterweight to Sayesh Kapoor's grounded skepticism."
+                ),
             }
         ],
         "connection_insight": "Control is the theme of 2026.",

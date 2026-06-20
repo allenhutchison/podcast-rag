@@ -1152,16 +1152,32 @@ async def generate_feed_briefing(
 # ---------------------------------------------------------------------------
 
 
-def _parse_range(range_header: str, total: int) -> tuple[int, int]:
-    """Parse a Range header value into (start, end) inclusive."""
+def _parse_range(range_header: str, total: int) -> tuple[int, int] | None:
+    """Parse a Range header value into (start, end) inclusive.
+
+    Returns None if the range is malformed or unsatisfiable.
+    """
     try:
-        unit, ranges = range_header.split("=")
-        start_str, end_str = ranges.split("-")
+        unit, ranges = range_header.split("=", 1)
+        if unit.strip().lower() != "bytes":
+            return None
+        range_spec = ranges.strip()
+        # Handle suffix range (e.g. "bytes=-500" = last 500 bytes)
+        if range_spec.startswith("-"):
+            suffix_len = int(range_spec[1:])
+            if suffix_len <= 0:
+                return None
+            start = max(0, total - suffix_len)
+            return start, total - 1
+        start_str, _, end_str = range_spec.partition("-")
         start = int(start_str) if start_str else 0
         end = int(end_str) if end_str else total - 1
+        # Validate bounds
+        if start > end or start >= total or start < 0:
+            return None
         return start, min(end, total - 1)
-    except Exception:
-        return 0, total - 1
+    except (ValueError, AttributeError):
+        return None
 
 
 @app.post("/api/feed/briefing/{briefing_id}/audio")
@@ -1225,7 +1241,18 @@ async def serve_briefing_audio(
 
     range_header = request.headers.get("range")
     if range_header:
-        start, end = _parse_range(range_header, total)
+        parsed = _parse_range(range_header, total)
+        if parsed is None:
+            return Response(
+                content=b"",
+                media_type=mime,
+                status_code=416,
+                headers={
+                    "Content-Range": f"bytes */{total}",
+                    "Accept-Ranges": "bytes",
+                },
+            )
+        start, end = parsed
         chunk = data[start:end + 1]
         return Response(
             content=chunk,

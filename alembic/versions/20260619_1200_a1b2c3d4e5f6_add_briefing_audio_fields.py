@@ -24,9 +24,11 @@ def upgrade() -> None:
     op.add_column('daily_briefings', sa.Column('audio_status', sa.String(length=20), nullable=True))
     op.add_column('daily_briefings', sa.Column('audio_duration_sec', sa.Integer(), nullable=True))
     op.add_column('daily_briefings', sa.Column('audio_generated_at', sa.DateTime(), nullable=True))
+    op.add_column('daily_briefings', sa.Column('audio_claimed_at', sa.DateTime(), nullable=True))
 
 
 def downgrade() -> None:
+    op.drop_column('daily_briefings', 'audio_claimed_at')
     op.drop_column('daily_briefings', 'audio_generated_at')
     op.drop_column('daily_briefings', 'audio_duration_sec')
     op.drop_column('daily_briefings', 'audio_status')

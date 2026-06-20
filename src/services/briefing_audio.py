@@ -33,18 +33,18 @@ def generate_briefing_audio(
     if not briefing:
         return None
 
-    # Already generated — serve from cache
+    # Already generated with valid data — serve from cache
     if briefing.audio_status == "ready" and briefing.audio_data:
         return BRIEFING_AUDIO_READY
 
-    # Another request is generating — tell client to poll
-    if briefing.audio_status == "generating":
-        return BRIEFING_AUDIO_PENDING
+    # Inconsistent state: ready status but no data — treat as failed so claim can recover
+    if briefing.audio_status == "ready" and not briefing.audio_data:
+        repository.update_briefing_audio_status(briefing_id, "failed")
 
-    # Claim the slot atomically
+    # Claim the slot atomically (also recovers stale "generating" claims)
     claimed = repository.claim_briefing_audio(briefing_id)
     if not claimed:
-        # Someone beat us to it
+        # Another request is generating — tell client to poll
         return BRIEFING_AUDIO_PENDING
 
     try:
@@ -101,11 +101,16 @@ def get_audio_url_or_trigger(
     if not briefing:
         return {"status": "failed", "audio_url": None}
 
+    # Valid cached audio
     if briefing.audio_status == "ready" and briefing.audio_data:
         return {
             "status": "ready",
             "audio_url": f"/api/feed/briefing/{briefing_id}/audio",
         }
+
+    # Inconsistent state: ready status but no data — recover by regenerating
+    if briefing.audio_status == "ready" and not briefing.audio_data:
+        repository.update_briefing_audio_status(briefing_id, "failed")
 
     # Trigger generation
     result = generate_briefing_audio(briefing_id, repository, config)

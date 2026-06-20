@@ -6,7 +6,9 @@ gemini-3.1-flash-tts-preview. Handles PCM decoding and ffmpeg transcoding.
 
 import base64
 import logging
+import random
 import subprocess
+import time
 
 from google import genai
 from google.genai import types
@@ -17,6 +19,44 @@ logger = logging.getLogger(__name__)
 
 # MIME type for the output MP3
 AUDIO_MIME_TYPE = "audio/mpeg"
+
+# Retry config for transient Gemini API errors
+_MAX_RETRIES = 3
+_BASE_DELAY = 1.0
+_MAX_DELAY = 10.0
+
+# Subprocess timeout (seconds) for ffmpeg/ffprobe
+_SUBPROCESS_TIMEOUT = 120
+
+
+def _is_retryable(exc: Exception) -> bool:
+    """Check if an exception is a transient API error worth retrying."""
+    status = getattr(exc, "status_code", None) or getattr(exc, "code", None)
+    if status in (429, 500, 502, 503, 504):
+        return True
+    msg = str(exc)
+    return "429" in msg or "500" in msg or "503" in msg
+
+
+def _retry_tts_call(client, *, model, contents, config):
+    """Call generate_content with exponential backoff on transient errors."""
+    last_exc = None
+    for attempt in range(_MAX_RETRIES):
+        try:
+            return client.models.generate_content(
+                model=model, contents=contents, config=config
+            )
+        except Exception as exc:
+            last_exc = exc
+            if not _is_retryable(exc) or attempt == _MAX_RETRIES - 1:
+                raise
+            delay = min(_BASE_DELAY * (2 ** attempt) + random.uniform(0, 0.5), _MAX_DELAY)
+            logger.warning(
+                "Gemini TTS call failed (attempt %d/%d), retrying in %.1fs: %s",
+                attempt + 1, _MAX_RETRIES, delay, exc,
+            )
+            time.sleep(delay)
+    raise last_exc  # type: ignore[misc]
 
 
 def render_tts_to_mp3(
@@ -34,7 +74,8 @@ def render_tts_to_mp3(
     try:
         client = genai.Client(api_key=config.GEMINI_API_KEY)
 
-        response = client.models.generate_content(
+        response = _retry_tts_call(
+            client,
             model=config.GEMINI_TTS_MODEL,
             contents=script,
             config=types.GenerateContentConfig(
@@ -94,13 +135,17 @@ def _pcm_to_mp3(pcm_bytes: bytes, sample_rate: int) -> bytes | None:
             ],
             input=pcm_bytes,
             capture_output=True,
+            timeout=_SUBPROCESS_TIMEOUT,
         )
         if result.returncode != 0:
             logger.error("ffmpeg PCM->MP3 failed: %s", result.stderr.decode(errors="replace"))
             return None
         return result.stdout
-    except Exception:
-        logger.exception("ffmpeg subprocess failed")
+    except subprocess.TimeoutExpired:
+        logger.error("ffmpeg PCM->MP3 timed out after %ds", _SUBPROCESS_TIMEOUT)
+        return None
+    except OSError:
+        logger.exception("ffmpeg subprocess failed to start")
         return None
 
 
@@ -117,8 +162,12 @@ def _probe_duration(mp3_bytes: bytes) -> int | None:
             ],
             input=mp3_bytes,
             capture_output=True, text=True,
+            timeout=_SUBPROCESS_TIMEOUT,
         )
         return int(float(result.stdout.strip()))
-    except Exception:
+    except subprocess.TimeoutExpired:
+        logger.warning("ffprobe timed out after %ds", _SUBPROCESS_TIMEOUT)
+        return None
+    except (OSError, ValueError):
         logger.warning("Could not probe audio duration", exc_info=True)
         return None

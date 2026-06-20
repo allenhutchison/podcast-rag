@@ -262,13 +262,17 @@
                   </button>`;
         }
 
-        async function triggerBriefingAudio(briefingId, btn) {
+        async function triggerBriefingAudio(briefingId, btn, attempt = 0) {
+            const MAX_ATTEMPTS = 12;  // ~60s at 5s intervals
             if (btn) {
                 btn.disabled = true;
                 btn.textContent = 'Generating audio...';
             }
             try {
-                const res = await fetch(`/api/feed/briefing/${briefingId}/audio`, { method: 'POST' });
+                const res = await fetch(`/api/feed/briefing/${briefingId}/audio`, {
+                    method: 'POST',
+                    credentials: 'include'
+                });
                 const data = await res.json();
                 if (data.status === 'ready' && data.audio_url) {
                     const audio = document.createElement('audio');
@@ -278,8 +282,16 @@
                     audio.className = 'w-full mt-3';
                     btn.replaceWith(audio);
                 } else if (data.status === 'pending') {
+                    if (attempt >= MAX_ATTEMPTS) {
+                        if (btn) {
+                            btn.disabled = false;
+                            btn.textContent = 'Retry audio generation';
+                        }
+                        alert('Audio generation is taking longer than expected. Please try again later.');
+                        return;
+                    }
                     if (btn) btn.textContent = 'Generating...';
-                    setTimeout(() => triggerBriefingAudio(briefingId, btn), 5000);
+                    setTimeout(() => triggerBriefingAudio(briefingId, btn, attempt + 1), 5000);
                 } else {
                     if (btn) {
                         btn.disabled = false;
@@ -631,6 +643,13 @@
             const start = Date.now();
             const tryTrigger = () => {
                 const safePlayId = CSS.escape(playId);
+                // If audio is already ready, the card has an <audio> element, not a button
+                const audio = document.querySelector(`audio[src*="${safePlayId}"]`);
+                if (audio) {
+                    audio.play();
+                    return;
+                }
+                // Otherwise, find and click the generate button
                 const btn = document.querySelector(`button[onclick*="${safePlayId}"]`);
                 if (btn) {
                     btn.click();

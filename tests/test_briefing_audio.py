@@ -59,10 +59,27 @@ class TestGenerateBriefingAudio:
         mock_briefing.audio_status = "generating"
         repo = MagicMock()
         repo.get_briefing_by_id.return_value = mock_briefing
+        repo.claim_briefing_audio.return_value = False  # stale claim not yet timed out
 
         result = generate_briefing_audio("briefing-123", repo, mock_config)
         assert result == BRIEFING_AUDIO_PENDING
-        repo.claim_briefing_audio.assert_not_called()
+
+    @patch("src.services.briefing_generator.generate_audio_script")
+    @patch("src.services.tts.render_tts_to_mp3")
+    def test_ready_without_data_recovers(self, mock_tts, mock_script, mock_config, mock_briefing):
+        """Ready status with no audio_data should reset to failed and regenerate."""
+        mock_briefing.audio_status = "ready"
+        mock_briefing.audio_data = None
+        mock_script.return_value = "spoken script text"
+        mock_tts.return_value = (b"mp3 bytes", 180)
+        repo = MagicMock()
+        repo.get_briefing_by_id.return_value = mock_briefing
+        repo.claim_briefing_audio.return_value = True
+
+        result = generate_briefing_audio("briefing-123", repo, mock_config)
+        assert result == BRIEFING_AUDIO_READY
+        # Should have reset status to failed before claiming
+        repo.update_briefing_audio_status.assert_any_call("briefing-123", "failed")
 
     def test_not_found_returns_none(self, mock_config):
         repo = MagicMock()

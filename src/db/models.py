@@ -400,6 +400,7 @@ class DailyBriefing(Base):
     audio_status: Mapped[str | None] = mapped_column(String(20))
     audio_duration_sec: Mapped[int | None] = mapped_column(Integer)
     audio_generated_at: Mapped[datetime | None] = mapped_column(DateTime)
+    audio_claimed_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

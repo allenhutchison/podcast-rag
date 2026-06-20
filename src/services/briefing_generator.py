@@ -410,10 +410,12 @@ def generate_audio_script(briefing_data: dict, config: Config) -> str | None:
         Plain-text spoken script, or None on any failure.
     """
     try:
+        # Validate input against the DigestBriefing schema
+        validated = DigestBriefing.model_validate(briefing_data)
+        briefing_json = json.dumps(validated.model_dump(), default=str)
+
         client = genai.Client(api_key=config.GEMINI_API_KEY)
-        prompt = _AUDIO_SCRIPT_PROMPT.format(
-            briefing_json=json.dumps(briefing_data, default=str)
-        )
+        prompt = _AUDIO_SCRIPT_PROMPT.format(briefing_json=briefing_json)
 
         response = _retry_generate_content(
             client,
