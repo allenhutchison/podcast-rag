@@ -70,6 +70,18 @@ class Config:
         self.GEMINI_MODEL_FLASH = os.getenv("GEMINI_MODEL_FLASH") or self.GEMINI_MODEL
         self.GEMINI_MODEL_PRO = os.getenv("GEMINI_MODEL_PRO") or self.GEMINI_MODEL
 
+        # TTS configuration (gemini-3.1-flash-tts-preview)
+        self.GEMINI_TTS_MODEL = os.getenv(
+            "GEMINI_TTS_MODEL", "gemini-3.1-flash-tts-preview"
+        )
+        self.GEMINI_TTS_VOICE = os.getenv("GEMINI_TTS_VOICE", "Puck")
+        self.BRIEFING_AUDIO_SAMPLE_RATE = int(
+            os.getenv("BRIEFING_AUDIO_SAMPLE_RATE", "24000")
+        )
+        self.BRIEFING_AUDIO_RETENTION_DAYS = int(
+            os.getenv("BRIEFING_AUDIO_RETENTION_DAYS", "30")
+        )
+
         # Gemini File Search configuration
         self.GEMINI_FILE_SEARCH_STORE_NAME = os.getenv("GEMINI_FILE_SEARCH_STORE_NAME", "podcast-transcripts")
 

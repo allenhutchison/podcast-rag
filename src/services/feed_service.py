@@ -159,6 +159,13 @@ def get_feed(
                 "episode_highlights": day_briefing.episode_highlights,
                 "connection_insight": day_briefing.connection_insight,
                 "episode_count": day_briefing.episode_count,
+                "audio_status": day_briefing.audio_status,
+                "audio_url": (
+                    f"/api/feed/briefing/{day_briefing.id}/audio"
+                    if day_briefing.audio_status == "ready"
+                    else None
+                ),
+                "audio_duration_sec": day_briefing.audio_duration_sec,
                 "created_at": day_briefing.created_at.replace(tzinfo=UTC).isoformat()
                 if day_briefing.created_at
                 else None,
@@ -313,6 +320,13 @@ def _briefing_to_response(briefing, briefing_date: date) -> dict:
         "episode_highlights": briefing.episode_highlights,
         "connection_insight": briefing.connection_insight,
         "episode_count": briefing.episode_count,
+        "audio_status": briefing.audio_status,
+        "audio_url": (
+            f"/api/feed/briefing/{briefing.id}/audio"
+            if briefing.audio_status == "ready"
+            else None
+        ),
+        "audio_duration_sec": briefing.audio_duration_sec,
         "created_at": briefing.created_at.replace(tzinfo=UTC).isoformat()
         if briefing.created_at
         else None,

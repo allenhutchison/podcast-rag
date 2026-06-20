@@ -11,6 +11,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -392,6 +393,13 @@ class DailyBriefing(Base):
     episode_ids: Mapped[list[str]] = mapped_column(
         JSON, nullable=False, default=list
     )
+
+    # Audio briefing fields (lazy-generated on first play, stored as DB blob)
+    audio_data: Mapped[bytes | None] = mapped_column(LargeBinary)
+    audio_mime_type: Mapped[str | None] = mapped_column(String(64))
+    audio_status: Mapped[str | None] = mapped_column(String(20))
+    audio_duration_sec: Mapped[int | None] = mapped_column(Integer)
+    audio_generated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

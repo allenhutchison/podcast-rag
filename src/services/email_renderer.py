@@ -100,7 +100,7 @@ def _render_briefing_html(briefing: dict) -> str:
 
     Args:
         briefing: Dict with headline, briefing, key_themes, episode_highlights,
-                  and connection_insight.
+                  connection_insight, and optional id (for audio link).
 
     Returns:
         HTML string for the briefing card.
@@ -160,6 +160,18 @@ def _render_briefing_html(briefing: dict) -> str:
             f'{escape_html(connection)}</p></div>'
         )
 
+    # "Listen to this briefing" link — opens web player which generates audio on demand
+    briefing_id = briefing.get("id")
+    audio_link_html = ""
+    if briefing_id:
+        audio_link_html = (
+            f'<div style="margin-top: 16px;">'
+            f'<a href="https://podcast-rag.feed/feed.html?play={briefing_id}" '
+            f'style="display: inline-block; padding: 8px 16px; background: #2563eb; color: #ffffff; '
+            f'text-decoration: none; border-radius: 6px; font-size: 13px; font-weight: 600;">'
+            f'▶ Listen to this briefing</a></div>'
+        )
+
     return f'''
     <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 24px; margin-bottom: 24px;">
         <p style="margin: 0 0 4px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #6b7280; font-weight: 600;">Today's Briefing</p>
@@ -168,6 +180,7 @@ def _render_briefing_html(briefing: dict) -> str:
         <div style="margin-top: 12px;">{theme_pills}</div>
         {highlights_html}
         {connection_html}
+        {audio_link_html}
     </div>
     '''
 

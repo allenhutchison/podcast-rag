@@ -230,6 +230,8 @@
                 connectionHtml = `<p class="text-sm text-blue-700 italic mt-3">${escapeHtml(briefing.connection_insight)}</p>`;
             }
 
+            const audioHtml = renderBriefingAudio(briefing);
+
             card.innerHTML = `
                 <div class="flex items-center gap-2 mb-2">
                     <span class="text-sm font-semibold text-blue-600 uppercase tracking-wide">Daily Briefing</span>
@@ -239,9 +241,59 @@
                 ${themesHtml}
                 ${connectionHtml}
                 ${highlightsHtml}
+                ${audioHtml}
             `;
 
             return card;
+        }
+
+        function renderBriefingAudio(briefing) {
+            if (briefing.audio_url) {
+                return `<audio controls preload="none" src="${escapeHtml(briefing.audio_url)}" class="w-full mt-3"></audio>`;
+            }
+            if (!briefing.id) return '';
+            const isPending = briefing.audio_status === 'pending' || briefing.audio_status === 'generating';
+            const isFailed = briefing.audio_status === 'failed';
+            const label = isPending ? 'Generating audio...' : isFailed ? 'Retry audio generation' : 'Generate audio';
+            const disabled = isPending ? 'disabled' : '';
+            return `<button onclick="triggerBriefingAudio('${escapeHtml(briefing.id)}', this)" ${disabled}
+                      class="mt-3 px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                    ${label}
+                  </button>`;
+        }
+
+        async function triggerBriefingAudio(briefingId, btn) {
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'Generating audio...';
+            }
+            try {
+                const res = await fetch(`/api/feed/briefing/${briefingId}/audio`, { method: 'POST' });
+                const data = await res.json();
+                if (data.status === 'ready' && data.audio_url) {
+                    const audio = document.createElement('audio');
+                    audio.controls = true;
+                    audio.autoplay = true;
+                    audio.src = data.audio_url;
+                    audio.className = 'w-full mt-3';
+                    btn.replaceWith(audio);
+                } else if (data.status === 'pending') {
+                    if (btn) btn.textContent = 'Generating...';
+                    setTimeout(() => triggerBriefingAudio(briefingId, btn), 5000);
+                } else {
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.textContent = 'Retry audio generation';
+                    }
+                    alert('Audio generation failed. Please try again later.');
+                }
+            } catch (e) {
+                console.error('Audio generation failed:', e);
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = 'Retry audio generation';
+                }
+            }
         }
 
         function showBriefingPlaceholder() {
@@ -566,7 +618,27 @@
             if (!user) return;
             updateUserUI(user);
             loadDigestSetting();
-            loadFeed(null);
+            await loadFeed(null);
+            handlePlayParam();
+        }
+
+        async function handlePlayParam() {
+            const params = new URLSearchParams(window.location.search);
+            const playId = params.get('play');
+            if (!playId) return;
+            // Wait for the briefing card to appear, then trigger audio
+            const maxWait = 10000;
+            const start = Date.now();
+            const tryTrigger = () => {
+                const safePlayId = CSS.escape(playId);
+                const btn = document.querySelector(`button[onclick*="${safePlayId}"]`);
+                if (btn) {
+                    btn.click();
+                } else if (Date.now() - start < maxWait) {
+                    setTimeout(tryTrigger, 500);
+                }
+            };
+            tryTrigger();
         }
 
         init();
