@@ -6,6 +6,7 @@ import pytest
 
 from src.config import Config
 from src.services.briefing_audio import (
+    BRIEFING_AUDIO_FAILED,
     BRIEFING_AUDIO_PENDING,
     BRIEFING_AUDIO_READY,
     generate_briefing_audio,
@@ -122,6 +123,26 @@ class TestGenerateBriefingAudio:
 
     @patch("src.services.briefing_generator.generate_audio_script")
     @patch("src.services.tts.render_tts_to_mp3")
+    def test_successful_generation_with_null_duration(self, mock_tts, mock_script, mock_config, mock_briefing):
+        """ffprobe failure stores None duration, not 0."""
+        mock_script.return_value = "spoken script text"
+        mock_tts.return_value = (b"mp3 bytes", None)  # ffprobe failed
+        repo = MagicMock()
+        repo.get_briefing_by_id.return_value = mock_briefing
+        repo.claim_briefing_audio.return_value = True
+
+        result = generate_briefing_audio("briefing-123", repo, mock_config)
+        assert result == BRIEFING_AUDIO_READY
+        repo.update_briefing_audio.assert_called_once_with(
+            briefing_id="briefing-123",
+            audio_data=b"mp3 bytes",
+            audio_mime_type="audio/mpeg",
+            audio_duration_sec=None,
+            status="ready",
+        )
+
+    @patch("src.services.briefing_generator.generate_audio_script")
+    @patch("src.services.tts.render_tts_to_mp3")
     def test_tts_failure_marks_failed(self, mock_tts, mock_script, mock_config, mock_briefing):
         mock_script.return_value = "spoken script text"
         mock_tts.return_value = (None, None)
@@ -156,6 +177,32 @@ class TestGenerateBriefingAudio:
         repo.update_briefing_audio_status.assert_called_once_with(
             "briefing-123", "failed"
         )
+
+    def test_failed_status_is_terminal(self, mock_config, mock_briefing):
+        """Failed status should not re-trigger without force_retry."""
+        mock_briefing.audio_status = "failed"
+        repo = MagicMock()
+        repo.get_briefing_by_id.return_value = mock_briefing
+
+        result = generate_briefing_audio("briefing-123", repo, mock_config)
+        assert result == BRIEFING_AUDIO_FAILED
+        # Should NOT attempt to claim or generate
+        repo.claim_briefing_audio.assert_not_called()
+
+    @patch("src.services.briefing_generator.generate_audio_script")
+    @patch("src.services.tts.render_tts_to_mp3")
+    def test_force_retry_re_attempts_after_failure(self, mock_tts, mock_script, mock_config, mock_briefing):
+        """force_retry=True should re-attempt generation after failure."""
+        mock_briefing.audio_status = "failed"
+        mock_script.return_value = "spoken script text"
+        mock_tts.return_value = (b"mp3 bytes", 180)
+        repo = MagicMock()
+        repo.get_briefing_by_id.return_value = mock_briefing
+        repo.claim_briefing_audio.return_value = True
+
+        result = generate_briefing_audio("briefing-123", repo, mock_config, force_retry=True)
+        assert result == BRIEFING_AUDIO_READY
+        repo.claim_briefing_audio.assert_called_once()
 
 
 class TestGetAudioUrlOrTrigger:

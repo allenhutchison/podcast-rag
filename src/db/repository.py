@@ -1355,7 +1355,7 @@ class PodcastRepositoryInterface(ABC):
         briefing_id: str,
         audio_data: bytes,
         audio_mime_type: str,
-        audio_duration_sec: int,
+        audio_duration_sec: int | None,
         status: str,
     ) -> None:
         """Update all audio fields on a briefing after successful generation."""
@@ -3777,12 +3777,20 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
     def update_briefing_audio_status(
         self, briefing_id: str, status: str
     ) -> None:
-        """Update audio_status field on a briefing."""
+        """Update audio_status field on a briefing.
+
+        Clears audio_claimed_at when transitioning to a terminal state
+        (ready/failed) so stale-claim logic doesn't apply to past claims.
+        """
+
+        values: dict = {"audio_status": status}
+        if status in ("ready", "failed"):
+            values["audio_claimed_at"] = None
         with self._get_session() as session:
             session.execute(
                 sa_update(DailyBriefing)
                 .where(DailyBriefing.id == briefing_id)
-                .values(audio_status=status)
+                .values(**values)
             )
             session.commit()
 
@@ -3791,7 +3799,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         briefing_id: str,
         audio_data: bytes,
         audio_mime_type: str,
-        audio_duration_sec: int,
+        audio_duration_sec: int | None,
         status: str,
     ) -> None:
         """Update all audio fields on a briefing after successful generation."""

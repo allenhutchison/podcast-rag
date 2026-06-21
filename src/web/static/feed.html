@@ -256,20 +256,22 @@
             const isFailed = briefing.audio_status === 'failed';
             const label = isPending ? 'Generating audio...' : isFailed ? 'Retry audio generation' : 'Generate audio';
             const disabled = isPending ? 'disabled' : '';
-            return `<button onclick="triggerBriefingAudio('${escapeHtml(briefing.id)}', this)" ${disabled}
+            const retryParam = isFailed ? '?retry=true' : '';
+            return `<button onclick="triggerBriefingAudio('${escapeHtml(briefing.id)}', this, 0, ${isFailed})" ${disabled}
                       class="mt-3 px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
                     ${label}
                   </button>`;
         }
 
-        async function triggerBriefingAudio(briefingId, btn, attempt = 0) {
+        async function triggerBriefingAudio(briefingId, btn, attempt = 0, retry = false) {
             const MAX_ATTEMPTS = 12;  // ~60s at 5s intervals
             if (btn) {
                 btn.disabled = true;
                 btn.textContent = 'Generating audio...';
             }
             try {
-                const res = await fetch(`/api/feed/briefing/${briefingId}/audio`, {
+                const url = `/api/feed/briefing/${briefingId}/audio${retry ? '?retry=true' : ''}`;
+                const res = await fetch(url, {
                     method: 'POST',
                     credentials: 'include'
                 });

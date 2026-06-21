@@ -7,7 +7,7 @@ and never blocks the feed response.
 
 import logging
 from collections import defaultdict
-from datetime import UTC, date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from src.config import Config
@@ -71,9 +71,9 @@ def get_feed(
     """
     # Resolve timezone
     try:
-        tz = ZoneInfo(user_timezone) if user_timezone else timezone.utc
+        tz = ZoneInfo(user_timezone) if user_timezone else UTC
     except (KeyError, ValueError):
-        tz = timezone.utc
+        tz = UTC
 
     # Clamp days to valid range
     days = max(1, min(days, MAX_DAYS))
@@ -159,7 +159,7 @@ def get_feed(
                 "episode_highlights": day_briefing.episode_highlights,
                 "connection_insight": day_briefing.connection_insight,
                 "episode_count": day_briefing.episode_count,
-                "audio_status": day_briefing.audio_status,
+                "audio_status": "pending" if day_briefing.audio_status == "generating" else day_briefing.audio_status,
                 "audio_url": (
                     f"/api/feed/briefing/{day_briefing.id}/audio"
                     if day_briefing.audio_status == "ready"
@@ -238,9 +238,9 @@ def generate_and_persist_briefing(
         - None: no episodes or generation failed
     """
     try:
-        tz = ZoneInfo(user_timezone) if user_timezone else timezone.utc
+        tz = ZoneInfo(user_timezone) if user_timezone else UTC
     except (KeyError, ValueError):
-        tz = timezone.utc
+        tz = UTC
 
     today_local = datetime.now(tz).date()
 
@@ -320,7 +320,7 @@ def _briefing_to_response(briefing, briefing_date: date) -> dict:
         "episode_highlights": briefing.episode_highlights,
         "connection_insight": briefing.connection_insight,
         "episode_count": briefing.episode_count,
-        "audio_status": briefing.audio_status,
+        "audio_status": "pending" if briefing.audio_status == "generating" else briefing.audio_status,
         "audio_url": (
             f"/api/feed/briefing/{briefing.id}/audio"
             if briefing.audio_status == "ready"

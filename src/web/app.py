@@ -1185,9 +1185,15 @@ def _parse_range(range_header: str, total: int) -> tuple[int, int] | None:
 async def trigger_briefing_audio(
     request: Request,
     briefing_id: str,
+    retry: bool = False,
     current_user: dict = Depends(get_current_user),
 ):
     """Trigger or fetch audio for a briefing.
+
+    Args:
+        retry: If true, re-attempt generation after a terminal failure.
+            Without this, a "failed" status is returned without re-triggering
+            (avoids retry storms on deterministic failures).
 
     Returns:
         - 200: {"status": "ready", "audio_url": "..."}
@@ -1204,7 +1210,7 @@ async def trigger_briefing_audio(
         raise HTTPException(status_code=404, detail="Briefing not found")
 
     result = await asyncio.to_thread(
-        get_audio_url_or_trigger, briefing_id, _repository, config
+        get_audio_url_or_trigger, briefing_id, _repository, config, retry
     )
 
     if result["status"] == "ready":
