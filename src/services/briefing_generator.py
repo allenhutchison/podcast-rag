@@ -11,6 +11,7 @@ import time
 
 from google import genai
 from google.genai import types
+from pydantic import ValidationError
 
 from src.config import Config
 from src.db.gemini_file_search import GeminiFileSearchManager
@@ -433,6 +434,11 @@ def generate_audio_script(briefing_data: dict, config: Config) -> str | None:
         logger.warning("Empty response from Gemini for audio script")
         return None
 
+    except (ValidationError, ValueError, TypeError) as e:
+        logger.error(
+            "Audio script validation/generation error: %s", e, exc_info=True
+        )
+        return None
     except Exception:
-        logger.exception("Failed to generate audio script")
+        logger.exception("Failed to generate audio script (unexpected error)")
         return None
