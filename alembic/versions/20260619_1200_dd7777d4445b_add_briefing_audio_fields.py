@@ -1,6 +1,6 @@
 """add_briefing_audio_fields
 
-Revision ID: a1b2c3d4e5f6
+Revision ID: dd7777d4445b
 Revises: 6f17f64a4c34
 Create Date: 2026-06-19 12:00:00.000000
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'a1b2c3d4e5f6'
+revision: str = 'dd7777d4445b'
 down_revision: Union[str, None] = '6f17f64a4c34'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
