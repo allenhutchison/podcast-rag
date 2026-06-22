@@ -42,8 +42,9 @@ class TestRenderTtsToMp3:
         ffmpeg_result.returncode = 0
         ffmpeg_result.stdout = b"fake mp3"
         ffmpeg_result.stderr = b""
-        # First call: ffmpeg, second: ffprobe
-        mock_subprocess.side_effect = [ffmpeg_result, MagicMock(stdout="180.5\n")]
+        # First call: ffmpeg, second: ffprobe. Both run without text mode,
+        # so stdout is bytes (ffprobe duration is decoded in _probe_duration).
+        mock_subprocess.side_effect = [ffmpeg_result, MagicMock(stdout=b"180.5\n")]
 
         mp3, duration = render_tts_to_mp3("test script", mock_config)
         assert mp3 == b"fake mp3"

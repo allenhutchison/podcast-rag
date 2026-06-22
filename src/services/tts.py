@@ -161,10 +161,12 @@ def _probe_duration(mp3_bytes: bytes) -> int | None:
                 "pipe:0",
             ],
             input=mp3_bytes,
-            capture_output=True, text=True,
+            # No text=True: input is bytes, and text mode would try to
+            # .encode() the bytes (AttributeError). Decode stdout manually.
+            capture_output=True,
             timeout=_SUBPROCESS_TIMEOUT,
         )
-        return int(float(result.stdout.strip()))
+        return int(float(result.stdout.decode(errors="replace").strip()))
     except subprocess.TimeoutExpired:
         logger.warning("ffprobe timed out after %ds", _SUBPROCESS_TIMEOUT)
         return None
