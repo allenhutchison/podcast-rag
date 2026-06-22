@@ -22,9 +22,12 @@ FROM python:3.12-slim
 
 # Install system dependencies
 # - curl: For health checks
+# - ffmpeg: provides ffmpeg + ffprobe, used by src/services/tts.py to
+#   transcode Gemini TTS PCM output to MP3 for briefing audio
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     curl \
+    ffmpeg \
     apt-transport-https \
     ca-certificates \
     gnupg \
