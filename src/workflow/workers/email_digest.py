@@ -224,7 +224,7 @@ class EmailDigestWorker(WorkerInterface):
                 try:
                     briefing = generate_digest_briefing(episodes, self.config)
                     if briefing:
-                        self.repository.create_or_update_daily_briefing(
+                        db_briefing = self.repository.create_or_update_daily_briefing(
                             user_id=user.id,
                             briefing_date=briefing_date,
                             headline=briefing["headline"],
@@ -238,6 +238,7 @@ class EmailDigestWorker(WorkerInterface):
                             episode_count=len(episodes),
                             episode_ids=episode_ids,
                         )
+                        briefing["id"] = str(db_briefing.id) if db_briefing else None
                     else:
                         self.repository.release_briefing_claim(user.id, briefing_date)
                 except Exception:
@@ -246,6 +247,7 @@ class EmailDigestWorker(WorkerInterface):
             elif existing and existing.headline and existing.headline != "Generating...":
                 # Another path already generated a valid briefing — reuse it
                 briefing = {
+                    "id": str(existing.id),
                     "headline": existing.headline,
                     "briefing": existing.briefing_text,
                     "key_themes": existing.key_themes or [],

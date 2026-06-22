@@ -11,6 +11,7 @@ import time
 
 from google import genai
 from google.genai import types
+from pydantic import ValidationError
 
 from src.config import Config
 from src.db.gemini_file_search import GeminiFileSearchManager
@@ -366,4 +367,78 @@ def generate_digest_briefing(episodes: list, config: Config) -> dict | None:
 
     except Exception:
         logger.exception("Failed to generate digest briefing")
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Audio script generation
+# ---------------------------------------------------------------------------
+
+_AUDIO_SCRIPT_PROMPT = """\
+You are rewriting a daily podcast briefing newsletter into a spoken audio script \
+for a single host. Convert the written briefing into natural spoken prose.
+
+Rules:
+- Open with a brief greeting and the day's headline.
+- Read the main briefing (the "briefing" field), adjusting phrasing for speech \
+(e.g. remove em-dashes and parentheticals, convert to spoken sentences).
+- For episode highlights, weave the top 4-5 most important episodes into a \
+"stories of the day" segment. Mention podcast name, episode title, and the \
+mini-analysis. Use a transition phrase between episodes.
+- For remaining episodes, give a one-line "also in your feed" rundown \
+(just podcast name + episode title, no analysis).
+- Close with the connection_insight (if present) as a reflective sign-off, \
+then a brief outro.
+- Use audio tags in square brackets for narration control where natural, \
+e.g. [pause], [emphasis], [quieter], [faster]. Use sparingly.
+- Do NOT include section headers, markdown, or formatting. Output plain \
+spoken text only.
+
+Briefing JSON:
+{briefing_json}
+"""
+
+
+def generate_audio_script(briefing_data: dict, config: Config) -> str | None:
+    """Rewrite a structured briefing into spoken-prose script for TTS.
+
+    Args:
+        briefing_data: Dict with headline, briefing, key_themes,
+            episode_highlights, connection_insight keys (DigestBriefing shape).
+        config: Application configuration.
+
+    Returns:
+        Plain-text spoken script, or None on any failure.
+    """
+    try:
+        # Validate input against the DigestBriefing schema
+        validated = DigestBriefing.model_validate(briefing_data)
+        briefing_json = json.dumps(validated.model_dump(), default=str)
+
+        client = genai.Client(api_key=config.GEMINI_API_KEY)
+        prompt = _AUDIO_SCRIPT_PROMPT.format(briefing_json=briefing_json)
+
+        response = _retry_generate_content(
+            client,
+            model=config.GEMINI_MODEL_FLASH,
+            contents=prompt,
+            config={
+                "response_mime_type": "text/plain",
+            },
+        )
+
+        text = response.text.strip() if response.text else ""
+        if text:
+            return text
+
+        logger.warning("Empty response from Gemini for audio script")
+        return None
+
+    except (ValidationError, ValueError, TypeError) as e:
+        logger.error(
+            "Audio script validation/generation error: %s", e, exc_info=True
+        )
+        return None
+    except Exception:
+        logger.exception("Failed to generate audio script (unexpected error)")
         return None

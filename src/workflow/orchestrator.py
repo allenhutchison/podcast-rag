@@ -9,9 +9,9 @@ import signal
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
 from src.config import Config
 from src.db.repository import PodcastRepositoryInterface
@@ -92,6 +92,7 @@ class PipelineOrchestrator:
         self._running = False
         self._last_sync: datetime | None = None
         self._last_email_digest_check: datetime | None = None
+        self._last_audio_retention: datetime | None = None
         self._stats = PipelineStats()
 
         # Workers (created lazily)
@@ -322,6 +323,9 @@ class PipelineOrchestrator:
         # 1.5. Check email digest timer (hourly, per-user timezone delivery)
         self._maybe_run_email_digests()
 
+        # 1.6. Check audio retention cleanup (daily)
+        self._maybe_run_audio_retention()
+
         # 2. Maintain download buffer
         self._maintain_download_buffer()
 
@@ -492,6 +496,41 @@ class PipelineOrchestrator:
 
         self._email_digest_future = self._background_executor.submit(_send_digests)
         self._email_digest_future.add_done_callback(_on_complete)
+
+    def _maybe_run_audio_retention(self) -> None:
+        """Run briefing audio retention cleanup once per day.
+
+        Purges audio blobs older than BRIEFING_AUDIO_RETENTION_DAYS to
+        prevent unbounded DB growth. The text briefing is preserved; only
+        the audio_data blob and related fields are cleared.
+        """
+        now = datetime.now(UTC)
+
+        if self._last_audio_retention is None:
+            # First check — set timestamp, skip cleanup (like initial sync)
+            self._last_audio_retention = now
+            return
+
+        hours_since = (now - self._last_audio_retention).total_seconds() / 3600
+        if hours_since < 24:
+            return
+
+        retention_days = self.config.BRIEFING_AUDIO_RETENTION_DAYS
+        if retention_days <= 0:
+            self._last_audio_retention = now
+            return  # Retention disabled
+
+        cutoff = now - timedelta(days=retention_days)
+        try:
+            cleared = self.repository.clear_audio_data_before(cutoff)
+            self._last_audio_retention = now
+            if cleared > 0:
+                logger.info(
+                    "Audio retention: cleared %d briefing audio blobs older than %d days",
+                    cleared, retention_days,
+                )
+        except SQLAlchemyError:
+            logger.exception("Audio retention cleanup failed")
 
     def _maintain_download_buffer(self) -> None:
         """Ensure download buffer has enough episodes ready for transcription."""

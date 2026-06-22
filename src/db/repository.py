@@ -11,11 +11,20 @@ from abc import ABC, abstractmethod
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import String, and_, cast, create_engine, func, or_, select, update as sa_update
+from sqlalchemy import String, and_, cast, create_engine, func, or_, select
+from sqlalchemy import update as sa_update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, sessionmaker
 
-from .models import ChatMessage, Conversation, DailyBriefing, Episode, Podcast, User, UserSubscription
+from .models import (
+    ChatMessage,
+    Conversation,
+    DailyBriefing,
+    Episode,
+    Podcast,
+    User,
+    UserSubscription,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1313,6 +1322,51 @@ class PodcastRepositoryInterface(ABC):
 
         Called when generation fails so subsequent attempts can retry.
         Only deletes rows where headline is the placeholder value.
+        """
+        pass
+
+    @abstractmethod
+    def get_briefing_by_id(self, briefing_id: str) -> "DailyBriefing | None":
+        """Fetch a single briefing by ID."""
+        pass
+
+    @abstractmethod
+    def claim_briefing_audio(
+        self, briefing_id: str, stale_claim_timeout_sec: int = 1800
+    ) -> bool:
+        """Atomically claim audio generation for a briefing.
+
+        Sets audio_status="generating" only if currently None or "failed".
+        Also allows reclaiming stale "generating" claims past the timeout.
+        Returns True if claimed, False if another request owns it.
+        """
+        pass
+
+    @abstractmethod
+    def update_briefing_audio_status(
+        self, briefing_id: str, status: str
+    ) -> None:
+        """Update audio_status field on a briefing."""
+        pass
+
+    @abstractmethod
+    def update_briefing_audio(
+        self,
+        briefing_id: str,
+        audio_data: bytes,
+        audio_mime_type: str,
+        audio_duration_sec: int | None,
+        status: str,
+    ) -> None:
+        """Update all audio fields on a briefing after successful generation."""
+        pass
+
+    @abstractmethod
+    def clear_audio_data_before(self, cutoff: "datetime") -> int:
+        """Clear audio blobs for briefings older than cutoff.
+
+        Keeps the text briefing; only nulls audio_data and related fields.
+        Returns number of rows affected.
         """
         pass
 
@@ -3508,10 +3562,16 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
     def get_daily_briefings_in_range(
         self, user_id: str, start_date: date, end_date: date
     ) -> list[DailyBriefing]:
-        """Get all briefings for a user within a date range, ordered by briefing_date desc."""
+        """Get all briefings for a user within a date range, ordered by briefing_date desc.
+
+        Defers audio_data loading to avoid pulling MB-scale blobs in feed reads.
+        """
+        from sqlalchemy.orm import defer
+
         with self._get_session() as session:
             stmt = (
                 select(DailyBriefing)
+                .options(defer(DailyBriefing.audio_data))
                 .where(
                     DailyBriefing.user_id == user_id,
                     DailyBriefing.briefing_date >= start_date,
@@ -3670,6 +3730,116 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 )
             )
             session.commit()
+
+    def get_briefing_by_id(self, briefing_id: str) -> DailyBriefing | None:
+        """Fetch a single briefing by ID."""
+        with self._get_session() as session:
+            return session.get(DailyBriefing, briefing_id)
+
+    def claim_briefing_audio(
+        self, briefing_id: str, stale_claim_timeout_sec: int = 1800
+    ) -> bool:
+        """Atomically claim audio generation for a briefing.
+
+        Sets audio_status="generating" only if currently None or "failed".
+        Also allows reclaiming from "generating" status if the claim is
+        older than stale_claim_timeout_sec (default 30 min), to recover
+        from crashed workers.
+        """
+        from datetime import UTC, datetime, timedelta
+
+        stale_cutoff = datetime.now(UTC) - timedelta(seconds=stale_claim_timeout_sec)
+        with self._get_session() as session:
+            result = session.execute(
+                sa_update(DailyBriefing)
+                .where(
+                    DailyBriefing.id == briefing_id,
+                    or_(
+                        DailyBriefing.audio_status.is_(None),
+                        DailyBriefing.audio_status == "failed",
+                        and_(
+                            DailyBriefing.audio_status == "generating",
+                            or_(
+                                DailyBriefing.audio_claimed_at.is_(None),
+                                DailyBriefing.audio_claimed_at < stale_cutoff,
+                            ),
+                        ),
+                    ),
+                )
+                .values(
+                    audio_status="generating",
+                    audio_claimed_at=datetime.now(UTC),
+                )
+            )
+            session.commit()
+            return result.rowcount > 0
+
+    def update_briefing_audio_status(
+        self, briefing_id: str, status: str
+    ) -> None:
+        """Update audio_status field on a briefing.
+
+        Clears audio_claimed_at when transitioning to a terminal state
+        (ready/failed) so stale-claim logic doesn't apply to past claims.
+        """
+
+        values: dict = {"audio_status": status}
+        if status in ("ready", "failed"):
+            values["audio_claimed_at"] = None
+        with self._get_session() as session:
+            session.execute(
+                sa_update(DailyBriefing)
+                .where(DailyBriefing.id == briefing_id)
+                .values(**values)
+            )
+            session.commit()
+
+    def update_briefing_audio(
+        self,
+        briefing_id: str,
+        audio_data: bytes,
+        audio_mime_type: str,
+        audio_duration_sec: int | None,
+        status: str,
+    ) -> None:
+        """Update all audio fields on a briefing after successful generation."""
+        from datetime import UTC, datetime
+
+        with self._get_session() as session:
+            session.execute(
+                sa_update(DailyBriefing)
+                .where(DailyBriefing.id == briefing_id)
+                .values(
+                    audio_data=audio_data,
+                    audio_mime_type=audio_mime_type,
+                    audio_duration_sec=audio_duration_sec,
+                    audio_status=status,
+                    audio_generated_at=datetime.now(UTC),
+                    audio_claimed_at=None,
+                )
+            )
+            session.commit()
+
+    def clear_audio_data_before(self, cutoff: datetime) -> int:
+        """Clear audio blobs for briefings older than cutoff."""
+        with self._get_session() as session:
+            result = session.execute(
+                sa_update(DailyBriefing)
+                .where(
+                    DailyBriefing.audio_generated_at.isnot(None),
+                    DailyBriefing.audio_generated_at < cutoff,
+                )
+                .values(
+                    audio_data=None,
+                    audio_mime_type=None,
+                    audio_duration_sec=None,
+                    audio_status=None,
+                    audio_generated_at=None,
+                    audio_claimed_at=None,
+                )
+            )
+            session.commit()
+            return result.rowcount
 
     def get_recent_processed_episodes(self, limit: int = 5) -> list[Episode]:
         """Get the most recently processed episodes from the database.

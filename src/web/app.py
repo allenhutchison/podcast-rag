@@ -1060,7 +1060,8 @@ async def get_feed(
     Returns:
         Feed with day-grouped briefings and episodes, cursor for next page.
     """
-    from src.services.feed_service import get_feed as build_feed, resolve_user_timezone
+    from src.services.feed_service import get_feed as build_feed
+    from src.services.feed_service import resolve_user_timezone
 
     user_id = current_user["sub"]
     user_timezone = await asyncio.to_thread(resolve_user_timezone, tz, user_id, _repository)
@@ -1144,6 +1145,144 @@ async def generate_feed_briefing(
         )
 
     return {"status": "ready", "briefing": result}
+
+
+# ---------------------------------------------------------------------------
+# Briefing audio endpoints (lazy generation + streaming from DB blob)
+# ---------------------------------------------------------------------------
+
+
+def _parse_range(range_header: str, total: int) -> tuple[int, int] | None:
+    """Parse a Range header value into (start, end) inclusive.
+
+    Returns None if the range is malformed or unsatisfiable.
+    """
+    try:
+        unit, ranges = range_header.split("=", 1)
+        if unit.strip().lower() != "bytes":
+            return None
+        range_spec = ranges.strip()
+        # Handle suffix range (e.g. "bytes=-500" = last 500 bytes)
+        if range_spec.startswith("-"):
+            suffix_len = int(range_spec[1:])
+            if suffix_len <= 0:
+                return None
+            start = max(0, total - suffix_len)
+            return start, total - 1
+        start_str, _, end_str = range_spec.partition("-")
+        start = int(start_str) if start_str else 0
+        end = int(end_str) if end_str else total - 1
+        # Validate bounds
+        if start > end or start >= total or start < 0:
+            return None
+        return start, min(end, total - 1)
+    except (ValueError, AttributeError):
+        return None
+
+
+@app.post("/api/feed/briefing/{briefing_id}/audio")
+@limiter.limit(config.WEB_RATE_LIMIT)
+async def trigger_briefing_audio(
+    request: Request,
+    briefing_id: str,
+    retry: bool = False,
+    current_user: dict = Depends(get_current_user),
+):
+    """Trigger or fetch audio for a briefing.
+
+    Args:
+        retry: If true, re-attempt generation after a terminal failure.
+            Without this, a "failed" status is returned without re-triggering
+            (avoids retry storms on deterministic failures).
+
+    Returns:
+        - 200: {"status": "ready", "audio_url": "..."}
+        - 202: {"status": "pending", "audio_url": null}
+        - 503: {"status": "failed", "audio_url": null}
+    """
+    from fastapi.responses import JSONResponse
+
+    from src.services.briefing_audio import audio_is_ready, get_audio_url_or_trigger
+
+    # Verify ownership
+    briefing = await asyncio.to_thread(_repository.get_briefing_by_id, briefing_id)
+    if not briefing or briefing.user_id != current_user["sub"]:
+        raise HTTPException(status_code=404, detail="Briefing not found")
+
+    result = await asyncio.to_thread(
+        get_audio_url_or_trigger, briefing_id, _repository, config, retry
+    )
+
+    if result["status"] == "ready":
+        return result
+    elif result["status"] == "pending":
+        return JSONResponse(status_code=202, content=result)
+    else:
+        return JSONResponse(status_code=503, content=result)
+
+
+@app.get("/api/feed/briefing/{briefing_id}/audio")
+@limiter.limit(config.WEB_RATE_LIMIT)
+async def serve_briefing_audio(
+    request: Request,
+    briefing_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Stream the briefing audio MP3 from the DB blob.
+
+    Supports HTTP Range requests for audio seeking.
+    """
+    from starlette.responses import Response
+
+    from src.services.briefing_audio import audio_is_ready
+
+    briefing = await asyncio.to_thread(_repository.get_briefing_by_id, briefing_id)
+    if not briefing or briefing.user_id != current_user["sub"]:
+        raise HTTPException(status_code=404, detail="Briefing not found")
+
+    if not audio_is_ready(briefing):
+        raise HTTPException(status_code=404, detail="Audio not generated")
+
+    data = briefing.audio_data
+    total = len(data)
+    mime = briefing.audio_mime_type or "audio/mpeg"
+
+    range_header = request.headers.get("range")
+    if range_header:
+        parsed = _parse_range(range_header, total)
+        if parsed is None:
+            return Response(
+                content=b"",
+                media_type=mime,
+                status_code=416,
+                headers={
+                    "Content-Range": f"bytes */{total}",
+                    "Accept-Ranges": "bytes",
+                },
+            )
+        start, end = parsed
+        chunk = data[start:end + 1]
+        return Response(
+            content=chunk,
+            media_type=mime,
+            status_code=206,
+            headers={
+                "Content-Range": f"bytes {start}-{end}/{total}",
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(len(chunk)),
+                "Cache-Control": "private, max-age=86400",
+            },
+        )
+
+    return Response(
+        content=data,
+        media_type=mime,
+        headers={
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(total),
+            "Cache-Control": "private, max-age=86400",
+        },
+    )
 
 
 @app.get("/")
