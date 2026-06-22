@@ -22,13 +22,11 @@ class TestRenderTtsToMp3:
     @patch("src.services.tts.genai.Client")
     @patch("src.services.tts.subprocess.run")
     def test_successful_render(self, mock_subprocess, mock_client_cls, mock_config):
-        # Mock Gemini response with base64 PCM data
-        import base64
+        # google-genai returns inline_data.data as raw PCM bytes
         pcm_data = b"\x00\x01" * 100
-        encoded = base64.b64encode(pcm_data)
 
         mock_part = MagicMock()
-        mock_part.inline_data.data = encoded
+        mock_part.inline_data.data = pcm_data
         mock_candidate = MagicMock()
         mock_candidate.content.parts = [mock_part]
         mock_response = MagicMock()
@@ -49,6 +47,8 @@ class TestRenderTtsToMp3:
         mp3, duration = render_tts_to_mp3("test script", mock_config)
         assert mp3 == b"fake mp3"
         assert duration == 180
+        # ffmpeg must receive the raw PCM unchanged (not re-decoded as base64)
+        assert mock_subprocess.call_args_list[0].kwargs["input"] == pcm_data
 
     @patch("src.services.tts.genai.Client")
     def test_api_failure_returns_none(self, mock_client_cls, mock_config):

@@ -99,7 +99,15 @@ def render_tts_to_mp3(
         for candidate in response.candidates:
             for part in candidate.content.parts:
                 if part.inline_data and part.inline_data.data:
-                    pcm_bytes += base64.b64decode(part.inline_data.data)
+                    data = part.inline_data.data
+                    # google-genai returns inline_data.data as raw bytes
+                    # (Blob.data is Optional[bytes]). Decoding raw PCM as
+                    # base64 silently drops most of it, yielding a fraction
+                    # of a second of audio. Only decode if it's a str
+                    # (tolerate older SDKs that returned base64 strings).
+                    pcm_bytes += (
+                        base64.b64decode(data) if isinstance(data, str) else data
+                    )
     except Exception:
         logger.exception("Failed to extract audio data from TTS response")
         return None, None
