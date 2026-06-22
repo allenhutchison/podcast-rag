@@ -160,11 +160,14 @@ def _render_briefing_html(briefing: dict) -> str:
             f'{escape_html(connection)}</p></div>'
         )
 
-    # "Listen to this briefing" link — opens web player which generates audio on demand
+    # "Listen to this briefing" link — opens web player which generates audio on demand.
+    # Uses WEB_BASE_URL (the public app URL, same as other email links) so the link
+    # points at the real service. Skip the link entirely if no base URL is configured,
+    # since a relative URL is useless in an email.
     briefing_id = briefing.get("id")
     audio_link_html = ""
-    if briefing_id:
-        base_url = _config.APP_BASE_URL if _config else "https://localhost:8080"
+    base_url = _get_config().WEB_BASE_URL.rstrip("/")
+    if briefing_id and base_url:
         play_url = f"{base_url}/feed.html?play={quote(str(briefing_id), safe='')}"
         audio_link_html = (
             f'<div style="margin-top: 16px;">'
