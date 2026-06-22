@@ -12,7 +12,6 @@ from zoneinfo import ZoneInfo
 
 from src.config import Config
 from src.db.repository import PodcastRepositoryInterface
-from src.services.briefing_audio import audio_is_ready
 
 logger = logging.getLogger(__name__)
 
@@ -161,9 +160,14 @@ def get_feed(
                 "connection_insight": day_briefing.connection_insight,
                 "episode_count": day_briefing.episode_count,
                 "audio_status": "pending" if day_briefing.audio_status == "generating" else day_briefing.audio_status,
+                # Status only: the feed query defers audio_data, so touching
+                # the blob here (via audio_is_ready) triggers a lazy load on a
+                # session-detached instance -> DetachedInstanceError. Status is
+                # written atomically with the blob in update_briefing_audio, so
+                # "ready" reliably implies the audio exists.
                 "audio_url": (
                     f"/api/feed/briefing/{day_briefing.id}/audio"
-                    if audio_is_ready(day_briefing)
+                    if day_briefing.audio_status == "ready"
                     else None
                 ),
                 "audio_duration_sec": day_briefing.audio_duration_sec,
@@ -322,9 +326,11 @@ def _briefing_to_response(briefing, briefing_date: date) -> dict:
         "connection_insight": briefing.connection_insight,
         "episode_count": briefing.episode_count,
         "audio_status": "pending" if briefing.audio_status == "generating" else briefing.audio_status,
+        # Status only (see get_feed): avoids loading the deferred audio_data
+        # blob on a detached instance. "ready" implies the blob was persisted.
         "audio_url": (
             f"/api/feed/briefing/{briefing.id}/audio"
-            if audio_is_ready(briefing)
+            if briefing.audio_status == "ready"
             else None
         ),
         "audio_duration_sec": briefing.audio_duration_sec,
