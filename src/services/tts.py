@@ -6,8 +6,10 @@ gemini-3.1-flash-tts-preview. Handles PCM decoding and ffmpeg transcoding.
 
 import base64
 import logging
+import os
 import random
 import subprocess
+import tempfile
 import time
 
 from google import genai
@@ -158,19 +160,25 @@ def _pcm_to_mp3(pcm_bytes: bytes, sample_rate: int) -> bytes | None:
 
 
 def _probe_duration(mp3_bytes: bytes) -> int | None:
-    """Get audio duration in seconds using ffprobe via stdin."""
+    """Get audio duration in seconds using ffprobe.
+
+    ffprobe can't compute MP3 duration from a non-seekable stdin pipe (it
+    reports duration=N/A even for valid audio), so write the bytes to a
+    temp file it can seek and probe that.
+    """
+    tmp_path = None
     try:
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
+            tmp.write(mp3_bytes)
+            tmp_path = tmp.name
         result = subprocess.run(
             [
                 "ffprobe", "-v", "error",
                 "-show_entries", "format=duration",
                 "-of", "default=noprint_wrappers=1:nokey=1",
-                "-f", "mp3",
-                "pipe:0",
+                tmp_path,
             ],
-            input=mp3_bytes,
-            # No text=True: input is bytes, and text mode would try to
-            # .encode() the bytes (AttributeError). Decode stdout manually.
+            # Decode stdout manually (no text=True); ffprobe writes bytes.
             capture_output=True,
             timeout=_SUBPROCESS_TIMEOUT,
         )
@@ -181,3 +189,9 @@ def _probe_duration(mp3_bytes: bytes) -> int | None:
     except (OSError, ValueError):
         logger.warning("Could not probe audio duration", exc_info=True)
         return None
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
