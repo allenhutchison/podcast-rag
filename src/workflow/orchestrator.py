@@ -11,7 +11,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
 from src.config import Config
 from src.db.repository import PodcastRepositoryInterface
@@ -529,7 +529,7 @@ class PipelineOrchestrator:
                     "Audio retention: cleared %d briefing audio blobs older than %d days",
                     cleared, retention_days,
                 )
-        except OperationalError:
+        except SQLAlchemyError:
             logger.exception("Audio retention cleanup failed")
 
     def _maintain_download_buffer(self) -> None:
