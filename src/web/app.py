@@ -1202,7 +1202,7 @@ async def trigger_briefing_audio(
     """
     from fastapi.responses import JSONResponse
 
-    from src.services.briefing_audio import get_audio_url_or_trigger
+    from src.services.briefing_audio import audio_is_ready, get_audio_url_or_trigger
 
     # Verify ownership
     briefing = await asyncio.to_thread(_repository.get_briefing_by_id, briefing_id)
@@ -1234,11 +1234,13 @@ async def serve_briefing_audio(
     """
     from starlette.responses import Response
 
+    from src.services.briefing_audio import audio_is_ready
+
     briefing = await asyncio.to_thread(_repository.get_briefing_by_id, briefing_id)
     if not briefing or briefing.user_id != current_user["sub"]:
         raise HTTPException(status_code=404, detail="Briefing not found")
 
-    if not briefing.audio_data or briefing.audio_status != "ready":
+    if not audio_is_ready(briefing):
         raise HTTPException(status_code=404, detail="Audio not generated")
 
     data = briefing.audio_data

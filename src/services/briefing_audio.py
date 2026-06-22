@@ -19,8 +19,8 @@ BRIEFING_AUDIO_FAILED = "failed"
 def audio_is_ready(briefing) -> bool:
     """Check if a briefing has valid, playable audio.
 
-    Used by feed_service, briefing_audio, and app.py to avoid duplicating
-    the ready+data invariant check.
+    Used by feed_service and app.py to avoid duplicating the ready+data
+    invariant check.
     """
     return briefing.audio_status == "ready" and bool(briefing.audio_data)
 
@@ -132,15 +132,13 @@ def get_audio_url_or_trigger(
             "audio_url": f"/api/feed/briefing/{briefing_id}/audio",
         }
 
-    # Inconsistent state: ready status but no data — recover by regenerating
-    if briefing.audio_status == "ready" and not briefing.audio_data:
-        repository.update_briefing_audio_status(briefing_id, "failed")
-
-    # Terminal failure: don't re-trigger unless explicitly requested
+    # Terminal failure: don't re-trigger unless explicitly requested.
+    # The inconsistent "ready but no data" state is handled inside
+    # generate_briefing_audio (resets to "failed" before claiming).
     if briefing.audio_status == "failed" and not force_retry:
         return {"status": "failed", "audio_url": None}
 
-    # Trigger generation
+    # Trigger generation (handles ready-without-data recovery internally)
     result = generate_briefing_audio(
         briefing_id, repository, config, force_retry=force_retry
     )

@@ -515,21 +515,21 @@ class PipelineOrchestrator:
         if hours_since < 24:
             return
 
-        self._last_audio_retention = now
-
         retention_days = self.config.BRIEFING_AUDIO_RETENTION_DAYS
         if retention_days <= 0:
+            self._last_audio_retention = now
             return  # Retention disabled
 
         cutoff = now - timedelta(days=retention_days)
         try:
             cleared = self.repository.clear_audio_data_before(cutoff)
+            self._last_audio_retention = now
             if cleared > 0:
                 logger.info(
                     "Audio retention: cleared %d briefing audio blobs older than %d days",
                     cleared, retention_days,
                 )
-        except Exception:
+        except OperationalError:
             logger.exception("Audio retention cleanup failed")
 
     def _maintain_download_buffer(self) -> None:

@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 from src.config import Config
 from src.db.repository import PodcastRepositoryInterface
+from src.services.briefing_audio import audio_is_ready
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +163,7 @@ def get_feed(
                 "audio_status": "pending" if day_briefing.audio_status == "generating" else day_briefing.audio_status,
                 "audio_url": (
                     f"/api/feed/briefing/{day_briefing.id}/audio"
-                    if day_briefing.audio_status == "ready"
+                    if audio_is_ready(day_briefing)
                     else None
                 ),
                 "audio_duration_sec": day_briefing.audio_duration_sec,
@@ -323,7 +324,7 @@ def _briefing_to_response(briefing, briefing_date: date) -> dict:
         "audio_status": "pending" if briefing.audio_status == "generating" else briefing.audio_status,
         "audio_url": (
             f"/api/feed/briefing/{briefing.id}/audio"
-            if briefing.audio_status == "ready"
+            if audio_is_ready(briefing)
             else None
         ),
         "audio_duration_sec": briefing.audio_duration_sec,
