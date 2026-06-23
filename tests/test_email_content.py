@@ -427,6 +427,38 @@ class TestBriefingRenderingHtml:
         assert "barely scratching" in html
 
 
+class TestBriefingListenLink:
+    """The 'Listen to this briefing' link must point at the real service URL."""
+
+    @pytest.fixture(autouse=True)
+    def _reset_config(self, monkeypatch):
+        """Force email_renderer to re-read config from the patched environment."""
+        import src.services.email_renderer as email_renderer
+
+        monkeypatch.setattr(email_renderer, "_config", None)
+        yield
+        monkeypatch.setattr(email_renderer, "_config", None)
+
+    def test_listen_link_uses_web_base_url(self, monkeypatch):
+        """Link is built from WEB_BASE_URL, not a hard-coded placeholder domain."""
+        monkeypatch.setenv("WEB_BASE_URL", "https://podcasts.example.com")
+        briefing = {**SAMPLE_BRIEFING, "id": "abc-123"}
+        html = render_digest_html("User", [MockEpisode()], briefing=briefing)
+
+        assert "https://podcasts.example.com/feed.html?play=abc-123" in html
+        assert "Listen to this briefing" in html
+        # The old bogus default must never leak into an email.
+        assert "podcast-rag.feed" not in html
+
+    def test_listen_link_omitted_without_base_url(self, monkeypatch):
+        """With no WEB_BASE_URL configured, skip the link rather than emit a broken one."""
+        monkeypatch.delenv("WEB_BASE_URL", raising=False)
+        briefing = {**SAMPLE_BRIEFING, "id": "abc-123"}
+        html = render_digest_html("User", [MockEpisode()], briefing=briefing)
+
+        assert "Listen to this briefing" not in html
+
+
 class TestBriefingRenderingText:
     """Tests for briefing section in plain text digest."""
 

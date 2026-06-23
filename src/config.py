@@ -89,9 +89,6 @@ class Config:
             raise ValueError(
                 f"BRIEFING_AUDIO_RETENTION_DAYS must be non-negative, got {self.BRIEFING_AUDIO_RETENTION_DAYS}"
             )
-        # Base URL for email links (e.g. "Listen to this briefing")
-        self.APP_BASE_URL = os.getenv("APP_BASE_URL", "https://podcast-rag.feed")
-
         # Gemini File Search configuration
         self.GEMINI_FILE_SEARCH_STORE_NAME = os.getenv("GEMINI_FILE_SEARCH_STORE_NAME", "podcast-transcripts")
 
