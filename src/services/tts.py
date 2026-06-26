@@ -22,6 +22,16 @@ logger = logging.getLogger(__name__)
 # MIME type for the output MP3
 AUDIO_MIME_TYPE = "audio/mpeg"
 
+# Global delivery instruction prepended to the script. Gemini TTS controls
+# style/pace/volume from natural-language guidance in the prompt; steering it
+# once up front keeps delivery uniform start-to-finish and avoids the pace/
+# volume drift that inline bracket tags cause.
+_TTS_STYLE_PREFIX = (
+    "Read the following daily podcast briefing aloud in a warm, engaging host "
+    "voice, at a calm and consistent pace and volume from start to finish. "
+    "Do not speed up, slow down, or get quieter as you go.\n\n"
+)
+
 # Retry config for transient Gemini API errors
 _MAX_RETRIES = 3
 _BASE_DELAY = 1.0
@@ -73,13 +83,19 @@ def render_tts_to_mp3(
     Returns:
         (mp3_bytes, duration_seconds). Both None on failure.
     """
+    if not script.strip():
+        # The style prefix is always non-empty, so a blank script would still
+        # build a valid prompt and make the model speak the instruction itself.
+        logger.error("Refusing to render empty TTS script")
+        return None, None
+
     try:
         client = genai.Client(api_key=config.GEMINI_API_KEY)
 
         response = _retry_tts_call(
             client,
             model=config.GEMINI_TTS_MODEL,
-            contents=script,
+            contents=_TTS_STYLE_PREFIX + script,
             config=types.GenerateContentConfig(
                 response_modalities=["AUDIO"],
                 speech_config=types.SpeechConfig(
@@ -138,6 +154,9 @@ def _pcm_to_mp3(pcm_bytes: bytes, sample_rate: int) -> bytes | None:
                 "-ar", str(sample_rate),
                 "-ac", "1",
                 "-i", "pipe:0",
+                # Normalize loudness (EBU R128) so volume stays consistent
+                # across the whole briefing regardless of TTS delivery.
+                "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
                 "-codec:a", "libmp3lame",
                 "-b:a", "64k",
                 "-f", "mp3",
