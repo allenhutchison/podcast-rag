@@ -83,6 +83,12 @@ def render_tts_to_mp3(
     Returns:
         (mp3_bytes, duration_seconds). Both None on failure.
     """
+    if not script.strip():
+        # The style prefix is always non-empty, so a blank script would still
+        # build a valid prompt and make the model speak the instruction itself.
+        logger.error("Refusing to render empty TTS script")
+        return None, None
+
     try:
         client = genai.Client(api_key=config.GEMINI_API_KEY)
 

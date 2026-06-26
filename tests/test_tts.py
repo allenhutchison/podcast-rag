@@ -69,11 +69,23 @@ class TestRenderTtsToMp3:
         render_tts_to_mp3("Here is the briefing.", mock_config)
 
         contents = mock_client.models.generate_content.call_args.kwargs["contents"]
+        ffmpeg_cmd = mock_subprocess.call_args_list[0].args[0]
         # A single up-front delivery instruction keeps pace/volume uniform and
         # the original script still follows it verbatim.
         assert contents.startswith("Read the following")
         assert "consistent pace and volume" in contents
         assert contents.endswith("Here is the briefing.")
+        # The loudnorm safety net must stay in the ffmpeg invocation.
+        assert "-af" in ffmpeg_cmd
+        assert "loudnorm=I=-16:TP=-1.5:LRA=11" in ffmpeg_cmd
+
+    @patch("src.services.tts.genai.Client")
+    def test_blank_script_returns_none_without_api_call(self, mock_client_cls, mock_config):
+        # A whitespace-only script must fail fast, not synthesize the prefix.
+        mp3, duration = render_tts_to_mp3("   \n  ", mock_config)
+        assert mp3 is None
+        assert duration is None
+        mock_client_cls.assert_not_called()
 
     @patch("src.services.tts.genai.Client")
     def test_api_failure_returns_none(self, mock_client_cls, mock_config):
