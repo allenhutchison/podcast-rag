@@ -389,8 +389,11 @@ mini-analysis. Use a transition phrase between episodes.
 (just podcast name + episode title, no analysis).
 - Close with the connection_insight (if present) as a reflective sign-off, \
 then a brief outro.
-- Use audio tags in square brackets for narration control where natural, \
-e.g. [pause], [emphasis], [quieter], [faster]. Use sparingly.
+- Do NOT include any bracketed audio tags or stage directions (e.g. [pause], \
+[emphasis], [quieter], [faster]). The TTS model voices the delivery itself; \
+inline tags get read aloud or cause the pace and volume to drift over the \
+course of the audio. Convey pacing and emphasis through word choice and \
+sentence structure only.
 - Do NOT include section headers, markdown, or formatting. Output plain \
 spoken text only.
 
