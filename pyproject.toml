@@ -26,7 +26,7 @@ dependencies = [
     "pydantic>=2.13.4",
     "google-genai>=2.8.0",
     # Database dependencies
-    "sqlalchemy>=2.0.50",
+    "sqlalchemy>=2.0.51",
     "alembic>=1.18.4",
     # Podcast feed parsing
     "feedparser>=6.0.0",
