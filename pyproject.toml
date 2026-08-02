@@ -51,7 +51,7 @@ encoding = [
     "APScheduler>=3.10.0",
     "eyed3>=0.9.0",
     "mcp>=1.27.2",
-    "tqdm>=4.66.0",
+    "tqdm>=4.68.3",
     # NVIDIA cuDNN libraries for GPU support (required for faster-whisper on CUDA)
     "nvidia-cublas-cu12; sys_platform == 'linux'",
     "nvidia-cudnn-cu12; sys_platform == 'linux'",
