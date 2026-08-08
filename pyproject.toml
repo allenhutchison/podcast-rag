@@ -29,7 +29,7 @@ dependencies = [
     "sqlalchemy>=2.0.51",
     "alembic>=1.18.4",
     # Podcast feed parsing
-    "feedparser>=6.0.0",
+    "feedparser>=6.0.14",
     # HTTP client for downloads
     "requests>=2.34.2",
     "aiohttp>=3.14.1",
