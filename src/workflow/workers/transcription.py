@@ -15,7 +15,7 @@ import os
 from src.config import Config
 from src.db.models import Episode
 from src.db.repository import PodcastRepositoryInterface
-from src.workflow.workers.base import WorkerInterface, WorkerResult
+from src.workflow.workers.base import TranscriptionResult, WorkerInterface, WorkerResult
 
 logger = logging.getLogger(__name__)
 
@@ -204,7 +204,7 @@ class TranscriptionWorker(WorkerInterface):
         logger.info(f"Transcription complete for episode {episode.id}")
         return transcript_text
 
-    def transcribe_single(self, episode: Episode) -> str | None:
+    def transcribe_single(self, episode: Episode) -> TranscriptionResult:
         """Transcribe a single episode without releasing the model.
 
         Unlike process_batch, this method:
@@ -219,7 +219,7 @@ class TranscriptionWorker(WorkerInterface):
             episode: Episode to transcribe.
 
         Returns:
-            Transcript text if successful, None on failure.
+            Structured completed or failed result.
         """
         try:
             self.repository.mark_transcript_started(episode.id)
@@ -228,19 +228,22 @@ class TranscriptionWorker(WorkerInterface):
                 episode_id=episode.id,
                 transcript_text=transcript_text,
             )
-            return transcript_text
+            return TranscriptionResult(
+                status="completed",
+                transcript_text=transcript_text,
+            )
 
         except FileNotFoundError as e:
             error_msg = str(e)
             logger.exception(f"Episode {episode.id} transcription failed: file not found")
             self.repository.mark_transcript_failed(episode.id, error_msg)
-            return None
+            return TranscriptionResult(status="failed", error=error_msg)
 
         except Exception as e:
             error_msg = str(e)
             logger.exception(f"Episode {episode.id} transcription failed")
             self.repository.mark_transcript_failed(episode.id, error_msg)
-            return None
+            return TranscriptionResult(status="failed", error=error_msg)
 
     def process_batch(self, limit: int) -> WorkerResult:
         """Transcribe a batch of pending episodes.

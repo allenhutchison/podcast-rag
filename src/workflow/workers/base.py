@@ -41,6 +41,24 @@ class WorkerResult:
         )
 
 
+@dataclass(frozen=True)
+class TranscriptionResult:
+    """Outcome of one local or remote transcription attempt."""
+
+    status: str
+    transcript_text: str | None = None
+    external_id: str | None = None
+    error: str | None = None
+
+    @property
+    def is_complete(self) -> bool:
+        return self.status == "completed"
+
+    @property
+    def is_waiting(self) -> bool:
+        return self.status in {"queued", "processing"}
+
+
 class WorkerInterface(ABC):
     """Abstract base class for workflow workers.
 

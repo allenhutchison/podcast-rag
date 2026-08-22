@@ -662,6 +662,34 @@ class TestRetryMethods:
         assert next_ep is not None
         assert next_ep.id == episode.id
 
+    def test_get_next_for_transcription_includes_scribe_processing(
+        self, repository, sample_podcast
+    ):
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="scribe-processing",
+            title="Scribe processing",
+            enclosure_url="https://example.com/scribe.mp3",
+            enclosure_type="audio/mpeg",
+        )
+        repository.mark_download_complete(
+            episode_id=episode.id,
+            local_path="/tmp/scribe.mp3",
+            file_size=1000,
+            file_hash="abc123",
+        )
+        repository.mark_transcript_remote_status(
+            episode.id,
+            provider="scribe",
+            external_id="job-1",
+            status="processing",
+        )
+
+        next_ep = repository.get_next_for_transcription()
+
+        assert next_ep is not None
+        assert next_ep.id == episode.id
+
 
 class TestTranscriptionWorkerPipeline:
     """Tests for TranscriptionWorker pipeline mode methods."""

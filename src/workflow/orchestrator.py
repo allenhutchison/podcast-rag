@@ -132,11 +132,19 @@ class PipelineOrchestrator:
     def _get_transcription_worker(self):
         """Get or create the transcription worker."""
         if self._transcription_worker is None:
-            from src.workflow.workers.transcription import TranscriptionWorker
+            if getattr(self.config, "TRANSCRIPTION_BACKEND", "local") == "scribe":
+                from src.workflow.workers.scribe_transcription import (
+                    ScribeTranscriptionWorker,
+                )
 
-            self._transcription_worker = TranscriptionWorker(
-                config=self.config,
-                repository=self.repository,
+                worker_class = ScribeTranscriptionWorker
+            else:
+                from src.workflow.workers.transcription import TranscriptionWorker
+
+                worker_class = TranscriptionWorker
+
+            self._transcription_worker = worker_class(
+                config=self.config, repository=self.repository
             )
         return self._transcription_worker
 
@@ -338,14 +346,21 @@ class PipelineOrchestrator:
         # 4. Transcribe (blocking, GPU-bound)
         logger.info(f"Transcribing: {episode.title}")
         transcription_worker = self._get_transcription_worker()
-        transcript_path = transcription_worker.transcribe_single(episode)
+        transcription_result = transcription_worker.transcribe_single(episode)
 
-        if transcript_path:
+        if transcription_result.is_complete:
             self._stats.episodes_transcribed += 1
 
             # 5. Submit for async post-processing
             if self._post_processor:
                 self._post_processor.submit(episode.id)
+        elif transcription_result.is_waiting:
+            logger.info(
+                "Episode %s is %s in Scribe; will poll again",
+                episode.id,
+                transcription_result.status,
+            )
+            return False
         else:
             # Check if failure was due to shutdown
             if not self._running:

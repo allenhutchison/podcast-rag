@@ -44,6 +44,23 @@ These must be set for the application to function:
 
 **Note:** The `medium` model offers the best balance of speed and accuracy. Use `large-v3` for maximum accuracy (requires ~10GB VRAM).
 
+## Transcription Backend and Scribe
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TRANSCRIPTION_BACKEND` | `local` | `local` for the embedded faster-whisper worker or `scribe` for the shared service |
+| `SCRIBE_BASE_URL` | `http://scribe:8000` | Private base URL of the Scribe API |
+| `SCRIBE_API_TOKEN` | — | Bearer token for the `podcast-rag` Scribe consumer; required for the Scribe backend |
+| `SCRIBE_REQUEST_TIMEOUT` | `30` | HTTP request timeout in seconds; queued work is polled on later pipeline ticks |
+| `SCRIBE_LANGUAGE` | `en` | Language hint sent to Scribe. Set to an empty value to use auto-detection |
+
+Keep `TRANSCRIPTION_BACKEND=local` until existing transcripts have been seeded
+and verified. The Scribe compatibility worker continues storing transcript text
+in podcast-rag while the migration is being validated. Scribe's cache is shared
+with Pepper: completed rows are reusable across both consumers, and a terminal
+`failed` result remains immutable rather than being retried by one consumer
+behind the other's back.
+
 ## Database
 
 | Variable | Default | Description |

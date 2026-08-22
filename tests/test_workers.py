@@ -915,7 +915,8 @@ class TestTranscriptionWorker:
 
         result = transcription_worker.transcribe_single(episode)
 
-        assert result == "Transcribed text"
+        assert result.status == "completed"
+        assert result.transcript_text == "Transcribed text"
         mock_repository.mark_transcript_started.assert_called_with("ep-1")
         mock_repository.mark_transcript_complete.assert_called()
 
@@ -928,7 +929,7 @@ class TestTranscriptionWorker:
 
         result = transcription_worker.transcribe_single(episode)
 
-        assert result is None
+        assert result.status == "failed"
         mock_repository.mark_transcript_failed.assert_called()
 
     def test_process_batch_no_episodes(self, transcription_worker, mock_repository):

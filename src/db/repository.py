@@ -601,6 +601,10 @@ class PodcastRepositoryInterface(ABC):
         episode_id: str,
         transcript_text: str,
         transcript_path: str | None = None,
+        provider: str | None = None,
+        external_id: str | None = None,
+        model: str | None = None,
+        language: str | None = None,
     ) -> None:
         """
         Mark an episode's transcription as completed and store the transcript content.
@@ -616,7 +620,25 @@ class PodcastRepositoryInterface(ABC):
         pass
 
     @abstractmethod
-    def mark_transcript_failed(self, episode_id: str, error: str) -> None:
+    def mark_transcript_remote_status(
+        self,
+        episode_id: str,
+        *,
+        provider: str,
+        external_id: str,
+        status: str = "processing",
+    ) -> None:
+        """Record a remote transcript handle and its non-terminal status."""
+        pass
+
+    @abstractmethod
+    def mark_transcript_failed(
+        self,
+        episode_id: str,
+        error: str,
+        provider: str | None = None,
+        external_id: str | None = None,
+    ) -> None:
         """
         Mark an episode's transcription as failed and record the failure reason.
 
@@ -2185,7 +2207,13 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 select(Episode)
                 .where(
                     Episode.download_status == "completed",
-                    Episode.transcript_status == "pending",
+                    or_(
+                        Episode.transcript_status == "pending",
+                        and_(
+                            Episode.transcript_status == "processing",
+                            Episode.transcript_provider == "scribe",
+                        ),
+                    ),
                     Episode.local_file_path.isnot(None),
                 )
                 .order_by(Episode.published_date.desc())
@@ -2409,6 +2437,10 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         episode_id: str,
         transcript_text: str,
         transcript_path: str | None = None,
+        provider: str | None = None,
+        external_id: str | None = None,
+        model: str | None = None,
+        language: str | None = None,
     ) -> None:
         """
         Mark an episode's transcription as complete and store the transcript content.
@@ -2428,11 +2460,40 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             transcript_status="completed",
             transcript_text=transcript_text,
             transcript_path=transcript_path,
+            transcript_provider=provider,
+            transcript_external_id=external_id,
+            transcript_model=model,
+            transcript_language=language,
             transcribed_at=datetime.now(UTC),
             transcript_error=None,
         )
 
-    def mark_transcript_failed(self, episode_id: str, error: str) -> None:
+    def mark_transcript_remote_status(
+        self,
+        episode_id: str,
+        *,
+        provider: str,
+        external_id: str,
+        status: str = "processing",
+    ) -> None:
+        """Record an in-flight remote transcription without treating it as failure."""
+        if status not in {"queued", "processing"}:
+            raise ValueError(f"Invalid remote transcript status: {status}")
+        self.update_episode(
+            episode_id,
+            transcript_status="processing",
+            transcript_provider=provider,
+            transcript_external_id=external_id,
+            transcript_error=None,
+        )
+
+    def mark_transcript_failed(
+        self,
+        episode_id: str,
+        error: str,
+        provider: str | None = None,
+        external_id: str | None = None,
+    ) -> None:
         """
         Mark an episode's transcription as failed and record the error message.
 
@@ -2444,6 +2505,8 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             episode_id,
             transcript_status="failed",
             transcript_error=error,
+            transcript_provider=provider,
+            transcript_external_id=external_id,
         )
 
     def mark_metadata_started(self, episode_id: str) -> None:
@@ -3030,7 +3093,13 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
                 select(Episode)
                 .where(
                     Episode.download_status == "completed",
-                    Episode.transcript_status == "pending",
+                    or_(
+                        Episode.transcript_status == "pending",
+                        and_(
+                            Episode.transcript_status == "processing",
+                            Episode.transcript_provider == "scribe",
+                        ),
+                    ),
                     Episode.local_file_path.isnot(None),
                 )
                 .order_by(Episode.published_date.desc())
