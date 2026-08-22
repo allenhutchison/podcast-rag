@@ -173,6 +173,10 @@ class Episode(Base):
     transcript_error: Mapped[str | None] = mapped_column(Text)
     transcript_path: Mapped[str | None] = mapped_column(String(1024))
     transcript_text: Mapped[str | None] = mapped_column(Text)  # Full transcript content
+    transcript_provider: Mapped[str | None] = mapped_column(String(32))
+    transcript_external_id: Mapped[str | None] = mapped_column(String(64))
+    transcript_model: Mapped[str | None] = mapped_column(String(64))
+    transcript_language: Mapped[str | None] = mapped_column(String(16))
     transcribed_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     # MP3 ID3 tag metadata

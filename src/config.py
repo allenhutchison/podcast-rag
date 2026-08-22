@@ -1,4 +1,5 @@
 import json
+import math
 import os
 
 from dotenv import load_dotenv
@@ -58,6 +59,34 @@ class Config:
         self.WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cuda")
         # Compute type: float16 (GPU), int8 (CPU), float32
         self.WHISPER_COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "float16")
+
+        # Transcription backend. "local" preserves the existing faster-whisper
+        # path; "scribe" delegates to the shared transcription service.
+        self.TRANSCRIPTION_BACKEND = os.getenv(
+            "TRANSCRIPTION_BACKEND", "local"
+        ).lower()
+        if self.TRANSCRIPTION_BACKEND not in {"local", "scribe"}:
+            raise ValueError(
+                "TRANSCRIPTION_BACKEND must be 'local' or 'scribe', got: "
+                f"{self.TRANSCRIPTION_BACKEND}"
+            )
+        self.SCRIBE_BASE_URL = os.getenv(
+            "SCRIBE_BASE_URL", "http://scribe:8000"
+        ).rstrip("/")
+        if not self.SCRIBE_BASE_URL.lower().startswith(("http://", "https://")):
+            raise ValueError(
+                f"SCRIBE_BASE_URL must start with http:// or https://, got: {self.SCRIBE_BASE_URL}"
+            )
+        self.SCRIBE_API_TOKEN = os.getenv("SCRIBE_API_TOKEN", "")
+        self.SCRIBE_REQUEST_TIMEOUT = float(
+            os.getenv("SCRIBE_REQUEST_TIMEOUT", "30")
+        )
+        if not math.isfinite(self.SCRIBE_REQUEST_TIMEOUT) or self.SCRIBE_REQUEST_TIMEOUT <= 0:
+            raise ValueError(
+                "SCRIBE_REQUEST_TIMEOUT must be positive, got: "
+                f"{self.SCRIBE_REQUEST_TIMEOUT}"
+            )
+        self.SCRIBE_LANGUAGE = os.getenv("SCRIBE_LANGUAGE", "en") or None
 
         # Model configuration
         self.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "your_api_key_here")
