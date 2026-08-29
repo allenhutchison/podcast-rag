@@ -8,7 +8,7 @@ import logging
 class TestMCPServerMain:
     """Tests for MCP server main function."""
 
-    @patch("src.mcp_server.MCP")
+    @patch("src.mcp_server.MCPServer")
     @patch("src.mcp_server.Config")
     @patch("src.mcp_server.GeminiSearchManager")
     def test_main_initializes_server(self, mock_search_manager, mock_config_class, mock_mcp_class):
@@ -18,15 +18,16 @@ class TestMCPServerMain:
 
         mock_mcp = Mock()
         mock_mcp_class.return_value = mock_mcp
+        mock_mcp.run.side_effect = KeyboardInterrupt
 
         with patch("sys.argv", ["mcp_server", "-l", "INFO"]):
-            with patch.object(mock_mcp, "run", side_effect=KeyboardInterrupt):
-                from src.mcp_server import main
-                main()
+            from src.mcp_server import main
+            main()
 
-        mock_mcp_class.assert_called_once_with(port=5002)
+        mock_mcp_class.assert_called_once_with("Podcast RAG")
+        mock_mcp.run.assert_called_once_with(transport="sse", port=5002)
 
-    @patch("src.mcp_server.MCP")
+    @patch("src.mcp_server.MCPServer")
     @patch("src.mcp_server.Config")
     def test_main_with_env_file(self, mock_config_class, mock_mcp_class):
         """Test main with custom env file."""
@@ -158,9 +159,20 @@ class TestMCPTools:
 class TestMCPServerIntegration:
     """Integration-style tests for MCP server."""
 
+    def test_main_registers_tools_with_mcp_v2(self):
+        """Test that the real MCP v2 server accepts all tool registrations."""
+        from src.mcp_server import MCPServer, main
+
+        with patch("src.mcp_server.Config"):
+            with patch.object(MCPServer, "run", side_effect=KeyboardInterrupt) as mock_run:
+                with patch("sys.argv", ["mcp_server", "-l", "INFO"]):
+                    main()
+
+        mock_run.assert_called_once_with(transport="sse", port=5002)
+
     def test_module_imports_correctly(self):
         """Test that the module can be imported."""
-        with patch("src.mcp_server.MCP"):
+        with patch("src.mcp_server.MCPServer"):
             with patch("src.mcp_server.Config"):
                 import src.mcp_server
                 assert hasattr(src.mcp_server, "main")
@@ -176,7 +188,7 @@ class TestMCPServerIntegration:
 class TestMCPServerMainAdvanced:
     """Advanced tests for MCP server main function."""
 
-    @patch("src.mcp_server.MCP")
+    @patch("src.mcp_server.MCPServer")
     @patch("src.mcp_server.Config")
     def test_main_config_failure(self, mock_config_class, mock_mcp_class):
         """Test main handles config initialization failure."""
@@ -189,7 +201,7 @@ class TestMCPServerMainAdvanced:
 
             assert exc_info.value.code == 1
 
-    @patch("src.mcp_server.MCP")
+    @patch("src.mcp_server.MCPServer")
     @patch("src.mcp_server.Config")
     def test_main_server_error(self, mock_config_class, mock_mcp_class):
         """Test main handles server runtime error."""

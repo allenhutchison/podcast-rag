@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 
-from mcp.server import FastMCP as MCP
+from mcp.server import MCPServer
 
 from src.argparse_shared import add_log_level_argument, get_base_parser
 from src.config import Config
@@ -45,8 +45,8 @@ def main():
 
     # Initialize the MCP server
     logging.debug("Creating MCP server instance...")
-    mcp = MCP(port=5002)
-    logging.info("MCP server instance created on port 5002")
+    mcp = MCPServer("Podcast RAG")
+    logging.info("MCP server instance created")
 
     @mcp.tool()
     def get_rag_context(query: str):
@@ -182,7 +182,7 @@ def main():
     try:
         # Run the server with SSE transport
         logging.debug("Calling mcp.run() with sse transport...")
-        mcp.run(transport='sse')
+        mcp.run(transport="sse", port=5002)
         logging.debug("mcp.run() completed")
     except KeyboardInterrupt:
         logging.info("MCP server stopped by user")
