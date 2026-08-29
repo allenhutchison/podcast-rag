@@ -858,7 +858,9 @@ class TestTranscriptionWorker:
         count = transcription_worker.get_pending_count()
 
         assert count == 2
-        mock_repository.get_episodes_pending_transcription.assert_called_with(limit=1000)
+        mock_repository.get_episodes_pending_transcription.assert_called_with(
+            limit=1000, backend="local"
+        )
 
     def test_transcribe_episode_no_file_path(self, transcription_worker):
         """Test transcribing episode without file path."""
