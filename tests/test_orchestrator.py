@@ -1,14 +1,14 @@
 """Tests for workflow orchestrator module."""
 
-import pytest
 import signal
-from datetime import datetime, UTC, timedelta
-from unittest.mock import Mock, patch, MagicMock
-from concurrent.futures import Future
+from datetime import UTC, datetime, timedelta
+from unittest.mock import Mock, patch
 
-from src.workflow.orchestrator import PipelineOrchestrator, PipelineStats
+import pytest
+
 from src.workflow.config import PipelineConfig
-from src.workflow.workers.base import WorkerResult
+from src.workflow.orchestrator import PipelineOrchestrator, PipelineStats
+from src.workflow.workers.base import TranscriptionResult, WorkerResult
 
 
 class TestPipelineStats:
@@ -508,7 +508,9 @@ class TestPipelineOrchestratorIteration:
         mock_repository.get_next_for_transcription.return_value = mock_episode
 
         mock_worker = Mock()
-        mock_worker.transcribe_single.return_value = "/path/to/transcript.txt"
+        mock_worker.transcribe_single.return_value = TranscriptionResult(
+            status="completed", transcript_text="Transcript text"
+        )
         orchestrator._transcription_worker = mock_worker
         orchestrator._post_processor = Mock()
 
@@ -530,7 +532,9 @@ class TestPipelineOrchestratorIteration:
         mock_repository.increment_retry_count.return_value = 1
 
         mock_worker = Mock()
-        mock_worker.transcribe_single.return_value = None
+        mock_worker.transcribe_single.return_value = TranscriptionResult(
+            status="failed", error="transcription failed"
+        )
         orchestrator._transcription_worker = mock_worker
         orchestrator._running = True
 
@@ -551,14 +555,57 @@ class TestPipelineOrchestratorIteration:
         mock_repository.increment_retry_count.return_value = 4  # Exceeds max_retries=3
 
         mock_worker = Mock()
-        mock_worker.transcribe_single.return_value = None
+        mock_worker.transcribe_single.return_value = TranscriptionResult(
+            status="failed", error="transcription failed"
+        )
         orchestrator._transcription_worker = mock_worker
         orchestrator._running = True
 
-        result = orchestrator._pipeline_iteration()
+        orchestrator._pipeline_iteration()
 
         assert orchestrator._stats.transcription_permanent_failures == 1
         mock_repository.mark_permanently_failed.assert_called_once()
+
+    def test_pipeline_iteration_preserves_terminal_scribe_failure(
+        self, orchestrator, mock_repository
+    ):
+        """Terminal Scribe failures are not reset or locally retried."""
+        mock_episode = Mock(id="ep-1", title="Test Episode")
+        mock_repository.get_next_for_transcription.return_value = mock_episode
+        mock_worker = Mock()
+        mock_worker.transcribe_single.return_value = TranscriptionResult(
+            status="failed",
+            provider="scribe",
+            external_id="transcript-1",
+            error="download failed",
+            terminal=True,
+        )
+        orchestrator._transcription_worker = mock_worker
+        orchestrator._running = True
+
+        assert orchestrator._pipeline_iteration() is True
+        mock_repository.increment_retry_count.assert_not_called()
+        mock_repository.reset_episode_for_retry.assert_not_called()
+        mock_repository.mark_permanently_failed.assert_not_called()
+
+    def test_pipeline_iteration_backs_off_retryable_scribe_failure(
+        self, orchestrator, mock_repository
+    ):
+        """Transient Scribe failures reset once and yield to the idle delay."""
+        mock_episode = Mock(id="ep-1", title="Test Episode")
+        mock_repository.get_next_for_transcription.return_value = mock_episode
+        mock_repository.increment_retry_count.return_value = 1
+        mock_worker = Mock()
+        mock_worker.transcribe_single.return_value = TranscriptionResult(
+            status="retryable", provider="scribe", error="service unavailable"
+        )
+        orchestrator._transcription_worker = mock_worker
+        orchestrator._running = True
+
+        assert orchestrator._pipeline_iteration() is False
+        mock_repository.reset_episode_for_retry.assert_called_once_with(
+            "ep-1", "transcript"
+        )
 
 
 class TestPipelineOrchestratorPostProcess:

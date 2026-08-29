@@ -137,7 +137,9 @@ class TranscriptionWorker(WorkerInterface):
         Returns:
             Number of episodes waiting to be transcribed.
         """
-        episodes = self.repository.get_episodes_pending_transcription(limit=1000)
+        episodes = self.repository.get_episodes_pending_transcription(
+            limit=1000, backend="local"
+        )
         return len(episodes)
 
     def _transcribe_episode(self, episode: Episode) -> str:
@@ -258,7 +260,9 @@ class TranscriptionWorker(WorkerInterface):
 
         try:
             # Query episodes pending transcription, ordered by published_date DESC
-            episodes = self.repository.get_episodes_pending_transcription(limit=limit)
+            episodes = self.repository.get_episodes_pending_transcription(
+                limit=limit, backend="local"
+            )
 
             if not episodes:
                 logger.info("No episodes pending transcription")

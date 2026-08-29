@@ -685,7 +685,15 @@ class TestRetryMethods:
             status="processing",
         )
 
-        next_ep = repository.get_next_for_transcription()
+        assert repository.get_episodes_pending_transcription(backend="local") == []
+        scribe_pending = repository.get_episodes_pending_transcription(backend="scribe")
+        assert [pending.id for pending in scribe_pending] == [episode.id]
+
+        next_ep = repository.get_next_for_transcription(backend="local")
+
+        assert next_ep is None
+
+        next_ep = repository.get_next_for_transcription(backend="scribe")
 
         assert next_ep is not None
         assert next_ep.id == episode.id

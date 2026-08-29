@@ -443,12 +443,15 @@ class PodcastRepositoryInterface(ABC):
         pass
 
     @abstractmethod
-    def get_episodes_pending_transcription(self, limit: int = 10) -> list[Episode]:
+    def get_episodes_pending_transcription(
+        self, limit: int = 10, backend: str = "local"
+    ) -> list[Episode]:
         """
         Retrieve downloaded episodes that still require transcription.
 
         Parameters:
             limit (int): Maximum number of episodes to return.
+            backend: Active transcription backend (``local`` or ``scribe``).
 
         Returns:
             List[Episode]: Episodes where the download is completed, transcription has not started or is pending, and a local audio file is present, ordered by most recently published.
@@ -961,11 +964,14 @@ class PodcastRepositoryInterface(ABC):
         pass
 
     @abstractmethod
-    def get_next_for_transcription(self) -> Episode | None:
+    def get_next_for_transcription(self, backend: str = "local") -> Episode | None:
         """Get the next episode ready for transcription.
 
         Returns the most recently published episode that is downloaded
         and pending transcription, excluding permanently failed episodes.
+
+        Args:
+            backend: Active transcription backend (``local`` or ``scribe``).
 
         Returns:
             Episode ready for transcription, or None if none available.
@@ -2196,24 +2202,32 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             )
             return list(session.scalars(stmt).all())
 
-    def get_episodes_pending_transcription(self, limit: int = 10) -> list[Episode]:
+    def get_episodes_pending_transcription(
+        self, limit: int = 10, backend: str = "local"
+    ) -> list[Episode]:
         """
         Return episodes that have been downloaded and are awaiting transcription.
 
         @returns List[Episode]: Episodes with download_status == "completed", transcript_status == "pending", and a non-null local_file_path, ordered by published_date descending and limited to the provided `limit`.
         """
+        if backend not in {"local", "scribe"}:
+            raise ValueError(f"Invalid transcription backend: {backend}")
+        transcript_condition = Episode.transcript_status == "pending"
+        if backend == "scribe":
+            transcript_condition = or_(
+                transcript_condition,
+                and_(
+                    Episode.transcript_status == "processing",
+                    Episode.transcript_provider == "scribe",
+                ),
+            )
+
         with self._get_session() as session:
             stmt = (
                 select(Episode)
                 .where(
                     Episode.download_status == "completed",
-                    or_(
-                        Episode.transcript_status == "pending",
-                        and_(
-                            Episode.transcript_status == "processing",
-                            Episode.transcript_provider == "scribe",
-                        ),
-                    ),
+                    transcript_condition,
                     Episode.local_file_path.isnot(None),
                 )
                 .order_by(Episode.published_date.desc())
@@ -3079,7 +3093,7 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             )
             return session.scalar(stmt) or 0
 
-    def get_next_for_transcription(self) -> Episode | None:
+    def get_next_for_transcription(self, backend: str = "local") -> Episode | None:
         """Get the next single episode ready for transcription.
 
         Returns episodes ordered by published_date (newest first),
@@ -3088,18 +3102,24 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         Returns:
             Episode to transcribe, or None if no work available.
         """
+        if backend not in {"local", "scribe"}:
+            raise ValueError(f"Invalid transcription backend: {backend}")
+        transcript_condition = Episode.transcript_status == "pending"
+        if backend == "scribe":
+            transcript_condition = or_(
+                transcript_condition,
+                and_(
+                    Episode.transcript_status == "processing",
+                    Episode.transcript_provider == "scribe",
+                ),
+            )
+
         with self._get_session() as session:
             stmt = (
                 select(Episode)
                 .where(
                     Episode.download_status == "completed",
-                    or_(
-                        Episode.transcript_status == "pending",
-                        and_(
-                            Episode.transcript_status == "processing",
-                            Episode.transcript_provider == "scribe",
-                        ),
-                    ),
+                    transcript_condition,
                     Episode.local_file_path.isnot(None),
                 )
                 .order_by(Episode.published_date.desc())

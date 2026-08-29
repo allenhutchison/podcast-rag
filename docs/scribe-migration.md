@@ -89,10 +89,11 @@ TRANSCRIPTION_BACKEND=scribe
 SCRIBE_API_TOKEN=<podcast-rag consumer token>
 ```
 
-On bubba, `SCRIBE_BASE_URL=http://scribe:8000` is supplied by Compose. Restart
-only the podcast-rag pipeline, then verify one cache hit and one fresh episode
-through transcription, metadata extraction, Gemini File Search indexing, and
-audio cleanup.
+On bubba, Compose supplies `SCRIBE_BASE_URL=http://scribe:8000` on its trusted
+private network together with the explicit
+`SCRIBE_ALLOW_INSECURE_HTTP=true` opt-in. Restart only the podcast-rag pipeline,
+then verify one cache hit and one fresh episode through transcription, metadata
+extraction, Gemini File Search indexing, and audio cleanup.
 
 ## Rollback
 

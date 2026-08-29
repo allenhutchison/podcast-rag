@@ -338,7 +338,8 @@ class PipelineOrchestrator:
         self._maintain_download_buffer()
 
         # 3. Get next episode to transcribe
-        episode = self.repository.get_next_for_transcription()
+        backend = getattr(self.config, "TRANSCRIPTION_BACKEND", "local")
+        episode = self.repository.get_next_for_transcription(backend=backend)
 
         if episode is None:
             return False
@@ -361,6 +362,15 @@ class PipelineOrchestrator:
                 transcription_result.status,
             )
             return False
+        elif transcription_result.is_terminal:
+            self._stats.transcription_failures += 1
+            self._stats.transcription_permanent_failures += 1
+            logger.warning(
+                "Episode %s has a terminal %s transcription failure; preserving it",
+                episode.id,
+                transcription_result.provider or "remote",
+            )
+            return True
         else:
             # Check if failure was due to shutdown
             if not self._running:
@@ -396,6 +406,9 @@ class PipelineOrchestrator:
                         f"Episode {episode.id} transcription reset for retry "
                         f"{retry_count}/{self.pipeline_config.max_retries}"
                     )
+
+                if transcription_result.should_backoff:
+                    return False
 
         return True
 
@@ -607,7 +620,10 @@ class PipelineOrchestrator:
         # Get pending counts
         try:
             status["pending_transcription"] = len(
-                self.repository.get_episodes_pending_transcription(limit=1000)
+                self.repository.get_episodes_pending_transcription(
+                    limit=1000,
+                    backend=getattr(self.config, "TRANSCRIPTION_BACKEND", "local"),
+                )
             )
         except Exception:
             status["pending_transcription"] = -1

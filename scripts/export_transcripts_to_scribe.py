@@ -14,19 +14,25 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import logging
 import os
 import re
 import tempfile
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
+
+from sqlalchemy.exc import SQLAlchemyError
 
 from src.config import Config
 from src.db.factory import create_repository
 
 _SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+logger = logging.getLogger(__name__)
 
 
 def _record_for_episode(episode, transcript_text: str) -> tuple[dict[str, Any], bool]:
+    """Build one Scribe seed record and report whether its file hash is invalid."""
     file_hash = episode.file_hash
     valid_hash = bool(file_hash and _SHA256_RE.fullmatch(file_hash))
     record = {
@@ -45,9 +51,8 @@ def _record_for_episode(episode, transcript_text: str) -> tuple[dict[str, Any], 
 
 def export_transcripts(repository, output_path: Path, *, dry_run: bool = False) -> dict[str, Any]:
     """Export completed transcripts and return a verification manifest."""
-    episodes = repository.list_episodes(transcript_status="completed")
     manifest: dict[str, Any] = {
-        "completed_rows": len(episodes),
+        "completed_rows": 0,
         "exported_rows": 0,
         "skipped_missing_text": 0,
         "invalid_file_hashes": 0,
@@ -63,21 +68,28 @@ def export_transcripts(repository, output_path: Path, *, dry_run: bool = False) 
     digest = hashlib.sha256()
 
     output_path = output_path.resolve()
-    output_path.parent.mkdir(parents=True, exist_ok=True)
     temp_path: Path | None = None
+    manifest_temp: Path | None = None
     output = None
-    if not dry_run:
-        handle = tempfile.NamedTemporaryFile(
-            mode="wb", dir=output_path.parent, prefix=f".{output_path.name}.", delete=False
-        )
-        os.chmod(handle.name, 0o600)
-        temp_path = Path(handle.name)
-        output = handle
 
     try:
+        episodes = repository.list_episodes(transcript_status="completed")
+        manifest["completed_rows"] = len(episodes)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        if not dry_run:
+            handle = tempfile.NamedTemporaryFile(
+                mode="wb",
+                dir=output_path.parent,
+                prefix=f".{output_path.name}.",
+                delete=False,
+            )
+            os.chmod(handle.name, 0o600)
+            temp_path = Path(handle.name)
+            output = handle
+
         for episode in episodes:
             transcript_text = repository.get_transcript_text(episode.id)
-            if not transcript_text:
+            if transcript_text is None:
                 manifest["skipped_missing_text"] += 1
                 continue
 
@@ -107,30 +119,41 @@ def export_transcripts(repository, output_path: Path, *, dry_run: bool = False) 
             manifest["exported_rows"] += 1
             manifest["transcript_characters"] += len(transcript_text)
             manifest["jsonl_bytes"] += len(encoded)
-    except Exception:
-        if output is not None:
+
+        manifest["jsonl_sha256"] = digest.hexdigest()
+        if output is not None and temp_path is not None:
+            output.flush()
+            os.fsync(output.fileno())
             output.close()
-        if temp_path is not None:
-            temp_path.unlink(missing_ok=True)
+            output = None
+            os.replace(temp_path, output_path)
+            temp_path = None
+
+            manifest_path = output_path.with_suffix(output_path.suffix + ".manifest.json")
+            manifest_temp = manifest_path.with_suffix(manifest_path.suffix + ".tmp")
+            manifest_temp.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+            os.chmod(manifest_temp, 0o600)
+            os.replace(manifest_temp, manifest_path)
+            manifest_temp = None
+
+        return manifest
+    except (OSError, SQLAlchemyError):
+        logger.error("Failed to export transcripts to %s", output_path, exc_info=True)
         raise
-
-    manifest["jsonl_sha256"] = digest.hexdigest()
-    if output is not None and temp_path is not None:
-        output.flush()
-        os.fsync(output.fileno())
-        output.close()
-        os.replace(temp_path, output_path)
-
-        manifest_path = output_path.with_suffix(output_path.suffix + ".manifest.json")
-        manifest_temp = manifest_path.with_suffix(manifest_path.suffix + ".tmp")
-        manifest_temp.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-        os.chmod(manifest_temp, 0o600)
-        os.replace(manifest_temp, manifest_path)
-
-    return manifest
+    finally:
+        if output is not None:
+            with suppress(OSError):
+                output.close()
+        if temp_path is not None:
+            with suppress(OSError):
+                temp_path.unlink(missing_ok=True)
+        if manifest_temp is not None:
+            with suppress(OSError):
+                manifest_temp.unlink(missing_ok=True)
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the transcript export command and return a process exit status."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path, help="Destination JSONL file")
     parser.add_argument(

@@ -7,7 +7,7 @@ import logging
 from src.config import Config
 from src.db.models import Episode
 from src.db.repository import PodcastRepositoryInterface
-from src.services.scribe import ScribeClient
+from src.services.scribe import ScribeClient, ScribeClientError
 from src.workflow.workers.base import TranscriptionResult, WorkerInterface, WorkerResult
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,8 @@ class ScribeTranscriptionWorker(WorkerInterface):
         return True
 
     def get_pending_count(self) -> int:
-        return len(self.repository.get_episodes_pending_transcription(limit=1000))
+        """Count pending episodes and in-flight Scribe jobs."""
+        return len(self.repository.get_episodes_pending_transcription(limit=1000, backend="scribe"))
 
     def transcribe_single(self, episode: Episode) -> TranscriptionResult:
         """Submit or poll one episode, updating podcast-rag compatibility state."""
@@ -73,6 +74,7 @@ class ScribeTranscriptionWorker(WorkerInterface):
                 )
                 return TranscriptionResult(
                     status=response.status,
+                    provider="scribe",
                     external_id=response.id,
                 )
 
@@ -90,6 +92,7 @@ class ScribeTranscriptionWorker(WorkerInterface):
                 return TranscriptionResult(
                     status="completed",
                     transcript_text=response.transcript,
+                    provider="scribe",
                     external_id=external_id,
                 )
 
@@ -102,6 +105,28 @@ class ScribeTranscriptionWorker(WorkerInterface):
             )
             return TranscriptionResult(
                 status="failed",
+                provider="scribe",
+                external_id=external_id,
+                error=error,
+                terminal=True,
+            )
+        except ScribeClientError as exc:
+            error = str(exc)
+            logger.error(
+                "Scribe request failed for episode %s",
+                episode.id,
+                exc_info=True,
+            )
+            external_id = getattr(episode, "transcript_external_id", None)
+            self.repository.mark_transcript_failed(
+                episode.id,
+                error,
+                provider="scribe",
+                external_id=external_id,
+            )
+            return TranscriptionResult(
+                status="retryable",
+                provider="scribe",
                 external_id=external_id,
                 error=error,
             )
@@ -114,11 +139,13 @@ class ScribeTranscriptionWorker(WorkerInterface):
                 provider="scribe",
                 external_id=getattr(episode, "transcript_external_id", None),
             )
-            return TranscriptionResult(status="failed", error=error)
+            return TranscriptionResult(status="failed", provider="scribe", error=error)
 
     def process_batch(self, limit: int) -> WorkerResult:
         result = WorkerResult()
-        for episode in self.repository.get_episodes_pending_transcription(limit=limit):
+        for episode in self.repository.get_episodes_pending_transcription(
+            limit=limit, backend="scribe"
+        ):
             outcome = self.transcribe_single(episode)
             if outcome.is_complete:
                 result.processed += 1

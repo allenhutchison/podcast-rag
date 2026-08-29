@@ -49,10 +49,11 @@ These must be set for the application to function:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `TRANSCRIPTION_BACKEND` | `local` | `local` for the embedded faster-whisper worker or `scribe` for the shared service |
-| `SCRIBE_BASE_URL` | `http://scribe:8000` | Private base URL of the Scribe API |
+| `SCRIBE_BASE_URL` | `https://scribe.vycari.ai` | HTTPS base URL of the Scribe API |
 | `SCRIBE_API_TOKEN` | — | Bearer token for the `podcast-rag` Scribe consumer; required for the Scribe backend |
 | `SCRIBE_REQUEST_TIMEOUT` | `30` | HTTP request timeout in seconds; queued work is polled on later pipeline ticks |
 | `SCRIBE_LANGUAGE` | `en` | Language hint sent to Scribe. Set to an empty value to use auto-detection |
+| `SCRIBE_ALLOW_INSECURE_HTTP` | `false` | Explicitly permit `http://` only on a trusted local development/private network |
 
 Keep `TRANSCRIPTION_BACKEND=local` until existing transcripts have been seeded
 and verified. The Scribe compatibility worker continues storing transcript text
