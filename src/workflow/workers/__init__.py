@@ -9,9 +9,10 @@ Each worker handles a single stage of the pipeline:
 - CleanupWorker: Removes audio files for fully processed episodes
 """
 
-from src.workflow.workers.base import WorkerInterface, WorkerResult
+from src.workflow.workers.base import TranscriptionResult, WorkerInterface, WorkerResult
 
 __all__ = [
     "WorkerInterface",
     "WorkerResult",
+    "TranscriptionResult",
 ]

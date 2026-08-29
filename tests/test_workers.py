@@ -858,7 +858,9 @@ class TestTranscriptionWorker:
         count = transcription_worker.get_pending_count()
 
         assert count == 2
-        mock_repository.get_episodes_pending_transcription.assert_called_with(limit=1000)
+        mock_repository.get_episodes_pending_transcription.assert_called_with(
+            limit=1000, backend="local"
+        )
 
     def test_transcribe_episode_no_file_path(self, transcription_worker):
         """Test transcribing episode without file path."""
@@ -915,7 +917,8 @@ class TestTranscriptionWorker:
 
         result = transcription_worker.transcribe_single(episode)
 
-        assert result == "Transcribed text"
+        assert result.status == "completed"
+        assert result.transcript_text == "Transcribed text"
         mock_repository.mark_transcript_started.assert_called_with("ep-1")
         mock_repository.mark_transcript_complete.assert_called()
 
@@ -928,7 +931,7 @@ class TestTranscriptionWorker:
 
         result = transcription_worker.transcribe_single(episode)
 
-        assert result is None
+        assert result.status == "failed"
         mock_repository.mark_transcript_failed.assert_called()
 
     def test_process_batch_no_episodes(self, transcription_worker, mock_repository):

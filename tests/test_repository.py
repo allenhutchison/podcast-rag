@@ -380,6 +380,40 @@ class TestStatusUpdates:
         assert episode.transcript_status == "completed"
         assert episode.transcript_text == transcript_text
 
+    def test_remote_transcript_status_and_completion(self, repository, sample_podcast):
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="remote-transcript",
+            title="Remote transcript",
+            enclosure_url="https://example.com/remote.mp3",
+            enclosure_type="audio/mpeg",
+        )
+
+        repository.mark_transcript_remote_status(
+            episode.id,
+            provider="scribe",
+            external_id="job-1",
+            status="queued",
+        )
+        processing = repository.get_episode(episode.id)
+        assert processing.transcript_status == "processing"
+        assert processing.transcript_provider == "scribe"
+        assert processing.transcript_external_id == "job-1"
+
+        repository.mark_transcript_complete(
+            episode.id,
+            transcript_text="Remote text",
+            provider="scribe",
+            external_id="transcript-1",
+            model="medium",
+            language="en",
+        )
+        completed = repository.get_episode(episode.id)
+        assert completed.transcript_text == "Remote text"
+        assert completed.transcript_external_id == "transcript-1"
+        assert completed.transcript_model == "medium"
+        assert completed.transcript_language == "en"
+
     def test_indexing_status_flow(self, repository, sample_podcast):
         """Test File Search indexing status transitions."""
         episode = repository.create_episode(

@@ -662,6 +662,60 @@ class TestRetryMethods:
         assert next_ep is not None
         assert next_ep.id == episode.id
 
+    def test_get_next_for_transcription_includes_scribe_processing(
+        self, repository, sample_podcast
+    ):
+        episode = repository.create_episode(
+            podcast_id=sample_podcast.id,
+            guid="scribe-processing",
+            title="Scribe processing",
+            enclosure_url="https://example.com/scribe.mp3",
+            enclosure_type="audio/mpeg",
+        )
+        repository.mark_download_complete(
+            episode_id=episode.id,
+            local_path="/tmp/scribe.mp3",
+            file_size=1000,
+            file_hash="abc123",
+        )
+        repository.mark_transcript_remote_status(
+            episode.id,
+            provider="scribe",
+            external_id="job-1",
+            status="processing",
+        )
+        repository.record_transcript_error(
+            episode.id,
+            "temporary outage",
+            provider="scribe",
+            external_id="job-1",
+        )
+
+        retryable = repository.get_episode(episode.id)
+        assert retryable.transcript_status == "processing"
+        assert retryable.transcript_error == "temporary outage"
+
+        assert repository.get_episodes_pending_transcription(backend="local") == []
+        scribe_pending = repository.get_episodes_pending_transcription(backend="scribe")
+        assert [pending.id for pending in scribe_pending] == [episode.id]
+
+        next_ep = repository.get_next_for_transcription(backend="local")
+
+        assert next_ep is None
+
+        next_ep = repository.get_next_for_transcription(backend="scribe")
+
+        assert next_ep is not None
+        assert next_ep.id == episode.id
+
+        repository.reset_episode_for_retry(episode.id, "transcript")
+
+        assert repository.get_episodes_pending_transcription(backend="local") == []
+        scribe_pending = repository.get_episodes_pending_transcription(backend="scribe")
+        assert [pending.id for pending in scribe_pending] == [episode.id]
+        assert repository.get_next_for_transcription(backend="local") is None
+        assert repository.get_next_for_transcription(backend="scribe").id == episode.id
+
 
 class TestTranscriptionWorkerPipeline:
     """Tests for TranscriptionWorker pipeline mode methods."""

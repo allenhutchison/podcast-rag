@@ -1,7 +1,44 @@
 import json
 import os
+from typing import Literal, Self
 
 from dotenv import load_dotenv
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+class ScribeSettings(BaseModel):
+    """Validated environment-backed settings for the Scribe integration."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, validate_default=True)
+
+    transcription_backend: Literal["local", "scribe"] = "local"
+    base_url: AnyHttpUrl = "https://scribe.vycari.ai"
+    api_token: str = ""
+    request_timeout: float = Field(default=30.0, gt=0, allow_inf_nan=False)
+    language: str | None = "en"
+    allow_insecure_http: bool = False
+
+    @field_validator("transcription_backend", mode="before")
+    @classmethod
+    def normalize_backend(cls, value: object) -> object:
+        """Normalize backend names before validating the allowed values."""
+        return value.lower() if isinstance(value, str) else value
+
+    @field_validator("language", mode="before")
+    @classmethod
+    def normalize_language(cls, value: object) -> object:
+        """Treat an empty language hint as Scribe auto-detection."""
+        return value or None
+
+    @model_validator(mode="after")
+    def require_secure_transport(self) -> Self:
+        """Reject cleartext Scribe traffic without an explicit local-development opt-in."""
+        if self.base_url.scheme == "http" and not self.allow_insecure_http:
+            raise ValueError(
+                "SCRIBE_BASE_URL must use https://; set "
+                "SCRIBE_ALLOW_INSECURE_HTTP=true only for trusted local development"
+            )
+        return self
 
 
 def _load_doppler_env():
@@ -58,6 +95,25 @@ class Config:
         self.WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cuda")
         # Compute type: float16 (GPU), int8 (CPU), float32
         self.WHISPER_COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "float16")
+
+        # Transcription backend. "local" preserves the existing faster-whisper
+        # path; "scribe" delegates to the shared transcription service.
+        scribe = ScribeSettings.model_validate(
+            {
+                "transcription_backend": os.getenv("TRANSCRIPTION_BACKEND", "local"),
+                "base_url": os.getenv("SCRIBE_BASE_URL", "https://scribe.vycari.ai"),
+                "api_token": os.getenv("SCRIBE_API_TOKEN", ""),
+                "request_timeout": os.getenv("SCRIBE_REQUEST_TIMEOUT", "30"),
+                "language": os.getenv("SCRIBE_LANGUAGE", "en"),
+                "allow_insecure_http": os.getenv("SCRIBE_ALLOW_INSECURE_HTTP", "false"),
+            }
+        )
+        self.TRANSCRIPTION_BACKEND = scribe.transcription_backend
+        self.SCRIBE_BASE_URL = str(scribe.base_url).rstrip("/")
+        self.SCRIBE_API_TOKEN = scribe.api_token
+        self.SCRIBE_REQUEST_TIMEOUT = float(scribe.request_timeout)
+        self.SCRIBE_LANGUAGE = scribe.language
+        self.SCRIBE_ALLOW_INSECURE_HTTP = scribe.allow_insecure_http
 
         # Model configuration
         self.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "your_api_key_here")

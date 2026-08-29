@@ -112,8 +112,9 @@ class TestTranscriptionWorkerDatabaseStorage:
         # Transcribe
         result = worker.transcribe_single(sample_episode_with_audio)
 
-        # Verify result is text
-        assert result == "Full transcript text."
+        # Verify the structured result carries the text
+        assert result.status == "completed"
+        assert result.transcript_text == "Full transcript text."
 
         # Verify database was updated
         episode = repository.get_episode(sample_episode_with_audio.id)
@@ -249,7 +250,8 @@ class TestTranscriptionWorkerDatabaseStorage:
         result = worker.transcribe_single(sample_episode_with_audio)
 
         # Verify Unicode preserved
-        assert "émojis 🎙️" in result
+        assert result.transcript_text is not None
+        assert "émojis 🎙️" in result.transcript_text
 
         episode = repository.get_episode(sample_episode_with_audio.id)
         assert "émojis 🎙️" in episode.transcript_text

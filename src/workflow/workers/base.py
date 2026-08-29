@@ -41,6 +41,38 @@ class WorkerResult:
         )
 
 
+@dataclass(frozen=True)
+class TranscriptionResult:
+    """Outcome of one local or remote transcription attempt."""
+
+    status: str
+    transcript_text: str | None = None
+    provider: str | None = None
+    external_id: str | None = None
+    error: str | None = None
+    terminal: bool = False
+
+    @property
+    def is_complete(self) -> bool:
+        """Return whether transcription completed successfully."""
+        return self.status == "completed"
+
+    @property
+    def is_waiting(self) -> bool:
+        """Return whether remote work is still in progress."""
+        return self.status in {"queued", "processing"}
+
+    @property
+    def is_terminal(self) -> bool:
+        """Return whether a failed outcome must never be retried."""
+        return self.terminal
+
+    @property
+    def should_backoff(self) -> bool:
+        """Return whether orchestration should pause before another attempt."""
+        return self.status == "retryable"
+
+
 class WorkerInterface(ABC):
     """Abstract base class for workflow workers.
 
