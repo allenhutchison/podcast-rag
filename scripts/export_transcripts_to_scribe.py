@@ -163,14 +163,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    config = Config()
-    repository = create_repository(
-        database_url=config.DATABASE_URL,
-        pool_size=config.DB_POOL_SIZE,
-        max_overflow=config.DB_MAX_OVERFLOW,
-        pool_pre_ping=config.DB_POOL_PRE_PING,
-        echo=config.DB_ECHO,
-    )
+    try:
+        config = Config()
+        repository = create_repository(
+            database_url=config.DATABASE_URL,
+            pool_size=config.DB_POOL_SIZE,
+            max_overflow=config.DB_MAX_OVERFLOW,
+            pool_pre_ping=config.DB_POOL_PRE_PING,
+            echo=config.DB_ECHO,
+        )
+    except Exception:
+        logger.exception("Failed to initialize transcript export to %s", args.output.resolve())
+        raise
     try:
         manifest = export_transcripts(repository, args.output, dry_run=args.dry_run)
     finally:

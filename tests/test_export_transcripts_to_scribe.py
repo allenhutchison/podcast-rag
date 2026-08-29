@@ -114,6 +114,31 @@ def test_empty_completed_transcript_exits_cleanly(
     assert manifest["conflicting_file_hashes"] == 0
 
 
+def test_main_logs_repository_initialization_failure(tmp_path, monkeypatch, caplog) -> None:
+    output = tmp_path / "export.jsonl"
+    config = SimpleNamespace(
+        DATABASE_URL="postgresql://invalid",
+        DB_POOL_SIZE=1,
+        DB_MAX_OVERFLOW=0,
+        DB_POOL_PRE_PING=False,
+        DB_ECHO=False,
+    )
+    failure = SQLAlchemyError("database unavailable")
+    monkeypatch.setattr(exporter, "Config", lambda: config)
+    monkeypatch.setattr(
+        exporter,
+        "create_repository",
+        lambda **kwargs: (_ for _ in ()).throw(failure),
+    )
+
+    with caplog.at_level("ERROR"), pytest.raises(SQLAlchemyError, match="database unavailable"):
+        exporter.main([str(output)])
+
+    assert any(
+        str(output) in record.message and record.exc_info for record in caplog.records
+    )
+
+
 def test_dry_run_does_not_write_transcript_file(repository, tmp_path) -> None:
     output = tmp_path / "export.jsonl"
 
