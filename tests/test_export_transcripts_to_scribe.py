@@ -139,6 +139,22 @@ def test_main_logs_repository_initialization_failure(tmp_path, monkeypatch, capl
     )
 
 
+def test_main_does_not_mask_unexpected_initialization_failure(
+    tmp_path, monkeypatch, caplog
+) -> None:
+    output = tmp_path / "export.jsonl"
+    monkeypatch.setattr(
+        exporter,
+        "Config",
+        lambda: (_ for _ in ()).throw(TypeError("programming defect")),
+    )
+
+    with caplog.at_level("ERROR"), pytest.raises(TypeError, match="programming defect"):
+        exporter.main([str(output)])
+
+    assert not caplog.records
+
+
 def test_dry_run_does_not_write_transcript_file(repository, tmp_path) -> None:
     output = tmp_path / "export.jsonl"
 

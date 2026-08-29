@@ -172,7 +172,7 @@ def main(argv: list[str] | None = None) -> int:
             pool_pre_ping=config.DB_POOL_PRE_PING,
             echo=config.DB_ECHO,
         )
-    except Exception:
+    except (ValueError, SQLAlchemyError):
         logger.exception("Failed to initialize transcript export to %s", args.output.resolve())
         raise
     try:
