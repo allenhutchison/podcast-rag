@@ -118,11 +118,23 @@ class ScribeTranscriptionWorker(WorkerInterface):
                 exc_info=True,
             )
             external_id = getattr(episode, "transcript_external_id", None)
-            self.repository.mark_transcript_failed(
-                episode.id,
-                error,
-                provider="scribe",
-                external_id=external_id,
+            if not exc.retryable:
+                self.repository.mark_transcript_failed(
+                    episode.id,
+                    error,
+                    provider="scribe",
+                    external_id=external_id,
+                )
+                return TranscriptionResult(
+                    status="failed",
+                    provider="scribe",
+                    external_id=external_id,
+                    error=error,
+                    terminal=True,
+                )
+
+            self.repository.record_transcript_error(
+                episode.id, error, provider="scribe", external_id=external_id
             )
             return TranscriptionResult(
                 status="retryable",

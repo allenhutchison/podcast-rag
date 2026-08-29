@@ -652,6 +652,17 @@ class PodcastRepositoryInterface(ABC):
         pass
 
     @abstractmethod
+    def record_transcript_error(
+        self,
+        episode_id: str,
+        error: str,
+        provider: str | None = None,
+        external_id: str | None = None,
+    ) -> None:
+        """Record a retryable transcript error without changing its status."""
+        pass
+
+    @abstractmethod
     def mark_metadata_started(self, episode_id: str) -> None:
         """Mark episode metadata extraction as started."""
         pass
@@ -2212,10 +2223,16 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         """
         if backend not in {"local", "scribe"}:
             raise ValueError(f"Invalid transcription backend: {backend}")
-        transcript_condition = Episode.transcript_status == "pending"
+        transcript_condition = and_(
+            Episode.transcript_status == "pending",
+            or_(
+                Episode.transcript_provider.is_(None),
+                Episode.transcript_provider != "scribe",
+            ),
+        )
         if backend == "scribe":
             transcript_condition = or_(
-                transcript_condition,
+                Episode.transcript_status == "pending",
                 and_(
                     Episode.transcript_status == "processing",
                     Episode.transcript_provider == "scribe",
@@ -2522,6 +2539,22 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
             transcript_provider=provider,
             transcript_external_id=external_id,
         )
+
+    def record_transcript_error(
+        self,
+        episode_id: str,
+        error: str,
+        provider: str | None = None,
+        external_id: str | None = None,
+    ) -> None:
+        """Record a retryable transcript error while preserving its pollable status."""
+        fields = {
+            "transcript_error": error,
+            "transcript_provider": provider,
+        }
+        if external_id is not None:
+            fields["transcript_external_id"] = external_id
+        self.update_episode(episode_id, **fields)
 
     def mark_metadata_started(self, episode_id: str) -> None:
         """
@@ -3104,10 +3137,16 @@ class SQLAlchemyPodcastRepository(PodcastRepositoryInterface):
         """
         if backend not in {"local", "scribe"}:
             raise ValueError(f"Invalid transcription backend: {backend}")
-        transcript_condition = Episode.transcript_status == "pending"
+        transcript_condition = and_(
+            Episode.transcript_status == "pending",
+            or_(
+                Episode.transcript_provider.is_(None),
+                Episode.transcript_provider != "scribe",
+            ),
+        )
         if backend == "scribe":
             transcript_condition = or_(
-                transcript_condition,
+                Episode.transcript_status == "pending",
                 and_(
                     Episode.transcript_status == "processing",
                     Episode.transcript_provider == "scribe",

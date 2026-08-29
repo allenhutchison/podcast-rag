@@ -684,6 +684,16 @@ class TestRetryMethods:
             external_id="job-1",
             status="processing",
         )
+        repository.record_transcript_error(
+            episode.id,
+            "temporary outage",
+            provider="scribe",
+            external_id="job-1",
+        )
+
+        retryable = repository.get_episode(episode.id)
+        assert retryable.transcript_status == "processing"
+        assert retryable.transcript_error == "temporary outage"
 
         assert repository.get_episodes_pending_transcription(backend="local") == []
         scribe_pending = repository.get_episodes_pending_transcription(backend="scribe")
@@ -697,6 +707,14 @@ class TestRetryMethods:
 
         assert next_ep is not None
         assert next_ep.id == episode.id
+
+        repository.reset_episode_for_retry(episode.id, "transcript")
+
+        assert repository.get_episodes_pending_transcription(backend="local") == []
+        scribe_pending = repository.get_episodes_pending_transcription(backend="scribe")
+        assert [pending.id for pending in scribe_pending] == [episode.id]
+        assert repository.get_next_for_transcription(backend="local") is None
+        assert repository.get_next_for_transcription(backend="scribe").id == episode.id
 
 
 class TestTranscriptionWorkerPipeline:

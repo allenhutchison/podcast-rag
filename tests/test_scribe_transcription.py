@@ -137,9 +137,28 @@ def test_request_failure_is_retryable_with_remote_identity() -> None:
     assert result.should_backoff
     assert result.provider == "scribe"
     assert result.external_id == "job-1"
-    repository.mark_transcript_failed.assert_called_once_with(
+    repository.record_transcript_error.assert_called_once_with(
         "episode-1",
         "service unavailable",
         provider="scribe",
         external_id="job-1",
     )
+    repository.mark_transcript_failed.assert_not_called()
+
+
+def test_non_retryable_request_failure_is_terminal() -> None:
+    worker, repository, client, episode = _worker(ScribeTranscript(id="unused", status="queued"))
+    client.submit.side_effect = ScribeClientError("bad request", retryable=False)
+
+    result = worker.transcribe_single(episode)
+
+    assert result.status == "failed"
+    assert result.is_terminal
+    assert result.provider == "scribe"
+    repository.mark_transcript_failed.assert_called_once_with(
+        "episode-1",
+        "bad request",
+        provider="scribe",
+        external_id=None,
+    )
+    repository.record_transcript_error.assert_not_called()
