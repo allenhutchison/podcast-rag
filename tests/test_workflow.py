@@ -34,7 +34,6 @@ def mock_config():
     config.PODCAST_DOWNLOAD_TIMEOUT = 300
     config.GEMINI_API_KEY = "test_key"
     config.GEMINI_MODEL = "gemini-2.5-flash"
-    config.TRANSCRIPTION_OUTPUT_SUFFIX = "_transcription.txt"
     return config
 
 
@@ -192,26 +191,6 @@ class TestDownloadWorker:
         count = worker.get_pending_count()
 
         assert count == 0
-
-
-class TestTranscriptionWorker:
-    """Tests for TranscriptionWorker."""
-
-    def test_name(self, mock_config, repository):
-        """Test worker name."""
-        from src.workflow.workers.transcription import TranscriptionWorker
-
-        worker = TranscriptionWorker(config=mock_config, repository=repository)
-        assert worker.name == "Transcription"
-
-    def test_build_transcript_path(self, mock_config, repository):
-        """Test building transcript path from audio file path."""
-        from src.workflow.workers.transcription import TranscriptionWorker
-
-        worker = TranscriptionWorker(config=mock_config, repository=repository)
-        path = worker._build_transcript_path("/path/to/episode.mp3")
-
-        assert path == "/path/to/episode_transcription.txt"
 
 
 class TestMetadataWorker:
@@ -695,42 +674,19 @@ class TestRetryMethods:
         assert retryable.transcript_status == "processing"
         assert retryable.transcript_error == "temporary outage"
 
-        assert repository.get_episodes_pending_transcription(backend="local") == []
-        scribe_pending = repository.get_episodes_pending_transcription(backend="scribe")
-        assert [pending.id for pending in scribe_pending] == [episode.id]
+        pending = repository.get_episodes_pending_transcription()
+        assert [p.id for p in pending] == [episode.id]
 
-        next_ep = repository.get_next_for_transcription(backend="local")
-
-        assert next_ep is None
-
-        next_ep = repository.get_next_for_transcription(backend="scribe")
-
+        next_ep = repository.get_next_for_transcription()
         assert next_ep is not None
         assert next_ep.id == episode.id
 
         repository.reset_episode_for_retry(episode.id, "transcript")
 
-        assert repository.get_episodes_pending_transcription(backend="local") == []
-        scribe_pending = repository.get_episodes_pending_transcription(backend="scribe")
-        assert [pending.id for pending in scribe_pending] == [episode.id]
-        assert repository.get_next_for_transcription(backend="local") is None
-        assert repository.get_next_for_transcription(backend="scribe").id == episode.id
+        pending = repository.get_episodes_pending_transcription()
+        assert [p.id for p in pending] == [episode.id]
+        next_ep = repository.get_next_for_transcription()
+        assert next_ep is not None
+        assert next_ep.id == episode.id
 
 
-class TestTranscriptionWorkerPipeline:
-    """Tests for TranscriptionWorker pipeline mode methods."""
-
-    def test_is_model_loaded_initially_false(self, mock_config, repository):
-        """Test that model is not loaded initially."""
-        from src.workflow.workers.transcription import TranscriptionWorker
-
-        worker = TranscriptionWorker(config=mock_config, repository=repository)
-        assert worker.is_model_loaded() is False
-
-    def test_unload_model_when_not_loaded(self, mock_config, repository):
-        """Test unloading model when not loaded doesn't error."""
-        from src.workflow.workers.transcription import TranscriptionWorker
-
-        worker = TranscriptionWorker(config=mock_config, repository=repository)
-        # Should not raise
-        worker.unload_model()

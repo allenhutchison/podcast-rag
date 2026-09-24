@@ -132,18 +132,11 @@ class PipelineOrchestrator:
     def _get_transcription_worker(self):
         """Get or create the transcription worker."""
         if self._transcription_worker is None:
-            if getattr(self.config, "TRANSCRIPTION_BACKEND", "local") == "scribe":
-                from src.workflow.workers.scribe_transcription import (
-                    ScribeTranscriptionWorker,
-                )
+            from src.workflow.workers.scribe_transcription import (
+                ScribeTranscriptionWorker,
+            )
 
-                worker_class = ScribeTranscriptionWorker
-            else:
-                from src.workflow.workers.transcription import TranscriptionWorker
-
-                worker_class = TranscriptionWorker
-
-            self._transcription_worker = worker_class(
+            self._transcription_worker = ScribeTranscriptionWorker(
                 config=self.config, repository=self.repository
             )
         return self._transcription_worker
@@ -338,8 +331,7 @@ class PipelineOrchestrator:
         self._maintain_download_buffer()
 
         # 3. Get next episode to transcribe
-        backend = getattr(self.config, "TRANSCRIPTION_BACKEND", "local")
-        episode = self.repository.get_next_for_transcription(backend=backend)
+        episode = self.repository.get_next_for_transcription()
 
         if episode is None:
             return False
@@ -620,10 +612,7 @@ class PipelineOrchestrator:
         # Get pending counts
         try:
             status["pending_transcription"] = len(
-                self.repository.get_episodes_pending_transcription(
-                    limit=1000,
-                    backend=getattr(self.config, "TRANSCRIPTION_BACKEND", "local"),
-                )
+                self.repository.get_episodes_pending_transcription(limit=1000)
             )
         except Exception:
             status["pending_transcription"] = -1
