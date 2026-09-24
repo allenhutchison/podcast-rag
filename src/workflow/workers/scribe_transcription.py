@@ -47,7 +47,7 @@ class ScribeTranscriptionWorker(WorkerInterface):
 
     def get_pending_count(self) -> int:
         """Count pending episodes and in-flight Scribe jobs."""
-        return len(self.repository.get_episodes_pending_transcription(limit=1000, backend="scribe"))
+        return len(self.repository.get_episodes_pending_transcription(limit=1000))
 
     def transcribe_single(self, episode: Episode) -> TranscriptionResult:
         """Submit or poll one episode, updating podcast-rag compatibility state."""
@@ -156,7 +156,7 @@ class ScribeTranscriptionWorker(WorkerInterface):
     def process_batch(self, limit: int) -> WorkerResult:
         result = WorkerResult()
         for episode in self.repository.get_episodes_pending_transcription(
-            limit=limit, backend="scribe"
+            limit=limit
         ):
             outcome = self.transcribe_single(episode)
             if outcome.is_complete:

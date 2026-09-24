@@ -180,10 +180,10 @@ class TestPipelineOrchestratorWorkers:
 
             assert orchestrator._download_worker is not None
 
-    @patch("src.workflow.orchestrator.TranscriptionWorker", create=True)
+    @patch("src.workflow.orchestrator.ScribeTranscriptionWorker", create=True)
     def test_get_transcription_worker_creates_worker(self, mock_worker_class, orchestrator):
         """Test that _get_transcription_worker creates worker on first call."""
-        with patch("src.workflow.workers.transcription.TranscriptionWorker", mock_worker_class):
+        with patch("src.workflow.workers.scribe_transcription.ScribeTranscriptionWorker", mock_worker_class):
             worker = orchestrator._get_transcription_worker()
 
             assert orchestrator._transcription_worker is not None

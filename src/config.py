@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Literal, Self
+from typing import Self
 
 from dotenv import load_dotenv
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -11,18 +11,11 @@ class ScribeSettings(BaseModel):
 
     model_config = ConfigDict(str_strip_whitespace=True, validate_default=True)
 
-    transcription_backend: Literal["local", "scribe"] = "local"
     base_url: AnyHttpUrl = "https://scribe.vycari.ai"
     api_token: str = ""
     request_timeout: float = Field(default=30.0, gt=0, allow_inf_nan=False)
     language: str | None = "en"
     allow_insecure_http: bool = False
-
-    @field_validator("transcription_backend", mode="before")
-    @classmethod
-    def normalize_backend(cls, value: object) -> object:
-        """Normalize backend names before validating the allowed values."""
-        return value.lower() if isinstance(value, str) else value
 
     @field_validator("language", mode="before")
     @classmethod
@@ -84,23 +77,9 @@ class Config:
             "PODCAST_DOWNLOAD_DIRECTORY", "/opt/podcasts"
         )
 
-        # Transcription-related constants
-        self.TRANSCRIPTION_OUTPUT_SUFFIX = "_transcription.txt"
-        self.TRANSCRIPTION_TEMP_FILE_SUFFIX = ".transcription_in_progress"
-
-        # Whisper transcription configuration
-        # Model options: tiny, base, small, medium, large-v3
-        # Recommend "medium" for best balance of speed and accuracy
-        self.WHISPER_MODEL = os.getenv("WHISPER_MODEL", "medium")
-        self.WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cuda")
-        # Compute type: float16 (GPU), int8 (CPU), float32
-        self.WHISPER_COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "float16")
-
-        # Transcription backend. "local" preserves the existing faster-whisper
-        # path; "scribe" delegates to the shared transcription service.
+        # Scribe transcription service configuration
         scribe = ScribeSettings.model_validate(
             {
-                "transcription_backend": os.getenv("TRANSCRIPTION_BACKEND", "local"),
                 "base_url": os.getenv("SCRIBE_BASE_URL", "https://scribe.vycari.ai"),
                 "api_token": os.getenv("SCRIBE_API_TOKEN", ""),
                 "request_timeout": os.getenv("SCRIBE_REQUEST_TIMEOUT", "30"),
@@ -108,7 +87,6 @@ class Config:
                 "allow_insecure_http": os.getenv("SCRIBE_ALLOW_INSECURE_HTTP", "false"),
             }
         )
-        self.TRANSCRIPTION_BACKEND = scribe.transcription_backend
         self.SCRIBE_BASE_URL = str(scribe.base_url).rstrip("/")
         self.SCRIBE_API_TOKEN = scribe.api_token
         self.SCRIBE_REQUEST_TIMEOUT = float(scribe.request_timeout)
@@ -228,38 +206,6 @@ class Config:
         self.PODCAST_CHUNK_SIZE = int(
             os.getenv("PODCAST_CHUNK_SIZE", "8192")
         )
-
-    def load_config(self):
-        """
-        Prints selected configuration values useful for debugging.
-        """
-        print(f"Podcast Directory: {self.PODCAST_DOWNLOAD_DIRECTORY}")
-        print(f"Transcription Suffix: {self.TRANSCRIPTION_OUTPUT_SUFFIX}")
-
-    # Utility functions related to file paths and suffixes
-    def build_transcription_file(self, episode_path):
-        '''Generate the transcription file path based on episode file path.'''
-        return os.path.splitext(episode_path)[0] + self.TRANSCRIPTION_OUTPUT_SUFFIX
-
-    def build_temp_file(self, transcription_file):
-        '''Generate the temp file path for in-progress transcriptions.'''
-        return transcription_file + self.TRANSCRIPTION_TEMP_FILE_SUFFIX
-
-    def is_transcription_file(self, file_path):
-        '''Check if the given file is a transcription file.'''
-        return os.path.isfile(file_path) and file_path.endswith(self.TRANSCRIPTION_OUTPUT_SUFFIX)
-
-    def is_mp3_file(self, file_path):
-        '''Check if the given file is an MP3.'''
-        return os.path.isfile(file_path) and file_path.endswith(".mp3")
-
-    def is_transcription_in_progress(self, temp_file):
-        '''Check if a transcription is in progress.'''
-        return os.path.exists(temp_file)
-
-    def transcription_exists(self, transcription_file):
-        '''Check if the transcription already exists using helper function from config.'''
-        return os.path.exists(transcription_file) and os.path.getsize(transcription_file) > 0
 
     def validate_file_search_model(self):
         """
